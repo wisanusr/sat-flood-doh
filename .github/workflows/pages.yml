@@ -28,6 +28,10 @@ jobs:
         with:
           node-version: 20
       - run: node test.cjs
+      - run: node flood_web/test_model.cjs
+      - run: python3 flood_web/test_server.py
+      # Generated Apps Script files must match the sources in flood_web/ (run `python build.py` and commit).
+      - run: python3 build.py && git diff --exit-code -- . ':!docs'
       - run: node fetch_data.cjs
       - run: python3 build_pages.py
       - uses: actions/upload-pages-artifact@v3

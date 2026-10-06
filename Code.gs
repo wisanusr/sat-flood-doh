@@ -56,15 +56,45 @@ function transform_(name, rows) {
     return out;
   });
 }
-function getDashboardData(source) {
+// Per-sheet result cache (5 min). Values over 100 KB are split into chunks; only successful reads are cached,
+// so a failed sheet is retried on the next request. Any cache problem falls back to reading the sheet.
+const CACHE_SECONDS=300, CACHE_CHUNK=30000, CACHE_PREFIX='dash1_';
+function cacheGet_(key) {
+  if(typeof CacheService==='undefined') return null;
+  try {
+    const cache=CacheService.getScriptCache(), count=Number(cache.get(key));
+    if(!(count>0)) return null;
+    const keys=[]; for(let i=0;i<count;i++) keys.push(key+'_'+i);
+    const parts=cache.getAll(keys), text=keys.map(k=>parts[k]);
+    return text.some(t=>t==null)?null:JSON.parse(text.join(''));
+  } catch(e) { return null; }
+}
+function cachePut_(key, value) {
+  if(typeof CacheService==='undefined') return;
+  try {
+    const text=JSON.stringify(value), items={}; let count=0;
+    for(let i=0;i<text.length;i+=CACHE_CHUNK) items[key+'_'+(count++)]=text.slice(i,i+CACHE_CHUNK);
+    items[key]=String(count);
+    CacheService.getScriptCache().putAll(items,CACHE_SECONDS);
+  } catch(e) { console.warn('cache '+key+': '+e.message); }
+}
+// refresh=true (the "รีเฟรชข้อมูล" button) skips the cache and re-reads the sheets, but a sheet read in the last
+// REFRESH_COOLDOWN_SECONDS is reused so repeated clicks cannot exhaust the Sheets quota.
+const REFRESH_COOLDOWN_SECONDS=30;
+function getDashboardData(source, refresh) {
   const mapping={Disaster_DB:'disasters',Vulnerable_group:'vulnerable',thai_water_DB:'stations',BKK_water_DB:'bkkStations',shelter_DB:'shelters'};
   if(source && !Object.prototype.hasOwnProperty.call(mapping,source)) throw new Error('แหล่งข้อมูลไม่ถูกต้อง');
-  const ss=SpreadsheetApp.openById(CONFIG.spreadsheetId);
+  let ss=null;
+  const getSs=()=>ss||(ss=SpreadsheetApp.openById(CONFIG.spreadsheetId));
   const result={source:'รายงานสถานการณ์สาธารณภัยรายจังหวัด — Google Sheets',sourceType:'google_sheets',sourceUrl:'https://docs.google.com/spreadsheets/d/'+CONFIG.spreadsheetId+'/edit',loadedAt:new Date().toISOString(),sourceStatus:{},disasters:[],vulnerable:[],stations:[],bkkStations:[],shelters:[]};
   (source?[source]:Object.keys(mapping)).forEach(name=>{
+    const cached=cacheGet_(CACHE_PREFIX+name);
+    const cachedAge=cached?(Date.now()-Date.parse(cached.status.loadedAt))/1000:Infinity;
+    if(cached && (!refresh || cachedAge<REFRESH_COOLDOWN_SECONDS)){ result[mapping[name]]=cached.rows; result.sourceStatus[name]=cached.status; return; }
     try{
-      result[mapping[name]]=transform_(name,readRows_(ss,name));
+      result[mapping[name]]=transform_(name,readRows_(getSs(),name));
       result.sourceStatus[name]={status:'ok',loadedAt:new Date().toISOString(),message:null};
+      cachePut_(CACHE_PREFIX+name,{rows:result[mapping[name]],status:result.sourceStatus[name]});
     }catch(e){
       console.error(name+': '+e.message);
       result.sourceStatus[name]={status:'error',loadedAt:null,message:'อ่านชีต '+name+' ไม่สำเร็จ ตรวจชื่อชีต หัวคอลัมน์ และรูปแบบข้อมูล'};

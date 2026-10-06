@@ -3,7 +3,7 @@ from pathlib import Path
 import importlib.util, json, re
 
 ROOT = Path(__file__).resolve().parent
-WEB = ROOT.parent / 'flood_web'
+WEB = ROOT / 'flood_web'
 spec = importlib.util.spec_from_file_location('backend', WEB / 'server.py')
 backend = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(backend)
@@ -18,11 +18,11 @@ js = (WEB / 'dashboard.js').read_text(encoding='utf-8')
 start = js.index('  try {\n    const resGeo')
 end = js.index('const $=id=>', start)
 js = js[:start]+js[end:]
-js = js.replace("const response=await fetch('/api/data',{cache:'no-store'});\nconst DATA=await response.json();", 'const DATA=await requestDashboard();')
-js = js.replace("const response=await fetch('/api/data?source='+encodeURIComponent(name),{cache:'no-store'});const next=await response.json();", 'const next=await requestDashboard(name);')
+bridge = '/*@bridge-begin*/function requestData(source,refresh){return new Promise((resolve,reject)=>google.script.run.withSuccessHandler(resolve).withFailureHandler(reject).getDashboardData(source||null,!!refresh));}/*@bridge-end*/'
+js, swapped = re.subn(r'//@local-request-begin.*?//@local-request-end', lambda m: bridge, js, flags=re.S)
+assert swapped == 1, 'local request block not found'
 assert "fetch('/" not in js, 'Unconverted local request'
-bridge = 'function requestDashboard(source){return new Promise((resolve,reject)=>google.script.run.withSuccessHandler(resolve).withFailureHandler(reject).getDashboardData(source||null));}\n'
-for name, text, tag in [('Dashboard',bridge+js,'script'),('DataModel',(WEB/'data-model.js').read_text(encoding='utf-8'),'script'),('Styles',(WEB/'dashboard.css').read_text(encoding='utf-8'),'style')]:
+for name, text, tag in [('Dashboard',js,'script'),('DataModel',(WEB/'data-model.js').read_text(encoding='utf-8'),'script'),('Styles',(WEB/'dashboard.css').read_text(encoding='utf-8'),'style')]:
     (ROOT/(name+'.html')).write_text('<'+tag+'>\n'+text+'\n</'+tag+'>',encoding='utf-8')
 html=(WEB/'template.html').read_text(encoding='utf-8')
 html=html.replace('<link rel="stylesheet" href="/dashboard.css">', "<?!= include_('Styles'); ?>")

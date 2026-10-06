@@ -1,10 +1,21 @@
-<script>
 if(window.Chart)Chart.defaults.font.family="'Google Sans', Tahoma, sans-serif";
-/*@bridge-begin*/function requestData(source,refresh){return new Promise((resolve,reject)=>google.script.run.withSuccessHandler(resolve).withFailureHandler(reject).getDashboardData(source||null,!!refresh));}/*@bridge-end*/
+//@local-request-begin (build.py swaps this block for the google.script.run version)
+async function requestData(source,refresh){const q=new URLSearchParams();if(source)q.set('source',source);if(refresh)q.set('refresh','1');const response=await fetch('/api/data'+(q.size?'?'+q:''),{cache:'no-store'});return response.json();}
+//@local-request-end
 (async()=>{try{
 document.getElementById('pageTitle').textContent='กำลังอ่านข้อมูลจาก Google Sheets…';
 const DATA=await requestData();
 if(!DATA.sourceStatus)throw new Error(DATA.error||'รูปแบบข้อมูลจากเซิร์ฟเวอร์ไม่ถูกต้อง');
+  try {
+    const resGeo = await fetch('/thai_provinces.json');
+    window.PROVINCES_GEOJSON = resGeo.ok ? await resGeo.json() : null;
+  } catch(e) { window.PROVINCES_GEOJSON = null; }
+  try {
+    const districtResponse=await fetch('/bkk_districts.geojson');
+    window.BKK_DISTRICTS_GEOJSON=districtResponse.ok?await districtResponse.json():null;
+  } catch(e) { window.BKK_DISTRICTS_GEOJSON=null; }
+  try{const res=await fetch('/regions.geojson');window.HEALTH_REGIONS_GEOJSON=res.ok?await res.json():null}catch(e){window.HEALTH_REGIONS_GEOJSON=null}
+
 const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),fmt=v=>typeof v==='number'&&Number.isFinite(v)?v.toLocaleString('th-TH'):'ไม่มีข้อมูล',sum=DashboardModel.sum,uniq=a=>[...new Set(a)],date=v=>!v||String(v).startsWith('undefined')?'ไม่มีวันรายงาน':new Date(v).toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'numeric',timeZone:'Asia/Bangkok'}),time=v=>v?new Date(v).toLocaleString('th-TH',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Bangkok'}):'ไม่ทราบเวลาข้อมูล';
 const districts='คลองสาน คลองสามวา คลองเตย คันนายาว จตุจักร จอมทอง ดอนเมือง ดินแดง ดุสิต ตลิ่งชัน ทวีวัฒนา ทุ่งครุ ธนบุรี บางกอกน้อย บางกอกใหญ่ บางกะปิ บางขุนเทียน บางคอแหลม บางซื่อ บางนา บางบอน บางพลัด บางรัก บางเขน บางแค บึงกุ่ม ปทุมวัน ประเวศ ป้อมปราบศัตรูพ่าย พญาไท พระนคร พระโขนง ภาษีเจริญ มีนบุรี ยานนาวา ราชเทวี ราษฎร์บูรณะ ลาดกระบัง ลาดพร้าว วังทองหลาง วัฒนา สวนหลวง สะพานสูง สัมพันธวงศ์ สาทร สายไหม หนองจอก หนองแขม หลักสี่ ห้วยขวาง'.split(' ');
 const {SOURCES,validCoordinates}=DashboardModel;
@@ -741,5 +752,3 @@ function renderVulnerable() {
 }catch(error){document.getElementById('pageTitle').textContent='แสดง Dashboard ไม่สำเร็จ';document.getElementById('cards').innerHTML='';document.getElementById('alert').style.display='block';document.getElementById('alert').textContent=error.message+' — รีเฟรชเพื่อลองใหม่';const retry=document.createElement('button');retry.className='lightbtn';retry.textContent='ลองโหลดใหม่';retry.onclick=()=>location.reload();document.getElementById('alert').append(' ',retry);console.error(error)}})();
 
 
-
-</script>
