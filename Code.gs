@@ -1,10 +1,4 @@
-function doGet(e) {
-  if (e && e.parameter && e.parameter.api) {
-    let body;
-    try { body = getDashboardData(e.parameter.source || null); }
-    catch (err) { console.error(err.message); body = { error: 'โหลดข้อมูลไม่สำเร็จ' }; }
-    return ContentService.createTextOutput(JSON.stringify(body)).setMimeType(ContentService.MimeType.JSON);
-  }
+function doGet() {
   return HtmlService.createTemplateFromFile('Index').evaluate()
     .setTitle('เฝ้าระวังน้ำ | กรมอนามัย')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
