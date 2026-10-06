@@ -1,0 +1,116 @@
+
+<!doctype html>
+<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>เฝ้าระวังน้ำ | กรมอนามัย</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23087873'/%3E%3Cpath d='M5 14q5-6 11 0t11 0M5 22q5-6 11 0t11 0' fill='none' stroke='white' stroke-width='3'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+
+
+
+<?!= include_('Styles'); ?>
+</head><body>
+<header><div class="brand"><div class="mark" aria-hidden="true">≈</div><div><strong>เฝ้าระวังน้ำและผลกระทบต่อสุขภาพ</strong><small>กรมอนามัย · Situation Awareness Team</small></div></div><div class="head-right"><span class="quiet-header">ข้อมูลประกอบการติดตามสถานการณ์</span><span class="prototype">MOCKUP · GOOGLE SHEETS</span></div></header>
+<nav class="subnav" aria-label="หน้าหลัก"><div class="tabs" role="tablist"><button class="tab" id="tab-national" role="tab" aria-selected="true" aria-controls="workspace" data-tab="national">ภาพรวมประเทศ</button><button class="tab" id="tab-bkk" role="tab" aria-selected="false" aria-controls="workspace" data-tab="bkk">กรุงเทพมหานคร</button></div><button class="lightbtn" id="methodBtn">นิยามและแผนพัฒนา</button></nav>
+<main id="workspace" role="tabpanel" aria-labelledby="tab-national"><div class="heading"><div><h1 id="pageTitle"></h1><p class="sub" id="pageSub"></p></div><div class="report-date" id="dateLabel"></div></div>
+<button id="toggleFilters" class="lightbtn mobile-only" aria-expanded="false" aria-controls="dashboardFilters">ตัวกรองเพิ่มเติม</button><div id="selectedFilters" class="sub" aria-live="polite"></div><div class="filters" id="dashboardFilters"><div class="field"><label for="reportDate">วันรายงาน ปภ.</label><select id="reportDate"></select></div><div class="field national-filter"><label for="region">เขตสุขภาพ</label><select id="region"></select></div><div class="field national-filter"><label for="province">จังหวัด</label><select id="province"></select></div><div class="field hidden" id="districtField"><label for="district">เขต กทม.</label><select id="district"></select></div><div class="filter-note" id="filterNote"></div><button class="lightbtn" id="reset">ล้างตัวกรอง</button></div>
+<section id="sourceStatus" aria-label="สถานะการอ่านข้อมูล" aria-live="polite"></section><div id="cards" class="cards" aria-live="polite"></div><div id="alert" class="alert" style="display:none;"></div>
+<div class="grid"><section class="panel"><div class="panel-head"><div><h2 id="mapTitle"></h2><p class="sub" id="mapSubtitle"></p></div><span class="badge" id="mapCount"></span></div><div id="healthRegionTools" class="map-tools"><label><input type="checkbox" id="showHealthRegions" checked>แสดงเส้นเขตสุขภาพ <span style="display:inline-block;width:36px;height:1px;background:#475569" aria-hidden="true"></span></label><label style="margin-left:16px"><input type="checkbox" id="showStationPins">แสดงหมุดสถานี</label><button type="button" class="lightbtn" id="showHealthRegionNumbers" aria-pressed="false">แสดงเลขเขตสุขภาพ</button><span id="healthRegionStatus" class="sub" style="margin-left:16px"></span></div><div id="bkkMapTools" class="map-tools hidden"><label><input type="checkbox" id="showShelterPins">แสดงหมุดศูนย์พักพิง</label>
+ <div id="shelterFilters" style="display:flex; gap:6px; flex-wrap:wrap; border-left:1px solid #ddd; padding-left:10px;">
+  <label class="filter-pill"><input type="checkbox" class="shelter-status-filter" value="เปิดให้บริการ/ว่าง" checked> <span>ว่าง</span></label>
+  <label class="filter-pill"><input type="checkbox" class="shelter-status-filter" value="ใกล้เต็ม" checked> <span>ใกล้เต็ม</span></label>
+  <label class="filter-pill"><input type="checkbox" class="shelter-status-filter" value="เต็ม" checked> <span>เต็ม</span></label>
+  <label class="filter-pill"><input type="checkbox" class="shelter-status-filter" value="ไม่ทราบสถานะ" checked> <span>ไม่ทราบ</span></label>
+ </div><button type="button" class="lightbtn" id="fitDistrictMap">จัดแผนที่ให้พอดี</button></div><div id="map" class="map"><div class="map-fallback">กำลังโหลดแผนที่… ตารางข้อมูลด้านล่างใช้งานได้โดยไม่ต้องเชื่อมต่อแผนที่</div></div><div id="mobileMapKey"></div><div class="map-legend" id="stationMapLegend"><span><i class="dot" style="background:#00008B; border: 1px solid #333"></i>วิกฤติ / ล้นตลิ่ง (ข้อมูลสด)</span><span><i class="dot" style="background:#4169E1; border: 1px solid #333"></i>เตือนภัย / เฝ้าระวัง</span><span><i class="dot" style="background:#75858b"></i>ข้อมูลเก่า / เวลาไม่ผ่านเกณฑ์</span><span><i class="dot" style="background:#ffffff; border: 1px solid #333"></i>สถานีปกติ</span></div><div class="map-legend" id="shelterLegendReference"><span><i class="shelter-symbol" aria-hidden="true"></i> ศูนย์พักพิง (แสดงในแผนที่ศูนย์พักพิง หน้า กทม.)</span></div><div class="map-legend" id="householdMapLegend" style="padding-top:0"><span><i class="dot" style="background:#dc2626; border-radius:3px"></i>ตั้งแต่ 100,000 ครัวเรือน</span><span><i class="dot" style="background:#f97316; border-radius:3px"></i>10,000–99,999 ครัวเรือน</span><span><i class="dot" style="background:#facc15; border-radius:3px"></i>1,000–9,999 ครัวเรือน</span><span><i class="dot" style="background:#22c55e; border-radius:3px"></i>ต่ำกว่า 1,000 ครัวเรือน</span><span>ไม่ระบายสี: ไม่มีข้อมูล / นอกพื้นที่ที่เลือก</span></div><div class="map-legend hidden" id="districtWaterLegend"></div><div class="map-legend hidden" id="districtShelterLegend"></div><p class="map-source hidden" id="districtWaterNote">สีเขตใช้สถานะระดับน้ำรุนแรงที่สุดที่มีในชีต รวมข้อมูลเก่า จึงไม่ใช่ขอบเขตน้ำท่วมจริง · กดเขตเพื่อตรวจเวลาวัดและสถานีต้นทาง</p><p class="national-heat-note" id="nationalHeatNote"></p><div class="map-source" id="mapSource"></div></section>
+<section class="panel"><div class="panel-head"><div><h2 id="sideTitle"></h2><p class="sub" id="sideSub"></p></div></div><div class="panel-body" id="sideBody" style="max-height: 520px; overflow-y: auto; padding-right: 12px;"></div></section></div>
+
+<div class="cards hidden" id="shelterCards" style="margin-top: 32px; margin-bottom: 24px;"></div>
+<div class="hidden" id="shelterMapPanel" style="display: flex; gap: 24px; align-items: stretch; margin-bottom: 24px">
+  <section class="panel map-panel" style="display: flex; flex-direction: column;">
+    <div class="panel-head" style="flex: 0 0 auto;">
+      <div><h2>แผนที่ศูนย์พักพิง กรุงเทพมหานคร</h2><p class="sub" id="shelterMapSubtitle">ทุกเขต กทม. · แสดงร่วมกับสถานะระดับน้ำ</p></div>
+    </div>
+    
+    <div class="map-tools" id="shelterMapTools" style="flex: 0 0 auto; display: flex; gap: 12px; align-items: center; padding: 12px 24px; border-bottom: 1px solid #e2e8f0; background: #fff;">
+      <div style="display:flex; gap:8px; align-items:center;">
+        <label class="filter-pill"><input type="checkbox" class="shelter-filter" data-filter="ว่าง" value="เปิดให้บริการ/ว่าง" checked><span>ว่าง</span></label>
+        <label class="filter-pill"><input type="checkbox" class="shelter-filter" data-filter="ใกล้เต็ม" value="ใกล้เต็ม" checked><span>ใกล้เต็ม</span></label>
+        <label class="filter-pill"><input type="checkbox" class="shelter-filter" data-filter="เต็ม" value="เต็ม" checked><span>เต็ม</span></label>
+        <label class="filter-pill"><input type="checkbox" class="shelter-filter" data-filter="ไม่ทราบ" value="ไม่ทราบสถานะ" checked><span>ไม่ทราบ</span></label>
+      </div>
+      <div style="flex: 1;"></div>
+      <button id="fitShelterMap" type="button" style="white-space:nowrap; padding:6px 12px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; cursor:pointer; font-size:13px; color:#475569;">จัดแผนที่ให้พอดี</button>
+    </div>
+
+    <div id="shelterMap" class="map" aria-label="แผนที่ศูนย์พักพิง กรุงเทพมหานคร" style="min-height: 480px; flex: 1 1 auto; height: 100%;"></div>
+    
+    <div style="flex: 0 0 auto; padding: 16px 24px; background: #fff; border-top: 1px solid #e2e8f0;">
+      <div class="map-legend" id="shelterMapLegend2" style="padding:0; border:0; background:transparent"></div>
+      <div class="map-legend" id="shelterStatusLegend" style="padding-top:12px; border:0; background:transparent"></div>
+      <p class="map-source" id="shelterMapNote" style="margin-top:12px"></p>
+      <div class="map-source" id="shelterMapSource" style="margin-top:16px"></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div><h2>ศูนย์พักพิงที่เต็ม / ใกล้เต็ม</h2><p class="sub" id="shelterSideSub"></p></div>
+    </div>
+    <div class="panel-body" id="shelterSideBody" style="max-height: 520px; overflow-y: auto; padding-right: 12px; padding-left: 12px;"></div>
+  </section>
+</div>
+
+<section class="panel hidden" id="allSheltersPanel" style="margin-bottom: 32px;">
+  <div class="panel-head">
+    <div><h2>รายชื่อศูนย์พักพิงทั้งหมด</h2><p class="sub">ทุกสถานะ เรียงตามสถานะการเข้าพัก</p></div>
+  </div>
+  <div class="panel-body" id="allSheltersBody" style="max-height: 500px; overflow-y: auto; padding: 0 12px 12px 12px;"></div>
+</section>
+
+<div class="section-title">
+  <h2 id="areaTitle"></h2>
+  <div style="display:flex; gap:8px">
+    
+    <button class="lightbtn" id="export">ดาวน์โหลดตาราง CSV</button>
+  </div>
+</div><section class="panel"><p class="mini-note hidden" id="areaNote">จำนวนศูนย์พักพิงที่มีรายงาน = จำนวนศูนย์ที่บันทึกใน Google Sheets ของแต่ละเขต ณ รอบข้อมูลนี้; เขตที่ไม่มีรายการไม่ได้หมายความว่าไม่มีศูนย์พักพิงจริง</p><div class="table-wrap" id="areaTable"></div></section>
+<section class="panel" id="nationalVulPanel">
+  <div class="panel-head"><div><h2>กลุ่มเปราะบางเพื่อวางแผนรองรับ</h2><p class="sub" id="vulnerableSubNational"></p></div><span class="badge">ฐานประชากรทั้งจังหวัด</span></div>
+  <div class="panel-body"><div class="vulnerable" id="vulnerableNational"></div><div class="table-wrap" id="vulTable" style="margin-top:20px;"></div><p class="mini-note" style="margin-top:12px;">ยังไม่ใช่จำนวนผู้ได้รับผลกระทบจริง • ไฟล์ไม่ได้ระบุวันอ้างอิงฐานประชากร • ไม่รวมแถว “รวมทั้งหมด” ซ้ำ</p></div>
+</section>
+
+<section class="panel hidden" id="bkkVulPanel">
+  <div class="panel-head">
+    <div><h2>กลุ่มเปราะบาง และผลกระทบ</h2><p class="sub" id="vulnerableSubBkk"></p></div>
+    <span class="badge">ฐานประชากร กทม.</span>
+  </div>
+  <div class="panel-body" style="display:flex; flex-direction:column; gap:20px; padding: 20px;">
+    <div style="display:flex; gap:24px; align-items:center; min-height:220px; flex-wrap: wrap;">
+      <div style="flex: 1 1 300px; position: relative; height: 200px;">
+        <canvas id="vulChart"></canvas>
+        <div id="vulChartEmpty" class="hidden" style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); color:#94a3b8; font-size:13px;">ไม่มีข้อมูลกลุ่มเปราะบาง</div>
+      </div>
+      <div style="flex: 1 1 200px; display: flex; flex-direction: column; gap: 12px; justify-content: center;">
+        <div class="stat-box" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:20px; text-align:center;">
+          <div style="font-size:14px; color:#475569; margin-bottom:8px; font-weight:600;">จำนวนครัวเรือนที่ได้รับผลกระทบ</div>
+          <div style="font-size:36px; font-weight:700; color:#dc2626; line-height:1;" id="vulHouseholds">-</div>
+          <div style="font-size:13px; color:#64748b; margin-top:12px;">ข้อมูลจาก กรมป้องกันและบรรเทาสาธารณภัย</div>
+        </div>
+      </div>
+    </div>
+    <div style="font-size: 11px; color: #64748b; text-align: center; border-top: 1px solid #f1f5f9; padding-top: 12px;">
+      <b>ที่มาข้อมูล:</b> ระบบคลังข้อมูลด้านการแพทย์และสุขภาพ (HDC) กระทรวงสาธารณสุข และ กรมป้องกันและบรรเทาสาธารณภัย (ปภ.) กระทรวงมหาดไทย<br/>
+      <span style="color:#94a3b8; font-size: 10px;">*จำนวนกลุ่มเปราะบางอ้างอิงจากฐานประชากรทั้ง กทม. ยังไม่ใช่จำนวนผู้ได้รับผลกระทบจริง</span>
+    </div>
+  </div>
+</section>
+<section class="panel"><div class="panel-head"><div><h2>รายละเอียดสถานีระดับน้ำ</h2><p class="sub" id="stationSub"></p></div></div><div class="table-wrap" id="stationTable"></div></section>
+<footer class="foot"><span>แหล่งข้อมูล: <span id="sourceName"></span></span><span>กำลังอ่านข้อมูลจาก Google Sheets</span></footer></main>
+<dialog id="methods"><div class="dialog-top"><h2>นิยามข้อมูลและแผนพัฒนา</h2><button class="lightbtn" id="closeMethods">ปิด</button></div><p>ต้นแบบนี้ใช้ข้อมูลจริงจาก Google Sheets แยกเป็นภาพรวมประเทศและหน้า กทม. โดยวันที่ของแต่ละแหล่งอาจไม่ตรงกัน</p><ol><li><b>ยอดภัย:</b> เลือกวันรายงานเดียว นับจังหวัดไม่ซ้ำ และไม่บวกยอดครัวเรือนข้ามวัน จังหวัดที่ไม่ปรากฏในรายงานไม่เท่ากับไม่มีภัย</li><li><b>กลุ่มเปราะบาง:</b> จับคู่ด้วยชื่อจังหวัดและเขตสุขภาพ ใช้จำนวนทั้งจังหวัดเพื่อวางแผน ยังไม่มีข้อมูลผู้ประสบภัยจริงแยกรายเขต</li><li><b>ความสด:</b> ใช้เวลาวัดสถานีหรือเวลาปรับปรุงรายศูนย์เทียบเวลาดึง รายงาน ปภ. ที่มีเพียงวันหรือเวลา 00:00 ซึ่งยังไม่ยืนยันเวลาจริง และกลุ่มเปราะบางที่ไม่มีเวลา แสดงไม่ทราบเวลาข้อมูล;  อายุ 0–24 ชั่วโมงเทียบเวลานำเข้า ตามเกณฑ์ในไฟล์ อายุเกิน 24 ชั่วโมงเป็นข้อมูลเก่า ค่าติดลบเป็นเวลาอนาคต ไม่จัดเป็นข้อมูลสด</li><li><b>กทม.:</b> แสดงสถานีที่จังหวัดในข้อมูลต้นทางเป็นกรุงเทพมหานคร</li><li><b>ศูนย์พักพิง:</b> จำนวนศูนย์ เขต พิกัด และผู้พักคำนวณจาก Google Sheets ทุกครั้งที่โหลดหน้า</li><li><b>แผนที่:</b> แสดงพิกัดที่มีจริง ไม่ประมาณพิกัดที่หาย จุดสถานีไม่ใช่ขอบเขตน้ำท่วม พื้นแผนที่ต้องใช้อินเทอร์เน็ต</li></ol><h3>ลำดับพัฒนาสู่ Google Sheets + Apps Script</h3><ol><li>ตกลงนิยาม/รอบรายงาน และแก้รายการเวลาอนาคตกับศูนย์พักพิงเกินความจุ</li><li>เพิ่มรหัสจังหวัด รหัสเขต และวันอ้างอิงประชากร เก็บประวัติรายงานและบันทึกการนำเข้า</li><li>จัดข้อมูลใน Google Sheets แยก Raw, Master, ตัวชี้วัด และ Source log</li><li>ใช้หน้า HTML นี้เป็นต้นแบบ Apps Script Web App อ่านข้อมูลผ่าน google.script.run และเก็บ cache เพื่อลดการอ่านซ้ำ</li><li>เพิ่มการประเมินน้ำอุปโภคบริโภค สุขาภิบาลศูนย์พักพิง กลุ่มเปราะบางที่ได้รับผลกระทบจริง และงานสนับสนุนของกรมอนามัย</li><li>ทดสอบข้อมูลเก่า/หาย/ซ้ำ และสิทธิ์ผู้ใช้ ก่อนกำหนดรอบอัปเดตและช่องทางแจ้งเตือนร่วมกับผู้รับผิดชอบ</li></ol><p class="sub">เปิดผ่านเซิร์ฟเวอร์เพื่ออ่าน Google Sheets ใหม่ทุกครั้งที่โหลดหน้า รอ Google Sheets บันทึกสำเร็จแล้วรีเฟรช</p></dialog>
+<?!= include_('GeoJSON'); ?>
+<?!= include_('BkkGeoJSON'); ?>
+<?!= include_('RegionsGeoJSON'); ?>
+<?!= include_('DataModel'); ?>
+<?!= include_('Dashboard'); ?></body></html>

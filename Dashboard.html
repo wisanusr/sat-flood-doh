@@ -1,0 +1,716 @@
+<script>
+function requestDashboard(source){return new Promise((resolve,reject)=>google.script.run.withSuccessHandler(resolve).withFailureHandler(reject).getDashboardData(source||null));}
+if(window.Chart)Chart.defaults.font.family="'Google Sans', Tahoma, sans-serif";
+(async()=>{try{
+document.getElementById('pageTitle').textContent='กำลังอ่านข้อมูลจาก Google Sheets…';
+const DATA=await requestDashboard();
+if(!DATA.sourceStatus)throw new Error(DATA.error||'รูปแบบข้อมูลจากเซิร์ฟเวอร์ไม่ถูกต้อง');
+const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),fmt=v=>typeof v==='number'&&Number.isFinite(v)?v.toLocaleString('th-TH'):'ไม่มีข้อมูล',sum=DashboardModel.sum,uniq=a=>[...new Set(a)],date=v=>!v||String(v).startsWith('undefined')?'ไม่มีวันรายงาน':new Date(v).toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'numeric',timeZone:'Asia/Bangkok'}),time=v=>v?new Date(v).toLocaleString('th-TH',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Bangkok'}):'ไม่ทราบเวลาข้อมูล';
+const districts='คลองสาน คลองสามวา คลองเตย คันนายาว จตุจักร จอมทอง ดอนเมือง ดินแดง ดุสิต ตลิ่งชัน ทวีวัฒนา ทุ่งครุ ธนบุรี บางกอกน้อย บางกอกใหญ่ บางกะปิ บางขุนเทียน บางคอแหลม บางซื่อ บางนา บางบอน บางพลัด บางรัก บางเขน บางแค บึงกุ่ม ปทุมวัน ประเวศ ป้อมปราบศัตรูพ่าย พญาไท พระนคร พระโขนง ภาษีเจริญ มีนบุรี ยานนาวา ราชเทวี ราษฎร์บูรณะ ลาดกระบัง ลาดพร้าว วังทองหลาง วัฒนา สวนหลวง สะพานสูง สัมพันธวงศ์ สาทร สายไหม หนองจอก หนองแขม หลักสี่ ห้วยขวาง'.split(' ');
+const {SOURCES,validCoordinates}=DashboardModel;
+const rowSources=new WeakMap();
+function indexSources(){
+    for(const [name,key] of Object.entries(SOURCES))for(const row of DATA[key])rowSources.set(row,name);
+    
+    // Deduplicate stations by name keeping the latest
+    function dedup(arr) {
+        const map = new Map();
+        for (const r of arr) {
+            const key = r.station_name;
+            if (!key) continue;
+            if (!map.has(key)) {
+                map.set(key, r);
+            } else {
+                const existing = map.get(key);
+                const t1 = new Date(r.observed_at_th || r.updated_at_source || r.Ingested_At).getTime() || 0;
+                const t2 = new Date(existing.observed_at_th || existing.updated_at_source || existing.Ingested_At).getTime() || 0;
+                if (t1 > t2) {
+                    map.set(key, r);
+                }
+            }
+        }
+        return Array.from(map.values());
+    }
+    if (DATA.stations) DATA.stations = dedup(DATA.stations);
+    if (DATA.bkkStations) DATA.bkkStations = dedup(DATA.bkkStations);
+}
+indexSources();
+const timestamp=DashboardModel.timestamp;
+const quality=r=>DashboardModel.quality(r,DATA.sourceStatus[rowSources.get(r)]?.loadedAt||DATA.loadedAt);
+const badge=(s,kind='')=>`<span class="badge ${kind}">${esc(s)}</span>`;
+const qualityBadge=r=>badge(quality(r),quality(r)==='ภายใน 24 ชั่วโมง'?'good':quality(r)==='เวลาอนาคต'?'bad':'warn');
+const statusBadge=s=>{const c=canonicalWaterStatus(s);const color=WATER_STATUS[c]?.color;return color?`<span class="badge" style="background-color:${color};color:${color==='#facc15'?'#000':'#fff'}">${esc(s)}</span>`:badge(s);};
+const link=(url,text)=>{try{const u=new URL(url);return ['https:','http:'].includes(u.protocol)?`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(text)}</a>`:esc(text)}catch{return esc(text)}};
+let state={tab:'national',date:uniq(DATA.disasters.map(r=>r.Report_Date.slice(0,10))).sort().at(-1),region:'',province:'',district:''},currentStations=[],currentShelters=[],csvRows=[],map=null,layers=null,nationalBase=null,nationalLegend=null,healthRegionLayer=null,healthRegionNumbers=null,shelterMap=null,shelterLayers=null;
+function opts(id,values,first){$(id).innerHTML=(first?`<option value="">${first}</option>`:'')+values.map(v=>`<option value="${esc(v)}">${id==='reportDate'?date(v+'T00:00:00+07:00'):esc(v)}</option>`).join('')}
+opts('reportDate',uniq(DATA.disasters.map(r=>r.Report_Date.slice(0,10))).sort());$('reportDate').value=state.date;
+opts('region',uniq(DATA.vulnerable.map(r=>r.region).filter(Boolean)).sort((a,b)=>String(a).localeCompare(String(b),'th',{numeric:true})),'ทุกเขตสุขภาพ');opts('province',provinceNames(),'ทุกจังหวัด');opts('district',districts,'ทุกเขต กทม.');
+function card(label,value,unit,note,accent=false){return `<article class="card ${accent?'accent':''}"><div class="eyebrow">${label}</div><div class="number">${fmt(value)}<span class="unit">${unit}</span></div><div class="card-note">${note}</div></article>`}
+function metric(label,value){return `<div class="metricline"><span>${label}</span><strong>${value}</strong></div>`}
+function bars(rows){let max=Math.max(...rows.map(r=>r.value),1);return rows.map(r=>{let color='#087873';if(r.value>=100000)color='#dc2626';else if(r.value>=10000)color='#f97316';else if(r.value>=1000)color='#facc15';else if(r.value>=1)color='#22c55e';return `<div class="barrow"><button data-province="${esc(r.name)}" title="ดูจังหวัด ${esc(r.name)}">${esc(r.name)}</button><div class="bartrack"><div class="bar" style="width:${r.value/max*100}%;background:${color}"></div></div><strong>${fmt(r.value)}</strong></div>`}).join('')||'<p class="empty">ไม่มีรายงานในขอบเขตที่เลือก</p>'}
+function table(headers,rows){return `<table><thead><tr>${headers.map((h,i)=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.length?rows.map(row=>`<tr>${row.map((v,i)=>`<td>${v}</td>`).join('')}</tr>`).join(''):`<tr><td colspan="${headers.length}" class="empty">ไม่มีข้อมูลในขอบเขตที่เลือก</td></tr>`}</tbody></table>`}
+function getReports(){return DATA.disasters.filter(r=>r.Report_Date.slice(0,10)===state.date&&r.Current_Status==='กำลังประสบภัย')}
+function render(){const bkk=state.tab==='bkk';$('workspace').classList.toggle('national-layout',!bkk);if(!bkk&&shelterLayers)shelterLayers.clearLayers();$('workspace').setAttribute('aria-labelledby',bkk?'tab-bkk':'tab-national');document.querySelectorAll('.tab').forEach(x=>x.setAttribute('aria-selected',String(x.dataset.tab===state.tab)));document.querySelectorAll('.national-filter').forEach(x=>x.classList.toggle('hidden',bkk));$('districtField').classList.toggle('hidden',!bkk);$('shelterMapPanel').classList.toggle('hidden',!bkk);
+$('shelterCards').classList.toggle('hidden',!bkk);
+$('allSheltersPanel').classList.toggle('hidden',!bkk);
+$('nationalVulPanel').classList.toggle('hidden', bkk);
+$('bkkVulPanel').classList.toggle('hidden', !bkk);$('areaNote').classList.toggle('hidden',!bkk);$('shelterLegendReference').classList.toggle('hidden',bkk);$('pageTitle').textContent=bkk?'กรุงเทพมหานคร':'สถานการณ์น้ำและพื้นที่ได้รับผลกระทบ';$('pageSub').textContent=bkk?'ติดตามระดับน้ำ ความพร้อมศูนย์พักพิง และข้อมูลรายเขต':'ภาพรวมประเทศไทย รวมกรุงเทพมหานคร · เลือกพื้นที่เพื่อดูรายละเอียด';$('dateLabel').textContent='รายงาน ปภ. '+date(state.date+'T00:00:00+07:00');$('filterNote').textContent=bkk?'รายเขต: ใช้กับสถานีและศูนย์พักพิง':'วันรายงาน: ใช้กับข้อมูล ปภ. เท่านั้น';$('sourceName').innerHTML=link(DATA.sourceUrl,DATA.source);
+ const all=getReports(),allowed=allowedProvinces(),reports=all.filter(r=>bkk?r.Province==='กรุงเทพมหานคร':allowed.includes(r.Province));
+ currentStations=bkk?DATA.bkkStations.filter(r=>r.province==='กรุงเทพมหานคร'&&(!state.district||r.district_or_area===state.district)):DATA.stations.filter(r=>allowed.includes(r.province));const activeShelterFilters=new Set(Array.from(document.querySelectorAll('.shelter-status-filter:checked')).map(el=>el.value)); currentShelters=bkk?DATA.shelters.filter(r=>(!state.district||r.district===state.district)&&activeShelterFilters.has(shelterStatusKey(r))):[];
+ const fresh=currentStations.filter(r=>quality(r)==='ภายใน 24 ชั่วโมง'),stale=currentStations.filter(r=>quality(r)==='ข้อมูลเก่าเกิน 24 ชั่วโมง'),future=currentStations.filter(r=>quality(r)==='เวลาอนาคต'),severe=fresh.filter(r=>(WATER_STATUS[canonicalWaterStatus(r.flood_status_source)]?.rank||0)>=4),affected=uniq(reports.map(r=>r.Province)),households=reports.length?sum(reports,'Affected_Households'):null;
+ 
+ let bkkCriticalDistricts = 0, bkkCriticalStations = 0, bkkShelterFull = 0, bkkShelterCap = 0, bkkShelterOcc = 0;
+ if(bkk) {
+   const distMap = new Map();
+   for(const r of currentStations) {
+     if(quality(r) !== 'ภายใน 24 ชั่วโมง') continue;
+     const st = canonicalWaterStatus(r.flood_status_source);
+     if((WATER_STATUS[st]?.rank||0)>=4) bkkCriticalStations++;
+     if(WATER_STATUS[st]) {
+       const currentRank = distMap.get(r.district_or_area) || 0;
+       if(WATER_STATUS[st].rank > currentRank) distMap.set(r.district_or_area, WATER_STATUS[st].rank);
+     }
+   }
+   for(const rank of distMap.values()) {
+     if(rank >= (WATER_STATUS['วิกฤต']?.rank || 4)) bkkCriticalDistricts++;
+   }
+   for(const r of currentShelters) {
+     if(r.status_source === 'เต็ม' || r.status_source === 'ใกล้เต็ม' || (r.capacity > 0 && r.occupied >= r.capacity)) bkkShelterFull++;
+     bkkShelterCap += (r.capacity || 0);
+     bkkShelterOcc += (r.occupied || 0);
+   }
+   bkkShelterCap=sum(currentShelters,'capacity');bkkShelterOcc=sum(currentShelters,'occupied');
+ }
+$('cards').innerHTML=bkk?card('เขตวิกฤต / ล้นตลิ่ง',bkkCriticalDistricts,'เขต','จากข้อมูลสถานีน้ำ 24 ชม.',true)+card('สถานีวิกฤต / ล้นตลิ่ง',bkkCriticalStations,'สถานี',`จากทั้งหมด ${fmt(fresh.length)} สถานีที่ข้อมูลอัปเดต`)+card('ผู้เข้าพักศูนย์พักพิง',bkkShelterOcc,'คน',`รองรับได้ทั้งหมด ${fmt(bkkShelterCap)} คน`)+card('จำนวนศูนย์ที่เต็ม/ใกล้เต็ม',bkkShelterFull,'แห่ง',`จากศูนย์ตามตัวกรองทั้งหมด ${fmt(currentShelters.length)} แห่ง`):card('จังหวัดที่มีรายงานภัย',affected.length,'จังหวัด','นับจังหวัดไม่ซ้ำในวันรายงาน',true)+card('ครัวเรือนตามรายงาน',households,'ครัวเรือน','รวมเฉพาะวันและพื้นที่ที่เลือก')+card('จังหวัดแนวโน้มน้ำเพิ่มขึ้น',uniq(reports.filter(r=>r.Water_Level_Trend==='เพิ่มขึ้น').map(r=>r.Province)).length,'จังหวัด','แนวโน้มตามรายงาน ปภ.')+card('สถานีวิกฤติ / ล้นตลิ่ง ข้อมูลสด',severe.length,'แห่ง',`เฉพาะอายุ 0–24 ชั่วโมง จาก ${fmt(currentStations.length)} สถานี`);
+ $('alert').style.display='none';
+ $('mapTitle').textContent=bkk?'สถานะระดับน้ำรายเขต กรุงเทพมหานคร':'สถานีระดับน้ำทั่วประเทศ';$('mapSubtitle').textContent=bkk?'ขอบเขต 50 เขต · Heatmap จากสถานีระดับน้ำที่ข้อมูลผ่านเกณฑ์ 24 ชั่วโมง':'Heatmap โปร่งใส–น้ำเงินเข้ม: สถานะระดับน้ำ · เส้นขอบจังหวัด: ครัวเรือนที่ประสบภัย';$('mapCount').textContent=bkk?(state.district?'เขต'+state.district:'50 เขต')+` · ${fmt(currentStations.length)} สถานี`:`${fmt(currentStations.length)} สถานี`;
+ $('stationMapLegend').classList.add('hidden');$('householdMapLegend').classList.add('hidden');$('map').classList.toggle('national-view',!bkk);$('bkkMapTools').classList.toggle('hidden',!bkk);$('healthRegionTools').classList.toggle('hidden',bkk);$('districtWaterLegend').classList.toggle('hidden',!bkk);$('districtShelterLegend').classList.toggle('hidden',!bkk);$('districtWaterNote').classList.toggle('hidden',!bkk);$('nationalHeatNote').classList.toggle('hidden',bkk);
+ if(bkk){$('sideTitle').textContent='สรุปสถานีระดับน้ำรายเขต';$('sideSub').textContent=state.district||'เรียงตามเขตที่มีสถานีวิกฤตมากที่สุด (24 ชม.)';const over=currentShelters.filter(r=>r.occupied>r.capacity),coords=currentShelters.filter(r=>typeof r.latitude==='number'&&typeof r.longitude==='number');const distStats=new Map();for(const r of currentStations){if(quality(r)!=='ภายใน 24 ชั่วโมง')continue;const d=r.district_or_area||'ไม่ระบุ',st=canonicalWaterStatus(r.flood_status_source);if(!distStats.has(d))distStats.set(d,{วิกฤต:0,เตือนภัย:0,ปกติ:0});const stat=distStats.get(d);if((WATER_STATUS[st]?.rank||0)>=4)stat.วิกฤต++;else if((WATER_STATUS[st]?.rank||0)>=2)stat.เตือนภัย++;else if(st==='ปกติ')stat.ปกติ++;}const sortedDistricts = Array.from(distStats.entries())
+    .filter(([_,s]) => s.วิกฤต > 0 || s.เตือนภัย > 0 || s.ปกติ > 0)
+    .sort((a,b) => b[1].วิกฤต - a[1].วิกฤต || b[1].เตือนภัย - a[1].เตือนภัย || b[1].ปกติ - a[1].ปกติ);
+    
+  $('sideBody').innerHTML = table(['เขต', 'วิกฤต', 'เตือนภัย', 'ปกติ'], sortedDistricts.map(([d, s]) => {
+    return [
+      `<button class="linkbutton" data-district="${esc(d)}">${esc(d)}</button>`,
+      s.วิกฤต ? `<span class="badge" style="background:#dc2626;color:#fff">${s.วิกฤต}</span>` : '-',
+      s.เตือนภัย ? `<span class="badge" style="background:#ea580c;color:#fff">${s.เตือนภัย}</span>` : '-',
+      s.ปกติ ? `<span class="badge" style="background:#16a34a;color:#fff">${s.ปกติ}</span>` : '-',
+    ];
+  }));
+} else {
+  $('sideTitle').textContent = 'ตารางสรุปผลกระทบ ปภ.';
+  $('sideSub').textContent = state.province || state.region || 'จัดอันดับตามจำนวนครัวเรือนเดือดร้อน';
+  const headers = ['จังหวัด', 'อำเภอ', 'ตำบล', 'ครัวเรือน', 'เสียชีวิต', 'น้ำ'];
+  const sortedRows = reports.slice().sort((a,b)=>(b.Affected_Households||0)-(a.Affected_Households||0));
+  $('sideBody').innerHTML = table(headers, sortedRows.map(r => [
+    `<button class="linkbutton" data-province="${esc(r.Province)}">${esc(r.Province)}</button>`,
+    esc(r.Affected_Districts_Count ?? '-'),
+    esc(r.Affected_Subdistricts_Count ?? '-'),
+    `${householdBadge(r.Affected_Households)}`,
+    r.Casualties_Deaths == null ? '-' : fmt(r.Casualties_Deaths),
+    `<span class="badge" style="${r.Water_Level_Trend==='เพิ่มขึ้น'?'background:#082f6b;color:#fff':r.Water_Level_Trend==='ทรงตัว'?'background:#3b82f6;color:#fff':r.Water_Level_Trend==='ลดลง'?'background:#93c5fd;color:#082f6b':'background:#e2e8f0;color:#64748b'}">${esc(r.Water_Level_Trend||'ไม่ระบุ')}</span>`
+  ]));
+}
+
+
+renderMap();
+renderAreas();
+renderStations();
+renderShelterDetails();
+renderVulnerable();
+renderBkkVulChart();
+$('sideBody').classList.toggle('ddpm-summary',state.tab==='national');
+paginateTables();requestAnimationFrame(updateTableHints);
+if(state.tab === 'bkk') $('bkkVulPanel').classList.remove('hidden');
+}
+
+function renderAreas(){
+  const bkk = state.tab === 'bkk';
+  const all = getReports();
+  const allowed = allowedProvinces();
+  const reports = all.filter(r => bkk ? r.Province === 'กรุงเทพมหานคร' : allowed.includes(r.Province));
+
+  if(state.tab==='bkk'){
+    $('areaTitle').textContent='ข้อมูลผู้มาใช้ศูนย์พักพิงรายเขต';
+    const rows=districts.filter(x=>!state.district||x===state.district).map(x=>{
+      let s=currentShelters.filter(r=>r.district===x),w=DATA.bkkStations.filter(r=>r.province==='กรุงเทพมหานคร'&&r.district_or_area===x);
+      return {name:x,stations:w.length,old:w.filter(r=>quality(r)==='ข้อมูลเก่าเกิน 24 ชั่วโมง').length,centers:s.length,occupied:s.length?sum(s,'occupied'):null,available:s.length?sum(s,'available'):null,over:s.length?s.filter(r=>r.occupied>r.capacity).length:null}
+    }).sort((a,b)=>(b.over||0)-(a.over||0)||(b.occupied||0)-(a.occupied||0));
+    const headers=['เขต','ศูนย์พักพิงที่มีรายงาน (แห่ง)','ผู้พัก (คน)','ที่ว่าง (คน)','เกินความจุ (แห่ง)'];
+    $('areaTable').innerHTML=table(headers,rows.map(r=>[`<button class="linkbutton" data-district="${esc(r.name)}">${esc(r.name)}</button>`,fmt(r.centers),fmt(r.occupied),fmt(r.available),r.over?badge(fmt(r.over),'bad'):fmt(r.over)]));
+    csvRows=[headers,...rows.map(r=>[r.name,r.centers,r.occupied??'ไม่มีข้อมูล',r.available??'ไม่มีข้อมูล',r.over??'ไม่มีข้อมูล'])];
+  } else {
+    $('areaTitle').textContent='รายละเอียดจังหวัดตามจำนวนครัวเรือนที่ประสบภัย และแนวโน้มรายจังหวัด';
+    const headers=['จังหวัด','เขตสุขภาพ','อำเภอ','ตำบล','หมู่บ้าน','ครัวเรือน','เสียชีวิต','น้ำ','สถานะ'];
+    const rows=allowed.map(p=>{
+      const r=reports.find(x=>x.Province===p),v=DATA.vulnerable.find(x=>x.province===p);
+      return {p,r,region:v?.region||'ไม่มีข้อมูล'}
+    }).filter(row => row.r && row.r.Current_Status === 'กำลังประสบภัย').sort((a,b) => (b.r?.Affected_Households||0) - (a.r?.Affected_Households||0));
+    $('areaTable').innerHTML=table(headers,rows.map(({p,r,region})=>[
+      `<button class="linkbutton" data-province="${esc(p)}">${esc(p)}</button>`, esc(region),
+      r ? `<div style="max-width:140px;white-space:normal;font-size:13px">${esc(r.District_Names||(r.Affected_Districts_Count??'-'))}</div>` : '—',
+      r ? `<div style="text-align:right">${esc(r.Affected_Subdistricts_Count??'-')}</div>` : '—',
+      r ? `<div style="text-align:right">${esc(r.Affected_Villages_Count??'-')}</div>` : '—',
+      r ? `${householdBadge(r.Affected_Households)}` : '—',
+      r ? `<div style="text-align:right">${r.Casualties_Deaths==null?'-':fmt(r.Casualties_Deaths)}</div>` : '—',
+      r ? `<span class="badge" style="${r.Water_Level_Trend==='เพิ่มขึ้น'?'background:#082f6b;color:#fff':r.Water_Level_Trend==='ทรงตัว'?'background:#3b82f6;color:#fff':r.Water_Level_Trend==='ลดลง'?'background:#93c5fd;color:#082f6b':'background:#e2e8f0;color:#64748b'}">${esc(r.Water_Level_Trend)}</span>` : '—',
+      r ? badge(r.Current_Status, r.Current_Status==='กำลังประสบภัย'?'warn':'') : badge('ไม่มีรายงาน')
+    ]));
+    csvRows=[headers,...rows.map(({p,r,region})=>[
+      p, region, r?.District_Names||(r?.Affected_Districts_Count??'-'), r?.Affected_Subdistricts_Count??'-', r?.Affected_Villages_Count??'-', r?.Affected_Households??'-', r?.Casualties_Deaths??'-', r?.Water_Level_Trend??'-', r?.Current_Status??'ไม่มีรายงาน'
+    ])];
+  }
+}
+
+function renderStations(){
+ const source=state.tab==='bkk'?'BKK_water_DB':'thai_water_DB';
+ const sourceRows=state.tab==='bkk'?DATA.bkkStations.filter(r=>r.province==='กรุงเทพมหานคร'):DATA.stations;
+ const latest=DashboardModel.latestStationDay(sourceRows,DATA.sourceStatus[source]?.loadedAt||DATA.loadedAt);
+ const scoped=new Set(currentStations);
+ const rows=latest.rows.filter(r=>scoped.has(r)).sort((a,b)=>{
+    const sa = canonicalWaterStatus(a.flood_status_source);
+    const sb = canonicalWaterStatus(b.flood_status_source);
+    const rankA = WATER_STATUS[sa]?.rank || 0;
+    const rankB = WATER_STATUS[sb]?.rank || 0;
+    if (rankA !== rankB) return rankB - rankA;
+    const timeA = new Date(a.observed_at_th || a.updated_at_source || a.Ingested_At).getTime() || 0;
+    const timeB = new Date(b.observed_at_th || b.updated_at_source || b.Ingested_At).getTime() || 0;
+    return timeB - timeA;
+  });$('stationSub').textContent=`${latest.day?'เฉพาะวันที่ตรวจวัดล่าสุด '+date(latest.day+'T00:00:00+07:00'):'ไม่มีข้อมูลตรวจวัดที่ระบุเวลาได้'} · ${fmt(rows.length)} สถานีในพื้นที่เลือก · ใช้รายการล่าสุดของแต่ละสถานีในวันนั้น ไม่รวมวันอื่น · ระดับน้ำเป็นเมตร รทก. ไม่ใช่ความลึกน้ำท่วม`;$('stationTable').innerHTML=table(['สถานี',state.tab==='bkk'?'เขต':'พื้นที่','ระดับน้ำ (ม. รทก.)','สถานะต้นทาง','เวลาตรวจวัด'],rows.map(r=>[esc(r.station_name),esc(r.district_or_area),typeof r.water_in_m_msl==='number'?r.water_in_m_msl.toFixed(2):'ไม่มีข้อมูล',statusBadge(r.flood_status_source),time(r.observed_at_th)]));paginateTables();}
+function sourceLinks(rows,label){const urls=uniq(rows.map(r=>r.source_url).filter(Boolean));return 'ที่มา: '+esc(label)+(urls.length?' · '+urls.map((u,i)=>link(u,urls.length===1?'เปิดแหล่งข้อมูล':'แหล่งข้อมูล '+(i+1))).join(' '):' · ไม่มีลิงก์ต้นทางในข้อมูลพื้นที่ที่เลือก')}
+const SHELTER_COLORS={'เปิดให้บริการ/ว่าง':'#15803d','ใกล้เต็ม':'#ea580c','เต็ม':'#dc2626'};
+function shelterStatusColor(status){return SHELTER_COLORS[String(status??'').trim()]||'#64748b'}
+function shelterLegend(){return '<strong>หมุดศูนย์พักพิง:</strong>'+Object.entries(SHELTER_COLORS).map(([status,color])=>`<span><i class="shelter-symbol" style="--shelter-color:${color}" aria-hidden="true"></i> ${esc(status)}</span>`).join('')+'<span><i class="shelter-symbol" style="--shelter-color:#64748b" aria-hidden="true"></i> ไม่ทราบ / สถานะอื่น</span>'}
+function addShelterPins(target,rows){
+ const valid=rows.filter(validCoordinates);
+ const group=L.layerGroup().addTo(target);
+ for(const r of valid){
+  const status=shelterStatusKey(r),color=shelterStatusColor(status);
+  L.marker([r.latitude,r.longitude],{icon:L.divIcon({className:'shelter-pin',html:`<span class="shelter-symbol" style="--shelter-color:${color}" aria-hidden="true"></span>`,iconSize:[44,44],iconAnchor:[22,30]}),title:'ศูนย์พักพิง '+r.shelter_name+' · '+status}).bindPopup(`<b>${esc(r.shelter_name)}</b><br>เขต${esc(r.district)}<br><b>สถานะ: ${esc(status)}</b><br>ผู้พัก ${fmt(r.occupied)} / ความจุ ${fmt(r.capacity)} คน<br>ที่ว่าง ${fmt(r.available)} คน${Number.isFinite(r.occupied)&&Number.isFinite(r.capacity)&&r.occupied>r.capacity?'<br><b>ผู้พักเกินความจุที่ระบุ</b>':''}<br>ดึงข้อมูล: ${time(r.fetched_at_th)}<br>ศูนย์เปลี่ยนค่าล่าสุด: ${time(r.updated_at_source)}<br>${esc(quality(r))}`).addTo(group);
+ }
+ return valid.map(r=>[r.latitude,r.longitude]);
+}
+
+const getShelterStatus = r => { let s=String(r.status_source||'').trim(); return s==='เปิดให้บริการ/ว่าง'?'ว่าง':s==='ใกล้เต็ม'?'ใกล้เต็ม':s==='เต็ม'?'เต็ม':'ไม่ทราบ'; };
+function renderShelterMap(){
+ if(state.tab!=='bkk'||!window.L)return;
+ if(!shelterMap){shelterScope=null;shelterMap=L.map('shelterMap',{scrollWheelZoom:false}).setView([13.75,100.55],10);shelterLayers=L.layerGroup().addTo(shelterMap)}
+ shelterMap.invalidateSize({pan:false});shelterLayers.clearLayers();
+ 
+ const waterRows2=DATA.bkkStations.filter(r=>r.province==='กรุงเทพมหานคร');
+ const activeStatuses2=new Set(waterRows2.map(r=>canonicalWaterStatus(r.flood_status_source)));
+ $('shelterMapLegend2').innerHTML='<span style="font-weight:bold;margin-right:8px">สถานะน้ำสูงสุดรายเขต:</span>'+['วิกฤต','เตือนภัย','ปกติ','ขัดข้อง / ขัดข้องชั่วคราว'].filter(s=>activeStatuses2.has(s)).map(s=>`<span><i class="dot" style="background:${WATER_STATUS[s]?.color||'#94a3b8'}"></i>${s}</span>`).join('')+'<span>สีเทา/ไม่ระบายสี: ไม่มีสถานีหรือไม่มีสถานะล่าสุดที่ใช้ได้</span>';
+
+ $('shelterStatusLegend').innerHTML=shelterLegend();updateBkkMapKey(shelterMap,true);
+
+ if(!window.BKK_DISTRICTS_GEOJSON)$('shelterMapSubtitle').textContent='โหลดขอบเขตไม่สำเร็จ · ยังแสดงศูนย์พักพิงตามพิกัด';
+ const waterRows=currentStations;
+ const activeStatuses=new Set(waterRows.map(r=>canonicalWaterStatus(r.flood_status_source)));
+ const distSummaries=new Map();
+ const maxRank=Math.max(1,...waterRows.filter(r=>quality(r)==='ภายใน 24 ชั่วโมง').map(r=>WATER_STATUS[canonicalWaterStatus(r.flood_status_source)]?.rank||1));
+ const heatData=waterRows.filter(r=>typeof r.latitude==='number'&&typeof r.longitude==='number').map(r=>{
+   const st=canonicalWaterStatus(r.flood_status_source), q=quality(r);
+   const rank=WATER_STATUS[st]?.rank||0;
+
+   return [r.latitude,r.longitude,q!=='ภายใน 24 ชั่วโมง'?0:rank/maxRank];
+ }).filter(d=>d[2]>0);
+ 
+ if(heatData.length && L.heatLayer) safeHeatLayer(heatData,{radius:40,blur:20,maxZoom:14,max:1.0,minOpacity:0.05,gradient:{.3:'#93c5fd',.5:'#3b82f6',.7:'#1d4ed8',1:'#082f6b'}}).addTo(shelterLayers);
+
+
+ for(const name of districts)distSummaries.set(name,districtWaterSummary(waterRows.filter(r=>String(r.district_or_area??'').replace(/^เขต/,'').trim()===name)));
+ L.geoJSON(window.BKK_DISTRICTS_GEOJSON||{type:'FeatureCollection',features:[]}, {
+   style(feature){const name=feature.properties.amp_th,summary=distSummaries.get(name)||districtWaterSummary([]),active=!state.district||state.district===name;return {className:'bkk-district',color:summary.status?summary.color:(active?'#334155':'#94a3b8'),weight:summary.status?3:(state.district===name?2.5:1),fillColor:'transparent',fillOpacity:0}},
+   onEachFeature(feature,layer){
+    const name=feature.properties.amp_th,summary=distSummaries.get(name)||districtWaterSummary([]);
+    layer.bindTooltip(`<b>เขต${esc(name)}</b><br>${summary.drivers.length?`สถานีวิกฤต/เตือนภัยสูงสุด: ${esc(summary.status)} (${summary.drivers.length} แห่ง)`:`จุดวัดน้ำ: ${summary.status||'ไม่มีข้อมูลผ่านเกณฑ์'}`}`);
+    layer.on('click',()=>{state.district=state.district===name?'':name;$('district').value=state.district;render()});
+   }
+ }).addTo(shelterLayers);
+
+
+ const filteredShelters=currentShelters;
+ const pts=addShelterPins(shelterLayers, filteredShelters);
+ 
+ shelterMap.invalidateSize();
+ if(shelterScope!==state.district){shelterScope=state.district;fitShelters(pts)}
+ 
+ const timeStr = filteredShelters.map(r=>r.fetched_at_th).filter(x=>x).sort().pop();
+ $('shelterMapSource').innerHTML = sourceLinks(filteredShelters,'ระบบช่วยเหลือผู้ประสบภัย กรุงเทพมหานคร')+`<br><b>ปรับปรุงข้อมูล:</b> ${timeStr ? time(timeStr) : 'ไม่ระบุ'} · แสดงพิกัด ${pts.length} จาก ${filteredShelters.length} แห่ง`;
+ $('shelterMapNote').innerHTML = '<b style="color:#334155">คำอธิบายแผนที่:</b><br/>' + '• <b>เส้นกรอบเขต:</b> สีบ่งบอกสถานะของสถานีน้ำที่รุนแรงที่สุดในเขตนั้นๆ<br/>' + (heatData.length ? '• <b>Heatmap (สีฟุ้ง):</b> แสดงจุดหนาแน่นของสถานีน้ำ <i>*ไม่ใช่พื้นที่น้ำท่วมจริง</i><br/>' : '• <b>Heatmap:</b> (ไม่มีข้อมูลสถานีอัปเดตใน 24 ชม. จึงไม่แสดง Heatmap)<br/>') + '• <b>หมุด:</b> ตำแหน่งศูนย์พักพิง กรองตามสถานะที่เลือกไว้ด้านบน';
+ 
+
+}
+
+
+function renderShelterDetails(){
+ const getStatus = r => { let s=String(r.status_source||'').trim(); return s==='เปิดให้บริการ/ว่าง'?'ว่าง':s==='ใกล้เต็ม'?'ใกล้เต็ม':s==='เต็ม'?'เต็ม':'ไม่ทราบ'; };
+ const bkkShelters = currentShelters;
+ const allowedStatuses = new Set(Array.from(document.querySelectorAll('.shelter-filter:checked')).map(cb=>cb.dataset.filter));
+ const filteredShelters = bkkShelters.filter(r=>allowedStatuses.has(getShelterStatus(r)));
+ 
+ const totalShelters = bkkShelters.length;
+ const fullShelters = bkkShelters.filter(r => getShelterStatus(r) === 'เต็ม').length;
+ const almostFullShelters = bkkShelters.filter(r => getShelterStatus(r) === 'ใกล้เต็ม').length;
+ 
+ let noShelterOrFullDistricts = 0;
+ const targetDistricts = state.district ? [state.district] : districts;
+ for (const d of targetDistricts) {
+   const sInD = currentShelters.filter(r => r.district === d);
+   if (sInD.length === 0) {
+     noShelterOrFullDistricts++;
+   } else {
+     if (sInD.every(r => getShelterStatus(r) === 'เต็ม')) noShelterOrFullDistricts++;
+   }
+ }
+ 
+ $('shelterCards').innerHTML = 
+   card('ศูนย์พักพิงทั้งหมด', totalShelters, 'แห่ง', state.district ? `ในเขต${state.district}` : 'ใน กทม.') +
+   card('ศูนย์ที่เต็มแล้ว', fullShelters, 'แห่ง', 'ไม่สามารถรับผู้พักเพิ่มได้', true) +
+   card('ศูนย์ที่ใกล้เต็ม', almostFullShelters, 'แห่ง', 'ต้องเฝ้าระวังพิเศษ', true) +
+   card('เขตที่ไม่มีศูนย์พักพิง', noShelterOrFullDistricts, 'เขต', `จาก ${targetDistricts.length} เขต`);
+
+renderShelterTable(filteredShelters.filter(r=>['เต็ม','ใกล้เต็ม'].includes(getShelterStatus(r))));renderAllSheltersTable(filteredShelters);
+}
+
+function renderAllSheltersTable(shelters) {
+  const sorted = [...shelters].sort((a,b) => {
+    const rank = s => s==='เต็ม'?3 : s==='ใกล้เต็ม'?2 : s==='ว่าง'?1 : 0;
+    const diff = rank(getShelterStatus(b)) - rank(getShelterStatus(a));
+    if(diff !== 0) return diff;
+    return (a.district||'').localeCompare(b.district||'','th');
+  });
+  
+  const rowsHtml = sorted.map(s => {
+    const st = getShelterStatus(s);
+    const stColor = st==='เต็ม'?'#dc2626':st==='ใกล้เต็ม'?'#ea580c':st==='ว่าง'?'#16a34a':'#64748b';
+    return `<tr>
+      <td>${esc(s.district||'ไม่ระบุ')}</td>
+      <td>${esc(s.shelter_name)}</td>
+      <td class="num">${fmt(s.capacity)}</td>
+      <td class="num">${fmt(s.occupied)}</td>
+      <td style="color:${stColor}; font-weight:600">${esc(st)}</td>
+    </tr>`;
+  }).join('');
+  
+  $('allSheltersBody').innerHTML = `<table class="data-table">
+    <thead>
+      <tr style="position: sticky; top: 0; background: #fff; z-index: 1;">
+        <th>เขต</th>
+        <th>ชื่อศูนย์พักพิง</th>
+        <th class="num">ความจุ (คน)</th>
+        <th class="num">ผู้ใช้บริการ (คน)</th>
+        <th>สถานะ</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rowsHtml || '<tr><td colspan="5" style="text-align:center;color:#666">ไม่มีศูนย์พักพิงในพื้นที่นี้</td></tr>'}
+    </tbody>
+  </table>`;
+}
+
+function renderShelterTable(shelters) {
+  const sorted = [...shelters].sort((a,b) => {
+    const sa = getShelterStatus(a);
+    const sb = getShelterStatus(b);
+    const rank = s => s==='เต็ม'?3 : s==='ใกล้เต็ม'?2 : s==='ว่าง'?1 : 0;
+    if(rank(sb) !== rank(sa)) return rank(sb) - rank(sa);
+    return (a.district||'').localeCompare(b.district||'','th');
+  });
+  
+  const rowsHtml = sorted.map(s => {
+    const st = getShelterStatus(s);
+    const stColor = st==='เต็ม'?'#dc2626':st==='ใกล้เต็ม'?'#ea580c':st==='ว่าง'?'#16a34a':'#64748b';
+    return `<tr>
+      <td>${esc(s.district||'ไม่ระบุ')}</td>
+      <td>${esc(s.shelter_name)}</td>
+      <td style="color:${stColor}; font-weight:600">${esc(st)}</td>
+      <td class="num">${fmt(s.occupied)} / ${fmt(s.capacity)}</td>
+    </tr>`;
+  }).join('');
+  
+  $('shelterSideBody').innerHTML = `<table class="data-table">
+    <thead>
+      <tr style="position: sticky; top: 0; background: #f8fafc; z-index: 1;">
+        <th>เขต</th>
+        <th>ชื่อศูนย์พักพิง</th>
+        <th>สถานะ</th>
+        <th class="num">ผู้พัก / ความจุ</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rowsHtml || '<tr><td colspan="4" style="text-align:center;color:#666">ไม่มีศูนย์พักพิงในเงื่อนไขที่เลือก</td></tr>'}
+    </tbody>
+  </table>`;
+}
+
+const WATER_STATUS=DashboardModel.WATER_STATUS;
+const canonicalWaterStatus=DashboardModel.canonicalWaterStatus;
+const districtWaterSummary=rows=>DashboardModel.districtSummary(rows,quality);
+function renderDistrictWaterMap(fit=false){
+ $('districtShelterLegend').innerHTML=shelterLegend();
+ 
+ if(!window.BKK_DISTRICTS_GEOJSON){$('mapSubtitle').textContent='โหลดเส้นแบ่งเขตไม่สำเร็จ กรุณารีเฟรชอีกครั้ง';map.setView([13.75,100.55],10);return}
+ const rows=DATA.bkkStations.filter(r=>r.province==='กรุงเทพมหานคร'),summaries=new Map();const activeStatuses=new Set(rows.map(r=>canonicalWaterStatus(r.flood_status_source))); const knownLegend=Object.entries(WATER_STATUS).filter(([label])=>activeStatuses.has(label)).map(([label,value])=>`<span><i class="dot" style="border-radius:2px;background:${value.color}"></i>${label}</span>`).join(''); const unknownStatuses=Array.from(activeStatuses).filter(s=>s&&!WATER_STATUS[s]); const unknownLegend=unknownStatuses.length?`<span><i class="dot" style="border-radius:2px;background:#94a3b8"></i>${esc(unknownStatuses.join(' / '))}</span>`:''; $('districtWaterLegend').innerHTML=knownLegend+unknownLegend+'<span>สีเทา/ไม่ระบายสี: ไม่มีสถานีหรือไม่มีสถานะล่าสุดที่ใช้ได้</span>';
+ for(const name of districts)summaries.set(name,districtWaterSummary(rows.filter(r=>String(r.district_or_area??'').replace(/^เขต/,'').trim()===name)));
+ let selected=null;
+ const area=L.geoJSON(window.BKK_DISTRICTS_GEOJSON,{
+  style(feature){const name=feature.properties.amp_th,summary=summaries.get(name)||districtWaterSummary([]),active=!state.district||state.district===name;return {className:'bkk-district',color:summary.status?summary.color:(active?'#334155':'#94a3b8'),weight:summary.status?3:(state.district===name?2.5:1),fillColor:'transparent',fillOpacity:0}},
+  onEachFeature(feature,layer){const name=feature.properties.amp_th,summary=summaries.get(name)||districtWaterSummary([]),stations=rows.filter(r=>String(r.district_or_area??'').replace(/^เขต/,'').trim()===name),old=stations.filter(r=>quality(r)!=='ภายใน 24 ชั่วโมง').length;
+   layer.bindTooltip(`<b>เขต${esc(name)}</b><br>${esc(summary.label)} · ${fmt(stations.length)} สถานี`);
+   const details=summary.drivers.map(r=>`${esc(r.station_name)} — ${time(r.observed_at_th)} (${esc(quality(r))})`).join('<br>');
+   layer.bindPopup(`<b>เขต${esc(name)}</b><br>สถานะรุนแรงที่สุด: ${esc(summary.label)}<br>สถานีในข้อมูล ${fmt(stations.length)} แห่ง<br>ข้อมูลเก่า / เวลาไม่ผ่านเกณฑ์ ${fmt(old)} แห่ง${details?'<hr><b>สถานีที่กำหนดสีเขต</b><br>'+details:''}${!summary.status&&stations.length?'<br>สถานะต้นทาง: '+esc(uniq(stations.map(r=>r.flood_status_source||'ไม่ระบุ')).join(', ')):''}`);
+   if(name===state.district)selected=layer;
+  }
+ }).addTo(layers);
+ if($('showShelterPins').checked)addShelterPins(layers,currentShelters);
+ // heatmap drawn below
+ // Draw heatmap for BKK stations
+ $('districtWaterNote').textContent='โหลด Heatmap ไม่สำเร็จ · เส้นเขตและหมุดศูนย์พักพิงยังใช้งานได้';
+ if(window.L && L.heatLayer){
+   const maxRank=Math.max(1,...currentStations.filter(r=>quality(r)==='ภายใน 24 ชั่วโมง').map(r=>WATER_STATUS[canonicalWaterStatus(r.flood_status_source)]?.rank||1));
+   const heatData=currentStations.filter(r=>typeof r.latitude==='number'&&typeof r.longitude==='number').map(r=>{
+     const status=canonicalWaterStatus(r.flood_status_source),q=quality(r);
+     const rank=WATER_STATUS[status]?.rank||0;
+     const intensity=q!=='ภายใน 24 ชั่วโมง'?0:rank/maxRank;
+     return [r.latitude,r.longitude,intensity];
+   }).filter(d=>d[2]>0);
+   if(heatData.length) safeHeatLayer(heatData,{radius:40,blur:20,maxZoom:14,max:1.0,minOpacity:0.05,gradient:{.15:'#93c5fd',.4:'#3b82f6',.7:'#1d4ed8',1:'#082f6b'}}).addTo(layers);
+   $('districtWaterNote').innerHTML = '<b style="color:#334155">คำอธิบายแผนที่:</b><br/>' + '• <b>เส้นกรอบเขต:</b> สีบ่งบอกสถานะของสถานีน้ำที่รุนแรงที่สุดในเขตนั้นๆ (อัปเดต 24 ชม.)<br/>' + (heatData.length ? '• <b>Heatmap (สีฟุ้ง):</b> แสดงจุดหนาแน่นของสถานีน้ำ (ยิ่งสีน้ำเงินเข้ม = วิกฤต) <i>*ไม่ใช่พื้นที่น้ำท่วมจริง</i><br/>' : '• <b>Heatmap:</b> (ไม่มีข้อมูลสถานีอัปเดตใน 24 ชม. จึงไม่แสดง Heatmap)<br/>') + '• <b>หมุด:</b> ตำแหน่งศูนย์พักพิง สามารถกดกรองสถานะ (ว่าง/เต็ม) ได้ที่ปุ่มด้านบน<br/>' + '<i style="color:#64748b; margin-top:4px; display:block">👉 กดคลิกที่พื้นที่แต่ละเขต เพื่อดูรายชื่อสถานีน้ำทั้งหมดในเขตนั้น</i>';
+ }
+ map._dashboardBounds=(selected||area).getBounds();map.stop();map.invalidateSize({animate:false});if(fit)map.fitBounds(map._dashboardBounds,{padding:[24,24],maxZoom:13,animate:false});
+}
+function householdBadge(n){
+ const color=DashboardModel.householdBorderColor(n);
+ const foreground=Number.isFinite(n)&&n>=100000?'#fff':'#172b36';
+ return `<strong class="household-badge" style="background-color:${color};color:${foreground}">${fmt(n)}</strong>`;
+}
+function householdColor(n){return n===undefined||n===null?null:n>=100000?'#dc2626':n>=10000?'#f97316':n>=1000?'#facc15':'#22c55e'}
+const householdBorderColor=DashboardModel.householdBorderColor;
+function updateBkkMapKey(target, showPins){
+ if(!target._bkkKey){
+  const control=L.control({position:'bottomright'});
+  control.onAdd=()=>{const el=L.DomUtil.create('details','bkk-map-key');el.open=true;
+   el.innerHTML='<summary>คำอธิบายแผนที่</summary><div class="bkk-key-content"></div>';
+   L.DomEvent.disableClickPropagation(el);L.DomEvent.disableScrollPropagation(el);return el;};
+  control.addTo(target);target._bkkKey=control;
+  const container=target.getContainer();
+  let layout=container.parentElement;
+  if(!layout.classList.contains('bkk-map-layout')){
+   layout=document.createElement('div');layout.className='bkk-map-layout';
+   container.before(layout);layout.append(container);
+  }
+  layout.classList.add('has-bkk-key');
+  layout.append(control.getContainer());
+  requestAnimationFrame(()=>{target.invalidateSize({pan:false});
+   if(target===map){mapScope='';renderMap();}
+   else fitShelters(currentShelters.filter(validCoordinates).map(r=>[r.latitude,r.longitude]));
+  });
+ }
+ const rows=DATA.bkkStations.filter(r=>r.province==='กรุงเทพมหานคร');
+ const statuses=new Set(rows.map(r=>canonicalWaterStatus(r.flood_status_source)));
+ target._bkkKey.getContainer().querySelector('.bkk-key-content').innerHTML=
+ '<strong>ความเข้มสถานะระดับน้ำ</strong><div class="heat-scale"></div><div class="heat-scale-label"><span>ปกติ (ใส)</span><span>รุนแรง / กระจุกตัว</span></div><hr><strong>เส้นเขต: สถานะน้ำสูงสุด</strong>'+
+ Object.entries(WATER_STATUS).filter(([label])=>statuses.has(label)).map(([label,value])=>`<div class="border-key"><i style="border-color:${value.color}"></i>${esc(label)}</div>`).join('')+
+ '<div class="border-key"><i style="border-color:#94a3b8"></i>ไม่มีสถานะล่าสุดที่ใช้ได้</div>'+
+ (showPins?'<hr><div class="bkk-key-shelters">'+shelterLegend()+'</div>':'')+
+ '<small>ใช้สถานีภายใน 24 ชม.<br>สีฟุ้งไม่ใช่ขอบเขตน้ำท่วมจริง</small>';
+}
+function nationalMapKey(){
+ const control=L.control({position:'bottomright'});
+ control.onAdd=()=>{const el=L.DomUtil.create('div','national-map-key');el.innerHTML='<strong style="color:#3156c5">ความเข้มสถานะระดับน้ำ</strong><div class="heat-scale"></div><div class="heat-scale-label"><span>ปกติ (ใส)</span><span>รุนแรง / กระจุกตัว</span></div><hr><strong style="color:#991b1b">เส้นขอบ: ครัวเรือนประสบภัย</strong>'+[[100000,'100,000+'],[10000,'10,000–99,999'],[1000,'1,000–9,999'],[1,'1–999'],[null,'ไม่มีข้อมูล'],[0,'0 ครัวเรือน']].map(([n,label])=>`<div class="border-key"><i style="border-color:${householdBorderColor(n)};border-top-width:${n>0?5:1.2}px"></i>${label}</div>`).join('');L.DomEvent.disableClickPropagation(el);L.DomEvent.disableScrollPropagation(el);return el};return control;
+}
+// Leaflet.heat may redraw in an animation frame after its tab is hidden.
+function safeHeatLayer(points,options){const layer=L.heatLayer(points,options),redraw=layer._redraw;layer._redraw=function(){if(!this._map||!this._map.getContainer().clientWidth||!this._map.getContainer().clientHeight||!this._heat?._width||!this._heat?._height){this._frame=null;return this}return redraw.call(this)};return layer}
+function renderHealthRegionNumbers(){
+ if(!map)return;
+ if(healthRegionNumbers){healthRegionNumbers.remove();healthRegionNumbers=null}
+ if(state.tab!=='national'||$('showHealthRegionNumbers').getAttribute('aria-pressed')!=='true'||!window.HEALTH_REGIONS_GEOJSON)return;
+ if(!map.getPane('healthRegionLabels')){map.createPane('healthRegionLabels');map.getPane('healthRegionLabels').style.zIndex=660;map.getPane('healthRegionLabels').style.pointerEvents='none'}
+ healthRegionNumbers=L.layerGroup().addTo(map);
+ for(const feature of window.HEALTH_REGIONS_GEOJSON.features){
+  const label=String(feature.properties.region||''),number=label.match(/\d+/)?.[0];
+  if(!number)continue;
+  const boundary=L.geoJSON(feature),center=boundary.getBounds().getCenter();
+  L.marker(center,{pane:'healthRegionLabels',interactive:false,keyboard:false,icon:L.divIcon({className:'health-region-number',html:`<span title="${esc(label)}">${esc(number)}</span>`,iconSize:[26,26],iconAnchor:[13,13]})}).addTo(healthRegionNumbers);
+ }
+}
+function renderHealthRegions(){
+ if(!map)return;
+ renderHealthRegionNumbers();
+ if(healthRegionLayer){map.removeLayer(healthRegionLayer);healthRegionLayer=null}
+ if(state.tab!=='national'||!$('showHealthRegions').checked){$('healthRegionStatus').textContent='';return}
+ if(!window.HEALTH_REGIONS_GEOJSON){$('healthRegionStatus').textContent='โหลดเส้นเขตสุขภาพไม่สำเร็จ กรุณารีเฟรช';return}
+ healthRegionLayer=L.geoJSON(window.HEALTH_REGIONS_GEOJSON,{pane:'healthRegionBoundaries',interactive:false,style:{className:'health-region-outline',color:'#000000',weight:1,lineCap:'butt',opacity:1,fill:false}}).addTo(map);
+ $('healthRegionStatus').textContent=window.HEALTH_REGIONS_GEOJSON.features.length+' เขตสุขภาพ';
+}
+let mapScope='',shelterScope='';
+function renderMap(){if(!window.L)return;const scope=[state.tab,state.region,state.province,state.district].join('|');const fit=!map||scope!==mapScope;mapScope=scope;if(!window.L)return;if(!map){$('map').innerHTML='';map=L.map('map',{scrollWheelZoom:false}).setView([13.7,100.5],6); document.getElementById('map').style.background = '#ffffff';map.createPane('nationalBoundaries');map.getPane('nationalBoundaries').style.zIndex=450;map.createPane('healthRegionBoundaries');map.getPane('healthRegionBoundaries').style.zIndex=650;map.getPane('healthRegionBoundaries').style.pointerEvents='none';layers=L.layerGroup().addTo(map)}console.log("Before clear:", layers.getLayers().length); layers.clearLayers(); console.log("After clear:", layers.getLayers().length);
+if(state.tab==='bkk'){renderHealthRegions();if(nationalBase&&map.hasLayer(nationalBase))map.removeLayer(nationalBase);if(nationalLegend){nationalLegend.getContainer()?.remove();nationalLegend.remove();nationalLegend=null}$('mobileMapKey').replaceChildren();try{renderDistrictWaterMap(fit);updateBkkMapKey(map,$('showShelterPins').checked);}catch(e){console.error("DIST_ERR:", e)} try{renderShelterMap();}catch(e){console.error("SHELTER_ERR:", e)} return}
+if(nationalBase&&map.hasLayer(nationalBase))map.removeLayer(nationalBase);
+$('map').style.background='#ffffff';
+if(map._bkkKey){map._bkkKey.remove();map._bkkKey=null;map.getContainer().parentElement.classList.remove('has-bkk-key');map.invalidateSize({pan:false})}if(!nationalLegend){nationalLegend=nationalMapKey();nationalLegend.addTo(map)}syncMapKey();
+renderHealthRegions();
+let selectedBounds=null;
+
+if (window.PROVINCES_GEOJSON) {
+    const allowed = new Set(allowedProvinces());
+    const totals = new Map();
+    for (const r of getReports()) {
+        if (state.tab==='bkk' ? r.Province!=='กรุงเทพมหานคร' : !allowed.has(r.Province)) continue;
+        const raw=r.Affected_Households;
+        if (raw===null || raw===undefined || String(raw).trim()==='') continue;
+        const n=Number(String(raw).replace(/,/g,''));
+        if (!Number.isFinite(n) || n<0) continue;
+        totals.set(r.Province,(totals.get(r.Province)??0)+n);
+    }
+    const provinceOutline=L.geoJSON(window.PROVINCES_GEOJSON, {
+        pane:'nationalBoundaries',
+        style(feature) {
+            const n=totals.get(feature.properties.pro_th);
+            return {className:'national-province',color:householdBorderColor(n),weight:n>0?5:1.2,opacity:n>0?1:.5,fill:n>0,fillColor:householdBorderColor(n),fillOpacity:0.12};
+        },
+        onEachFeature(feature,layer) {
+            const prov=feature.properties.pro_th,n=totals.get(prov);
+            if(allowed.has(prov)){if(!selectedBounds)selectedBounds=L.latLngBounds([]);selectedBounds.extend(layer.getBounds())}
+            const inScope=state.tab==='bkk'?prov==='กรุงเทพมหานคร':allowed.has(prov);
+            layer.bindTooltip(`<b>${esc(prov)}</b><br>${!inScope?'นอกพื้นที่ที่เลือก':n===undefined?'ไม่มีข้อมูลครัวเรือนในวันที่เลือก':fmt(n)+' ครัวเรือน'}<br>${date(state.date+'T00:00:00+07:00')}`);
+        }
+    }).addTo(layers);
+}
+map.stop();map.invalidateSize({animate:false});
+map._dashboardBounds=selectedBounds;if(fit){if(selectedBounds?.isValid())map.fitBounds(selectedBounds,{padding:[20,20],maxZoom:11,animate:false});else map.setView([13,101],5);}
+const heatData=currentStations.filter(r=>typeof r.latitude==='number'&&typeof r.longitude==='number'&&quality(r)==='ภายใน 24 ชั่วโมง').map(r=>{
+ const rank=WATER_STATUS[canonicalWaterStatus(r.flood_status_source)]?.rank||0;
+ return [r.latitude,r.longitude,({1:0,2:.25,3:.5,4:.8,5:1})[rank]||0];
+}).filter(r=>r[2]>0);
+if(L.heatLayer&&heatData.length)safeHeatLayer(heatData,{radius:30,blur:24,maxZoom:8,max:6,minOpacity:.06,gradient:{.15:'#93c5fd',.4:'#3b82f6',.7:'#1d4ed8',1:'#082f6b'}}).addTo(layers);
+if($('showStationPins')?.checked){
+  currentStations.filter(r=>typeof r.latitude==='number'&&typeof r.longitude==='number'&&quality(r)==='ภายใน 24 ชั่วโมง').forEach(r=>{
+    const rank=WATER_STATUS[canonicalWaterStatus(r.flood_status_source)]?.rank||0;
+    const c=rank>=5?'#082f6b':rank>=4?'#1d4ed8':rank>=3?'#3b82f6':rank>=2?'#93c5fd':'transparent';
+    if(c!=='transparent'){
+      L.circleMarker([r.latitude,r.longitude],{radius:4,fillColor:c,fillOpacity:0.8,color:'#ffffff',weight:1}).bindTooltip(`<b>${esc(r.station_id)}</b><br>${esc(r.flood_status_source)}`).addTo(layers);
+    }
+  });
+}
+$('nationalHeatNote').textContent=!L.heatLayer?'โหลด Heatmap ไม่สำเร็จ กรุณารีเฟรช':heatData.length?'Heatmap คำนวณจากสถานะและการกระจุกตัวของสถานีที่ข้อมูลผ่านเกณฑ์ 24 ชั่วโมง ณ เวลาอ่านข้อมูล ไม่ใช่ปริมาณมวลน้ำหรือขอบเขตน้ำท่วมจริง':'ไม่มีสถานีเฝ้าระวังขึ้นไปที่ข้อมูลผ่านเกณฑ์ 24 ชั่วโมงในพื้นที่เลือก จึงไม่แสดง Heatmap';
+}
+
+$('showHealthRegionNumbers').addEventListener('click',()=>{const button=$('showHealthRegionNumbers'),show=button.getAttribute('aria-pressed')!=='true';button.setAttribute('aria-pressed',String(show));button.textContent=show?'ซ่อนเลขเขตสุขภาพ':'แสดงเลขเขตสุขภาพ';renderHealthRegionNumbers()});
+$('showHealthRegions').addEventListener('change',renderHealthRegions);$('showStationPins').addEventListener('change',()=>renderMap());
+$('showShelterPins').addEventListener('change',()=>renderMap());
+document.querySelectorAll('.shelter-filter,.shelter-status-filter').forEach(cb=>cb.addEventListener('change',()=>{document.querySelectorAll('.shelter-filter,.shelter-status-filter').forEach(other=>{if(other.value===cb.value)other.checked=cb.checked});render()}));
+$('fitDistrictMap').addEventListener('click',()=>{mapScope='';renderMap()});$('fitShelterMap').addEventListener('click',()=>fitShelters(currentShelters.filter(validCoordinates).map(r=>[r.latitude,r.longitude])));
+// Table filtering changes height as well as width; refit only after layout settles.
+let mapResizeTimer;
+const mapSizes=new WeakMap();
+const mapResizeObserver=new ResizeObserver(entries=>{
+ const changed=entries.filter(({target,contentRect:r})=>{
+  if(!r.width||!r.height)return false;
+  const size=`${r.width}|${r.height}`;
+  if(mapSizes.get(target)===size)return false;
+  mapSizes.set(target,size);return true;
+ });
+ if(!changed.length)return;
+ clearTimeout(mapResizeTimer);
+ mapResizeTimer=setTimeout(()=>{
+  for(const target of [map,shelterMap]){
+   if(!target||!target.getContainer().clientWidth||!target.getContainer().clientHeight)continue;
+   target.stop();target.invalidateSize({pan:true,animate:false});
+   if(target._dashboardBounds?.isValid())target.fitBounds(target._dashboardBounds,{padding:[24,24],maxZoom:target===map&&state.tab==='national'?11:13,animate:false});
+  }
+  syncMapKey();
+ },120);
+});
+mapResizeObserver.observe($('map'));mapResizeObserver.observe($('shelterMap'));
+
+document.querySelectorAll('.tab').forEach(x=>x.addEventListener('click',()=>{state.tab=x.dataset.tab;render()}));$('reportDate').addEventListener('change',e=>{state.date=e.target.value;render()});
+$('region').addEventListener('change',e=>{state.region=e.target.value;state.province='';opts('province',DATA.vulnerable.filter(r=>!state.region||r.region===state.region).map(r=>r.province).sort((a,b)=>a.localeCompare(b,'th')),'ทุกจังหวัด');render()});$('province').addEventListener('change',e=>{state.province=e.target.value;render()});$('district').addEventListener('change',e=>{state.district=e.target.value;render()});
+document.addEventListener('click',e=>{const p=e.target.closest('[data-province]'),d=e.target.closest('[data-district]');if(p){state.province=p.dataset.province;$('province').value=state.province;render();window.scrollTo({top:0,behavior:'smooth'})}if(d){state.district=d.dataset.district;$('district').value=state.district;render();window.scrollTo({top:0,behavior:'smooth'})}});
+$('reset').addEventListener('click',()=>{tableFilters.clear();document.querySelectorAll('[data-table-filters]').forEach(el=>el.remove());state.region='';state.province='';state.district='';$('region').value='';$('district').value='';opts('province',provinceNames(),'ทุกจังหวัด');render()});
+$('methodBtn').addEventListener('click',()=>$('methods').showModal());$('closeMethods').addEventListener('click',()=>$('methods').close());$('methods').addEventListener('click',e=>{if(e.target===$('methods')){let r=$('methods').getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)$('methods').close()}});
+$('export').addEventListener('click',()=>{const csv='\uFEFF'+filteredExportRows().map(row=>row.map(v=>'"'+String(v??'').replace(/^[=+@-]/,"'$&").replace(/"/g,'""')+'"').join(',')).join('\r\n');const u=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=u;a.download=`flood-${state.tab}-${state.date}.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)});
+function provinceNames(){const names=window.PROVINCES_GEOJSON?.features.map(f=>f.properties.pro_th)||[...DATA.disasters.map(r=>r.Province),...DATA.vulnerable.map(r=>r.province)];return uniq(names.filter(Boolean)).sort((a,b)=>a.localeCompare(b,'th'))}
+function allowedProvinces(){return provinceNames().filter(p=>(!state.province||p===state.province)&&(!state.region||DATA.vulnerable.some(r=>r.province===p&&r.region===state.region)))}
+function shelterStatusKey(r){const s=String(r.status_source||'').trim();return SHELTER_COLORS[s]?s:'ไม่ทราบสถานะ'}
+function fitShelters(pts){if(!shelterMap)return;shelterMap._dashboardBounds=pts.length?L.latLngBounds(pts):window.BKK_DISTRICTS_GEOJSON?L.geoJSON(window.BKK_DISTRICTS_GEOJSON).getBounds():L.latLngBounds([[13.4,100.3],[14,100.9]]);shelterMap.invalidateSize({pan:true,animate:false});shelterMap.fitBounds(shelterMap._dashboardBounds,{padding:[28,28],maxZoom:13,animate:false})}
+function syncMapKey(){const el=nationalLegend?.getContainer();if(!el)return;const target=matchMedia('(max-width:767px)').matches?$('mobileMapKey'):$('map').querySelector('.leaflet-bottom.leaflet-right');if(target&&el.parentElement!==target)target.append(el)}
+const tablePages=new Map(),tableFilters=new Map(),originalTableRows=new WeakMap();
+function paginateTables(){
+ for(const id of ['areaTable','stationTable','vulTable','allSheltersBody','shelterSideBody','sideBody']){
+  const host=$(id),table=host?.querySelector('table');
+  const remove=kind=>host?.parentElement.querySelector(':scope > [data-'+kind+'="'+id+'"]')?.remove();
+  if(!table){remove('pager');remove('table-filters');tablePages.delete(id);continue}
+  host.classList.add('unified-table');if(table.parentElement!==host){host.append(table);Array.from(host.children).filter(el=>el!==table).forEach(el=>el.remove())}if(!originalTableRows.has(table))originalTableRows.set(table,Array.from(table.tBodies[0]?.rows||[]).filter(r=>r.cells.length>1));const rows=originalTableRows.get(table);
+  const headers=Array.from(table.tHead?.rows[0]?.cells||[]).map(c=>c.textContent.trim());
+  const key=state.tab+':'+id;let filter=tableFilters.get(key);if(!filter){filter={query:'',column:'',value:'',sort:''};tableFilters.set(key,filter)}
+  const signature=key+'|'+headers.join('|')+'|'+rows.map(r=>r.textContent).join('|');
+  let toolbar=host.parentElement.querySelector(':scope > [data-table-filters="'+id+'"]');
+  if(!toolbar||toolbar.dataset.signature!==signature){
+   toolbar?.remove();toolbar=document.createElement('div');toolbar.className='table-controls';toolbar.dataset.tableFilters=id;toolbar.dataset.signature=signature;
+   const top=document.createElement('div');top.className='table-control-top';
+   const toggle=document.createElement('button');toggle.type='button';toggle.className='lightbtn';toggle.dataset.filterToggle='';toggle.setAttribute('aria-expanded','false');toggle.setAttribute('aria-controls',id+'-filters');
+   const summary=document.createElement('span');summary.className='filter-summary';summary.setAttribute('aria-live','polite');top.append(toggle,summary);
+   const form=document.createElement('form');form.className='table-filter-panel';form.id=id+'-filters';form.hidden=true;
+   const field=(label,input)=>{const wrap=document.createElement('label');wrap.textContent=label;wrap.append(input);form.append(wrap)};
+   const search=document.createElement('input');search.type='search';search.placeholder='ค้นหาทุกคอลัมน์';field('ค้นหาในตาราง',search);
+   const column=document.createElement('select');column.innerHTML='<option value="">ทุกคอลัมน์</option>'+headers.map((h,i)=>`<option value="${i}">${esc(h)}</option>`).join('');field('คอลัมน์ที่ต้องการกรอง',column);
+   const value=document.createElement('select');field('ค่าที่ต้องการ',value);
+   const sort=document.createElement('select');sort.innerHTML='<option value="">ลำดับเริ่มต้น</option>'+headers.map((h,i)=>`<option value="${i}:asc">${esc(h)} · น้อยไปมาก / ก–ฮ</option><option value="${i}:desc">${esc(h)} · มากไปน้อย / ฮ–ก</option>`).join('');field('เรียงลำดับ',sort);
+   function options(selected=''){const values=column.value===''?[]:uniq(rows.map(r=>r.cells[Number(column.value)]?.textContent.trim()||'')).sort((a,b)=>a.localeCompare(b,'th',{numeric:true}));value.innerHTML='<option value="">ทุกค่า</option>'+values.filter(Boolean).map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('');value.value=values.includes(selected)?selected:'';value.disabled=column.value===''}
+   function resetDraft(){search.value=filter.query;column.value=filter.column;options(filter.value);sort.value=filter.sort||''}
+   function close(){resetDraft();form.hidden=true;toggle.setAttribute('aria-expanded','false');toggle.focus()}
+   toggle.onclick=()=>{if(!form.hidden){close();return}resetDraft();form.hidden=false;toggle.setAttribute('aria-expanded','true');search.focus()};column.onchange=()=>options();
+   const actions=document.createElement('div');actions.className='filter-actions';
+   const apply=document.createElement('button');apply.type='submit';apply.className='lightbtn primary-filter';apply.textContent='ใช้ตัวกรอง';
+   const clear=document.createElement('button');clear.type='button';clear.className='lightbtn';clear.textContent='ล้างตัวกรอง';
+   const cancel=document.createElement('button');cancel.type='button';cancel.className='lightbtn';cancel.textContent='ปิด';cancel.onclick=close;
+   const update=()=>{tablePages.delete(id);close();paginateTables();requestAnimationFrame(updateTableHints)};
+   form.onsubmit=e=>{e.preventDefault();Object.assign(filter,{query:search.value.trim(),column:column.value,value:value.value,sort:sort.value});update()};
+   clear.onclick=()=>{Object.assign(filter,{query:'',column:'',value:'',sort:''});update()};form.onkeydown=e=>{if(e.key==='Escape'){e.preventDefault();close()}};
+   actions.append(apply,clear,cancel);form.append(actions);toolbar.append(top,form);host.before(toolbar);
+  }
+  const conditions=[filter.query?'ค้นหา: '+filter.query:'',filter.value?(headers[Number(filter.column)]||'ค่า')+': '+filter.value:''].filter(Boolean);
+  toolbar.querySelector('[data-filter-toggle]').textContent='ตัวกรอง'+(conditions.length?' · '+conditions.length:'');
+  toolbar.querySelector('.filter-summary').textContent=conditions.join(' · ')+(filter.sort?(conditions.length?' · ':'')+'เรียง: '+headers[Number(filter.sort.split(':')[0])]:'');
+  const term=filter.query.trim().toLocaleLowerCase('th');
+  const matches=rows.map((r,i)=>({r,i})).filter(({r})=>(!term||r.textContent.toLocaleLowerCase('th').includes(term))&&(!filter.value||r.cells[Number(filter.column)]?.textContent.trim()===filter.value));
+  if(filter.sort){const [col,direction]=filter.sort.split(':');const text=r=>r.cells[Number(col)]?.textContent.trim()||'';const numeric=v=>/^-?[\d,]+(?:\.\d+)?$/.test(v)?Number(v.replace(/,/g,'')):null;matches.sort((a,b)=>{const av=text(a.r),bv=text(b.r),an=numeric(av),bn=numeric(bv);return (an!==null&&bn!==null?an-bn:av.localeCompare(bv,'th',{numeric:true}))*(direction==='desc'?-1:1)})}
+  matches.forEach(({r})=>table.tBodies[0].append(r));
+  let result=toolbar.querySelector('.table-result');if(!result){result=document.createElement('div');result.className='table-result';result.setAttribute('aria-live','polite');toolbar.append(result)}result.textContent=`พบ ${matches.length} จาก ${rows.length} รายการ`;
+  const pageKey=signature+'|'+JSON.stringify(filter);let entry=tablePages.get(id);if(!entry||entry.signature!==pageKey){entry={signature:pageKey,page:0};tablePages.set(id,entry)}entry.rowIndices=matches.map(x=>x.i);
+  const pageSize=state.tab==='bkk'&&(id==='sideBody'||id==='shelterSideBody')?7:id==='sideBody'?10:20;const pages=Math.max(1,Math.ceil(matches.length/pageSize));entry.page=Math.min(entry.page,pages-1);rows.forEach(r=>r.hidden=true);matches.slice(entry.page*pageSize,entry.page*pageSize+pageSize).forEach(({r})=>r.hidden=false);
+  remove('pager');const nav=document.createElement('div');nav.className='pagination';nav.dataset.pager=id;nav.setAttribute('aria-live','polite');
+  const count=document.createElement('span');count.textContent=matches.length?`พบ ${matches.length} จาก ${rows.length} รายการ · หน้า ${entry.page+1}/${pages}`:'ไม่พบข้อมูลตามตัวกรอง';
+  for(const [label,step] of [['ก่อนหน้า',-1],['ถัดไป',1]]){if(pages<=1)break;const button=document.createElement('button');button.className='lightbtn';button.textContent=label;button.disabled=step<0?entry.page===0:entry.page===pages-1;button.onclick=()=>{entry.page+=step;paginateTables()};nav.append(button)}
+  nav.insertBefore(count,nav.lastChild);host.after(nav);
+ }
+}
+function filteredExportRows(){const indices=tablePages.get('areaTable')?.rowIndices;return indices?[csvRows[0],...indices.map(i=>csvRows[i+1]).filter(Boolean)]:csvRows}
+const sourceLabels={Disaster_DB:'รายงานภัย ปภ.',Vulnerable_group:'ฐานประชากรกลุ่มเปราะบาง',thai_water_DB:'สถานีน้ำทั่วประเทศ',BKK_water_DB:'สถานีน้ำ กทม.',shelter_DB:'ศูนย์พักพิง'};
+function renderSourceStatus(){const failed=Object.entries(DATA.sourceStatus).filter(([,s])=>s.status==='error');$('sourceStatus').innerHTML=failed.map(([name,s])=>`<div class="alert source-error"><span><b>${sourceLabels[name]}</b> — ${esc(s.message)}</span><button class="lightbtn" data-retry-source="${name}">ลองใหม่</button></div>`).join('');$('sourceStatus').classList.toggle('hidden',!failed.length)}
+function unavailable(id,name){if(DATA.sourceStatus[name]?.status!=='error')return;const el=$(id);if(el)el.innerHTML=`<div class="empty">โหลด${sourceLabels[name]}ไม่สำเร็จ — กดลองใหม่ด้านบน</div>`}
+function updateTableHints(){for(const el of document.querySelectorAll('.table-wrap,#sideBody,#shelterSideBody,#allSheltersBody')){const hint=el.previousElementSibling?.classList.contains('table-scroll-hint')?el.previousElementSibling:null;const overflow=el.clientWidth>0&&el.scrollWidth>el.clientWidth+2;if(overflow){if(!hint){const p=document.createElement('p');p.className='table-scroll-hint';p.textContent='เลื่อนตารางซ้าย–ขวาเพื่อดูข้อมูลครบทุกคอลัมน์';el.before(p)}el.setAttribute('tabindex','0');el.setAttribute('aria-label','ตารางข้อมูล เลื่อนซ้ายและขวาได้')}else{hint?.remove();el.removeAttribute('tabindex')}}}
+window.addEventListener('resize',()=>requestAnimationFrame(updateTableHints));
+function failed(name) { return DATA.sourceStatus[name]?.status==='error'; }
+function finishRender(){
+ renderSourceStatus();
+ const bkk=state.tab==='bkk';
+ const cardSources=bkk?['BKK_water_DB','BKK_water_DB','shelter_DB','shelter_DB']:['Disaster_DB','Disaster_DB','Disaster_DB','thai_water_DB'];
+ Array.from($('cards').children).forEach((el,i)=>{if(failed(cardSources[i])){el.querySelector('.number').textContent='อ่านไม่ได้';el.querySelector('.card-note').textContent='ลองโหลดแหล่งข้อมูลใหม่ด้านบน'}});
+ unavailable('areaTable',bkk?'shelter_DB':'Disaster_DB');unavailable('sideBody',bkk?'BKK_water_DB':'Disaster_DB');unavailable('stationTable',bkk?'BKK_water_DB':'thai_water_DB');
+ for(const id of ['shelterCards','shelterSideBody','allSheltersBody'])unavailable(id,'shelter_DB');
+ if(failed('Vulnerable_group')){unavailable('vulnerableNational','Vulnerable_group');unavailable('vulTable','Vulnerable_group');$('vulChartEmpty').classList.remove('hidden');$('vulChartEmpty').textContent='โหลดฐานประชากรไม่สำเร็จ'}
+ if(failed(bkk?'BKK_water_DB':'thai_water_DB')){$('mapCount').textContent='ข้อมูลสถานีอ่านไม่ได้';$('alert').textContent='ข้อมูลสถานีอ่านไม่สำเร็จ จึงยังประเมินสถานะน้ำไม่ได้';}
+ if(failed('Disaster_DB'))$('vulHouseholds').textContent='อ่านไม่ได้';
+ const missing=(!bkk?getReports().filter(r=>allowedProvinces().includes(r.Province)):getReports().filter(r=>r.Province==='กรุงเทพมหานคร')).filter(r=>!Number.isFinite(r.Affected_Households)).length;
+ if(missing)$('alert').textContent+=` · ขาดจำนวนครัวเรือน ${missing} รายการ ยอดรวมเฉพาะรายการที่มีข้อมูล`;
+ if(bkk&&currentShelters.some(r=>!Number.isFinite(r.occupied)||!Number.isFinite(r.capacity)))$('alert').textContent+=' · ยอดผู้พักและความจุรวมเฉพาะรายการที่มีข้อมูล';
+ $('selectedFilters').textContent=[bkk?'กรุงเทพมหานคร':'ภาพรวมประเทศ',state.district||state.province||state.region||'ทุกพื้นที่','วันรายงาน ปภ.: '+(state.date?date(state.date+'T00:00:00+07:00'):'ไม่มีวันรายงาน')].join(' · ');
+ $('filterNote').textContent='วันรายงานใช้กับ ปภ. เท่านั้น · สถานีน้ำและศูนย์พักพิงใช้ข้อมูลล่าสุดที่อ่านได้';
+ $('region').disabled=failed('Vulnerable_group');$('reportDate').disabled=!DATA.disasters.length;
+ document.querySelector('.foot > span:last-child').textContent=Object.entries(DATA.sourceStatus).filter(([,s])=>s.status==='ok').map(([name,s])=>sourceLabels[name]+': '+time(s.loadedAt)).join(' · ');
+ 
+ 
+ renderMap(); renderAreas(); paginateTables();requestAnimationFrame(updateTableHints);
+}
+$('sourceStatus').addEventListener('click',async e=>{const button=e.target.closest('[data-retry-source]');if(!button)return;const name=button.dataset.retrySource;button.disabled=true;button.textContent='กำลังอ่าน…';try{const next=await requestDashboard(name);if(!next.sourceStatus?.[name])throw new Error('รูปแบบข้อมูลไม่ถูกต้อง');DATA[SOURCES[name]]=next[SOURCES[name]];DATA.sourceStatus[name]=next.sourceStatus[name];DATA.loadedAt=next.loadedAt;indexSources();if(name==='Disaster_DB'){const dates=uniq(DATA.disasters.map(r=>r.Report_Date.slice(0,10))).sort();if(!dates.includes(state.date))state.date=dates.at(-1);opts('reportDate',dates);$('reportDate').value=state.date||''}if(name==='Vulnerable_group'){opts('region',uniq(DATA.vulnerable.map(r=>r.region).filter(Boolean)),'ทุกเขตสุขภาพ');if(!Array.from($('region').options).some(o=>o.value===state.region))state.region='';$('region').value=state.region}opts('province',provinceNames(),'ทุกจังหวัด');if(!provinceNames().includes(state.province))state.province='';$('province').value=state.province;render()}catch(error){button.disabled=false;button.textContent='ลองใหม่';const text=button.parentElement.querySelector('span');text.textContent='อ่านข้อมูลไม่สำเร็จ กรุณาลองใหม่';console.error(error)}});
+$('toggleFilters').addEventListener('click',()=>{const expanded=$('toggleFilters').getAttribute('aria-expanded')!=='true';$('toggleFilters').setAttribute('aria-expanded',String(expanded));$('dashboardFilters').classList.toggle('expanded',expanded)});
+for(const id of ['map','shelterMap']){const panel=$(id).closest('section'),button=document.createElement('button');button.className='lightbtn expand-map';button.textContent='ขยายแผนที่';button.setAttribute('aria-pressed','false');panel.querySelector('.panel-head').append(button);button.onclick=()=>{const expanded=panel.classList.toggle('map-expanded');button.textContent=expanded?'ออกจากแผนที่เต็มจอ':'ขยายแผนที่';button.setAttribute('aria-pressed',String(expanded));document.body.classList.toggle('map-open',!!document.querySelector('.map-expanded'));requestAnimationFrame(()=>{map?.invalidateSize({pan:false});shelterMap?.invalidateSize({pan:false})})}}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelector('.map-expanded .expand-map')?.click()});
+matchMedia('(max-width:767px)').addEventListener('change',syncMapKey);
+window.addEventListener('error',()=>{const el=document.getElementById('alert');if(el)el.textContent='เกิดข้อผิดพลาดในการแสดงผลหน้าเว็บ กรุณาลองโหลดใหม่'});
+
+const methodItems=document.querySelectorAll('#methods > ol:first-of-type > li');
+methodItems[2].textContent='ความสด: ใช้เวลาตรวจวัดสถานีหรือเวลาปรับปรุงศูนย์เทียบเวลาอ่านชีตนั้น อายุ 0–24 ชั่วโมงถือว่าล่าสุด ไม่ใช้เวลานำเข้าแทนเวลาตรวจวัด';
+methodItems[3].textContent='กทม.: แสดงสถานีที่จังหวัดในข้อมูลต้นทางเป็นกรุงเทพมหานคร ไม่รวมจังหวัดรอบข้าง';
+methodItems[4].textContent='ศูนย์พักพิง: จำนวนศูนย์ เขต พิกัด และผู้พักเกินความจุคำนวณจาก Google Sheets ทุกครั้งที่โหลดหน้า';
+document.querySelector('#methods p.sub').textContent='อ่าน Google Sheets ผ่านเซิร์ฟเวอร์ทุกครั้งที่เปิดหรือรีเฟรชหน้า รอ Google Sheets บันทึกสำเร็จแล้วรีเฟรช เวลาข้อมูลต้นทางอาจเก่ากว่าเวลาที่อ่านไฟล์';
+render();
+// Optional page-scoped agent access uses the same visible navigation.
+if(document.modelContext?.registerTool){const lifecycle=new AbortController();try{Promise.resolve(document.modelContext.registerTool({name:'navigate_flood_dashboard',title:'เปิดมุมมองเฝ้าระวังน้ำ',description:'Switch the visible dashboard tab and optionally select a supported DDPM report date.',inputSchema:{type:'object',properties:{tab:{type:'string',enum:['national','bkk']},reportDate:{type:'string',enum:uniq(DATA.disasters.map(r=>r.Report_Date.slice(0,10)))}},required:['tab'],additionalProperties:false},annotations:{readOnlyHint:false,untrustedContentHint:true},execute(input){if(!input||!['national','bkk'].includes(input.tab)||Object.keys(input).some(k=>!['tab','reportDate'].includes(k))||(input.reportDate&&!uniq(DATA.disasters.map(r=>r.Report_Date.slice(0,10))).includes(input.reportDate)))throw new Error('Invalid dashboard selection');state.tab=input.tab;if(input.reportDate){state.date=input.reportDate;$('reportDate').value=state.date}render();return {tab:state.tab,reportDate:state.date,metrics:$('cards').innerText}}},{signal:lifecycle.signal})).catch(()=>{});window.addEventListener('pagehide',()=>lifecycle.abort(),{once:true})}catch{}}
+document.fonts?.ready.then(()=>{if(window.Chart)Object.values(Chart.instances).forEach(chart=>chart.update('none'));map?.invalidateSize({pan:true});shelterMap?.invalidateSize({pan:true})});
+const mapScript=document.createElement('script');mapScript.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';mapScript.onload=()=>{const heatScript=document.createElement('script');heatScript.src='https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js';heatScript.onload=()=>{renderMap();finishRender()};heatScript.onerror=()=>{renderMap();finishRender()};document.head.appendChild(heatScript);};mapScript.onerror=()=>{$('map').innerHTML='<div class="map-fallback">แผนที่ต้องเชื่อมต่ออินเทอร์เน็ต<br>ยังดูตัวชี้วัดและตารางข้อมูลทั้งหมดได้ด้านล่าง</div>'};document.head.appendChild(mapScript);
+
+let bkkVulChartInstance = null;
+function renderBkkVulChart() {
+    if (state.tab !== 'bkk') return;
+    const bkkReports = getReports().filter(r => r.Province === 'กรุงเทพมหานคร');
+    const households = bkkReports.length ? sum(bkkReports, 'Affected_Households') : null;
+    $('vulHouseholds').textContent = households !== null ? fmt(households) : '-';
+    
+    const vulData = DATA.vulnerable.filter(r => r.province === 'กรุงเทพมหานคร' && (!state.district || String(r.district||'').replace(/^เขต/,'').trim() === state.district));
+    
+    console.log('vulData len:', vulData.length, 'failed:', failed('Vulnerable_group'), 'state.district:', state.district); if (!vulData.length || failed('Vulnerable_group')) {
+        $('vulChartEmpty').classList.remove('hidden');
+        if (bkkVulChartInstance) { bkkVulChartInstance.destroy(); bkkVulChartInstance = null; }
+        return;
+    }
+    $('vulChartEmpty').classList.add('hidden');
+    
+    const groups = ['ผู้สูงอายุ', 'หญิงตั้งครรภ์', 'เด็กเล็ก'];
+    const colors = ['#3b82f6', '#10b981', '#f59e0b'];
+    console.log('vulData len:', vulData.length, 'sums:', [sum(vulData, 'elderly'), sum(vulData, 'pregnant'), sum(vulData, 'children')]); const sums = [sum(vulData, 'elderly'), sum(vulData, 'pregnant'), sum(vulData, 'children')];
+    if (sums.every(x => !x)) {
+        $('vulChartEmpty').classList.remove('hidden');
+        if (bkkVulChartInstance) { bkkVulChartInstance.destroy(); bkkVulChartInstance = null; }
+        return;
+    }
+    
+    if (bkkVulChartInstance) {
+        bkkVulChartInstance.data.datasets[0].data = sums;
+        bkkVulChartInstance.update();
+    } else {
+        const ctx = document.getElementById('vulChart').getContext('2d');
+        bkkVulChartInstance = new window.Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: groups,
+                datasets: [{
+                    data: sums,
+                    backgroundColor: colors,
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } },
+                    tooltip: { callbacks: { label: (ctx) => ' ' + ctx.label + ': ' + fmt(ctx.raw) + ' คน' } }
+                }
+            }
+        });
+    }
+}
+
+function renderVulnerable() {
+    if (state.tab === 'bkk') return;
+    if (failed('Vulnerable_group')) return;
+    const allowed = allowedProvinces();
+    const rows = DATA.vulnerable.filter(r => allowed.includes(r.province));
+    const grouped = new Map();
+    for (const r of rows) {
+        if (!grouped.has(r.province)) grouped.set(r.province, { province: r.province, region: r.region });
+        const obj = grouped.get(r.province);
+        for (const k of ['elderly', 'pregnant', 'children']) {
+            obj[k] = (obj[k] || 0) + (r[k] || 0);
+        }
+    }
+    const finalRows = Array.from(grouped.values()).sort((a,b) => (b.elderly||0) - (a.elderly||0));
+    const headers = ['จังหวัด', 'เขตสุขภาพ', 'ผู้สูงอายุ', 'หญิงตั้งครรภ์', 'เด็กเล็ก'];
+    $('vulTable').innerHTML = table(headers, finalRows.map(r => [
+        `<button class="linkbutton" data-province="${esc(r.province)}">${esc(r.province)}</button>`,
+        esc(r.region),
+        fmt(r.elderly),
+        fmt(r.pregnant),
+        fmt(r.children)
+    ]));
+}
+
+}catch(error){document.getElementById('pageTitle').textContent='แสดง Dashboard ไม่สำเร็จ';document.getElementById('cards').innerHTML='';document.getElementById('alert').style.display='block';document.getElementById('alert').textContent=error.message+' — รีเฟรชเพื่อลองใหม่';const retry=document.createElement('button');retry.className='lightbtn';retry.textContent='ลองโหลดใหม่';retry.onclick=()=>location.reload();document.getElementById('alert').append(' ',retry);console.error(error)}})();
+
+
+
+</script>
