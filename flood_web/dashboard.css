@@ -164,7 +164,7 @@ body,button,input,select,textarea,table,.leaflet-container,.leaflet-tooltip,.lea
 #newsPane .panel{margin-bottom:18px}
 .news-alert{display:block;margin:0 0 18px}
 .news-filters{border:0;border-radius:0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin-bottom:0}
-.news-words{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:24px;align-items:start}
+.news-words{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:18px;align-items:start}
 .word-cloud{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:baseline;justify-content:center;padding:18px 8px;min-height:160px}
 .cw{line-height:1.25;font-weight:600;cursor:default}
 .cw-monitoring,.cwd-monitoring{color:#0b6f93;background:none}.cwd-monitoring{background:#0b6f93}
@@ -174,14 +174,55 @@ body,button,input,select,textarea,table,.leaflet-container,.leaflet-tooltip,.lea
 .cw-general,.cwd-general{color:#4b6068}.cwd-general{background:#4b6068}
 .cw-legend{justify-content:center}
 .news-chart{position:relative;min-height:160px}
-.news-table{padding:0 22px 18px}.news-table summary{cursor:pointer;color:var(--teal);font-weight:600;padding:6px 0}
-.news-list{list-style:none;margin:0;padding:0}
-.news-item{padding:12px 22px;border-bottom:1px solid #edf1f2}
 .news-title{font-size:15px;line-height:1.5}.news-title a{text-decoration:none;color:var(--ink)}.news-title a:hover{color:var(--teal);text-decoration:underline}
 .news-meta{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:4px;font-size:12px;color:var(--muted)}
-.trend-grid{display:grid;grid-template-columns:1fr 1fr;gap:28px}
-.trend-grid h3{margin-bottom:8px}.trend-grid h4{margin:14px 0 4px;font-size:14px;color:var(--muted)}
-.trend-list{list-style:none;margin:0;padding:0}.trend-list li{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid #edf1f2;font-size:14px}
-.trend-list b{font-variant-numeric:tabular-nums;color:var(--teal);white-space:nowrap}
+.trend-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px}
 @media(max-width:900px){.news-words,.trend-grid{grid-template-columns:minmax(0,1fr)}.news-cards{grid-template-columns:repeat(2,1fr)}}
-@media(max-width:767px){.tabs{gap:16px;overflow-x:auto}.tab{white-space:nowrap}.news-item{padding:12px 16px}}
+@media(max-width:767px){.tabs{gap:16px;overflow-x:auto}.tab{white-space:nowrap}}
+
+/* News tab layout: segmented filters, word cloud box, frequency table, headline cards, Google Trends header. */
+.news-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}
+.news-count{font-size:13px;color:var(--muted);white-space:nowrap}
+.news-toolbar{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;padding:10px 22px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.seg{display:inline-flex;flex-wrap:wrap;border:1px solid #b9c9cf;border-radius:8px;overflow:hidden}
+.seg-btn{border:0;border-right:1px solid #b9c9cf;background:#fff;padding:7px 12px;font:inherit;font-size:13px;color:#33505a;cursor:pointer}
+.seg-btn:last-child{border-right:0}.seg-btn:hover{background:#eef5f7}
+.seg-btn[aria-pressed="true"]{background:#0b5fa5;color:#fff;font-weight:600}
+.inline-field{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+.inline-field select,.inline-field input{font:inherit;font-size:13px;padding:6px 8px;border:1px solid #b9c9cf;border-radius:8px;background:#fff;color:var(--ink)}
+.inline-field.grow{flex:1 1 200px}.inline-field.grow input{flex:1;min-width:0}
+.cloud-box{background:#eaf4fb;border-radius:14px;padding:6px 10px}
+.cloud-box .word-cloud{min-height:240px;gap:4px 20px}
+.cw{line-height:1.25;font-weight:600}
+.cw-sizes{margin-top:12px;font-size:13px;color:var(--muted)}.cw-sizes .cw-mid{font-size:14px}.cw-sizes .cw-small{font-size:11px}
+.freq-scroll{max-height:470px;overflow-y:auto}
+.freq-table table{width:100%;border-collapse:collapse}
+.freq-table th{font-size:12px;color:var(--muted);text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
+.freq-table td{padding:9px 8px;border-bottom:1px solid #edf1f2;vertical-align:middle;font-size:14px}
+.freq-table .num{text-align:right;white-space:nowrap}.muted{color:var(--muted)}
+.freq-badge{background:#1d6ff0;color:#fff;font-weight:700}
+.freq-bar{height:4px;background:#e4ecef;border-radius:2px;margin-top:5px;min-width:90px}
+.freq-bar i{display:block;height:100%;background:#16a34a;border-radius:2px}.freq-bar.red i{background:#dc2626}
+.news-table{padding:10px 0 0}.news-table summary{cursor:pointer;color:var(--teal);font-weight:600;padding:6px 0}
+.news-grid{list-style:none;margin:0;padding:16px 22px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+.news-grid .empty{grid-column:1/-1}
+.news-card{display:flex;gap:12px;border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:#fff}
+.src-mark{flex:0 0 32px;height:32px;border-radius:50%;background:#e8f0fe;color:#1a56b0;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px}
+.news-card-body{min-width:0}.news-badges{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px}
+.news-title{font-size:15px;line-height:1.5;overflow-wrap:anywhere}.news-title a{text-decoration:none;color:var(--ink)}.news-title a:hover{color:var(--teal);text-decoration:underline}
+.news-meta{display:flex;gap:4px 12px;flex-wrap:wrap;margin-top:6px;font-size:12px;color:var(--muted)}
+.trend-panel{padding:16px 22px}
+.trend-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}
+.trend-head h2{margin:0 0 6px}.trend-meta{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;font-size:13px;color:var(--muted)}
+.chip{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:12px;background:#f7fafb;color:#44606a}
+.chips{display:flex;flex-wrap:wrap;gap:8px}.q-chip{font-size:13px;padding:6px 12px;background:#fff;color:var(--ink)}
+.info-note{margin:0 0 18px;padding:12px 16px;border-radius:10px;background:#e3f2fb;color:#23536f;font-size:14px}
+@media(max-width:767px){.news-grid{grid-template-columns:minmax(0,1fr);padding:12px 16px}.news-toolbar{padding:10px 16px}.trend-head,.news-head{flex-direction:column}.cloud-box .word-cloud{min-height:180px}}
+/* Trends: 7-day chart and the 3-phase index */
+.trend-chart{position:relative;min-height:240px}
+.lead-badge{align-self:flex-start}
+.phase-title{display:flex;gap:12px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+.demand-row{margin-bottom:14px}.demand-name{display:flex;justify-content:space-between;gap:12px;font-size:14px}
+.freq-bar.big{height:10px;border-radius:5px}.freq-bar.big i{border-radius:5px;background:#f59e0b}
+.news-words h3,.trend-grid h3{margin:0 0 8px;font-size:15px}
+.freq-table{overflow-x:auto}.freq-table td,.freq-table th{overflow-wrap:anywhere}.freq-table td.num,.freq-table th.num{overflow-wrap:normal}

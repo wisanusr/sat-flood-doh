@@ -27,6 +27,44 @@
   function newsUrgencyCounts(articles){const c={critical:0,warning:0,recovery:0};for(const a of articles||[])if(a.urgency in c)c[a.urgency]++;return c}
   function newsWords(doc,lang,category,limit){const freq=doc?.word_freq?.[lang]||{},tfidf=doc?.tfidf_scores?.[lang]||{},cats=doc?.word_categories||{};const rows=Object.keys(freq).map(word=>({word,count:freq[word],tfidf:tfidf[word]??null,category:lang==='th'?(cats[word]||'general'):'general'})).filter(r=>!category||r.category===category).sort((a,b)=>(b.tfidf??0)-(a.tfidf??0)||b.count-a.count);return limit>0?rows.slice(0,limit):rows}
   function ageLabel(hours){if(!Number.isFinite(hours))return 'ไม่ระบุเวลา';if(hours<1)return Math.max(1,Math.round(hours*60))+' นาทีที่แล้ว';if(hours<48)return Math.round(hours)+' ชั่วโมงที่แล้ว';return Math.round(hours/24)+' วันที่แล้ว'}
-  const model={newsArticles,newsProvinces,newsUrgencyCounts,newsWords,ageLabel,safeUrl,URGENCY,NEWS_CATEGORIES,latestStationDay,SOURCES,WATER_STATUS,canonicalWaterStatus,timestamp,sum,quality,householdBorderColor,validCoordinates,districtSummary};
+  // Google Trends "rising" growth is "+3650%" or "Breakout"; Breakout is the largest.
+  function growthValue(g){const s=String(g??'').trim();if(/^breakout$/i.test(s))return Infinity;const n=Number(s.replace(/[^\d.]/g,''));return s!==''&&Number.isFinite(n)?n:-1}
+  function newsRising(trends){const best=new Map();for(const q of trends?.rising_queries||[]){const k=String(q.query||'').trim();if(!k)continue;const v=growthValue(q.growth);if(!best.has(k)||v>best.get(k).value)best.set(k,{query:k,growth:String(q.growth??''),value:v})}return Array.from(best.values()).sort((a,b)=>b.value-a.value||a.query.localeCompare(b.query,'th')).map(({query,growth})=>({query,growth}))}
+  function newsTopRegions(trends,n){const rows=(trends?.interest_by_region||[]).filter(r=>Number.isFinite(r.score)).slice().sort((a,b)=>b.score-a.score||String(a.region).localeCompare(String(b.region),'th'));return n>0?rows.slice(0,n):rows}
+  function newsTopByCount(words,n){const rows=(words||[]).slice().sort((a,b)=>b.count-a.count||(b.tfidf??0)-(a.tfidf??0)||String(a.word).localeCompare(String(b.word),'th'));return n>0?rows.slice(0,n):rows}
+  function sourceInitial(name){const m=String(name??'').match(/[\p{L}\p{N}]/u);return m?m[0].toUpperCase():'?'}
+  // ── Google Trends timeline (hourly points written by news/trends_scraper.py; values are Google's 0-100 scale) ──
+  const mean=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
+  function trendLevel(v){return !Number.isFinite(v)?null:v>=60?'สูง':v>=30?'ปานกลาง':'ต่ำ'}
+  // Daily average per term. A day keeps its own hours only, so the first and last day may be partial.
+  function timelineDaily(tl){
+    if(!tl||!Array.isArray(tl.points)||!Array.isArray(tl.terms))return [];
+    const days=new Map();
+    for(const p of tl.points){const d=String(p.t).slice(0,10);if(!days.has(d))days.set(d,tl.terms.map(()=>[]));p.v.forEach((v,i)=>{if(Number.isFinite(v))days.get(d)[i].push(v)})}
+    return Array.from(days,([date,cols])=>({date,hours:Math.max(0,...cols.map(c=>c.length)),values:cols.map(c=>{const m=mean(c);return m==null?null:Math.round(m*10)/10})})).sort((a,b)=>a.date<b.date?-1:1);
+  }
+  // Interest in the last 24 hourly points per term, and the change against the 24 points before them.
+  function termWindows(tl){
+    if(!tl||!Array.isArray(tl.points)||tl.points.length<24)return null;
+    const pts=tl.points,cur=pts.slice(-24),prev=pts.slice(-48,-24);
+    return tl.terms.map((term,i)=>{
+      const c=mean(cur.map(p=>p.v[i]).filter(Number.isFinite)),q=prev.length===24?mean(prev.map(p=>p.v[i]).filter(Number.isFinite)):null;
+      return {term,index:c==null?null:Math.round(c),previous:q==null?null:Math.round(q),change:q>0&&c!=null?Math.round((c-q)/q*100):null};
+    });
+  }
+  // Phase index = mean of its terms' 24 h index; the leading phase is the one with the highest index.
+  function lifecycle(trends){
+    const tl=trends&&trends.timeline,win=termWindows(tl),phases=(trends&&trends.phases)||[];
+    if(!win||!phases.length)return null;
+    const byTerm=new Map(win.map(w=>[w.term,w]));
+    const out=phases.map(ph=>{
+      const terms=(ph.terms||[]).map(t=>byTerm.get(t)).filter(Boolean),idx=terms.map(t=>t.index).filter(Number.isFinite);
+      const index=idx.length?Math.round(mean(idx)):null;
+      return {key:ph.key,label:ph.label,categories:ph.categories||[],terms,index,level:trendLevel(index)};
+    });
+    const best=out.filter(p=>p.index!=null).sort((a,b)=>b.index-a.index)[0];
+    return {phases:out,leading:best?best.key:null};
+  }
+  const model={timelineDaily,termWindows,lifecycle,trendLevel,newsRising,newsTopRegions,newsTopByCount,sourceInitial,growthValue,newsArticles,newsProvinces,newsUrgencyCounts,newsWords,ageLabel,safeUrl,URGENCY,NEWS_CATEGORIES,latestStationDay,SOURCES,WATER_STATUS,canonicalWaterStatus,timestamp,sum,quality,householdBorderColor,validCoordinates,districtSummary};
   if(typeof module!=='undefined')module.exports=model;else root.DashboardModel=model;
 })(typeof window!=='undefined'?window:globalThis);

@@ -30,5 +30,29 @@ assert.equal(m.validCoordinates({latitude:91,longitude:100}),false);
   assert.equal(m.newsWords(null,'th','',0).length,0);
   assert.equal(m.safeUrl('javascript:alert(1)'),'');assert.equal(m.safeUrl('//evil'),'');assert.equal(m.safeUrl('https://example.com/a'),'https://example.com/a');
   assert.equal(m.ageLabel(0.1),'6 นาทีที่แล้ว');assert.equal(m.ageLabel(5),'5 ชั่วโมงที่แล้ว');assert.equal(m.ageLabel(72),'3 วันที่แล้ว');assert.equal(m.ageLabel(null),'ไม่ระบุเวลา');
+  // News UI helpers
+  assert.equal(m.growthValue('+3650%'),3650);assert.equal(m.growthValue('Breakout'),Infinity);assert.equal(m.growthValue(''),-1);assert.equal(m.growthValue(null),-1);
+  const rq={rising_queries:[{query:'a',growth:'+100%'},{query:'b',growth:'Breakout'},{query:'c',growth:'+3000%'},{query:'a',growth:'+900%'},{query:'',growth:'+5%'},{query:'d',growth:'x'}]};
+  assert.deepEqual(m.newsRising(rq).map(r=>r.query+':'+r.growth),['b:Breakout','c:+3000%','a:+900%','d:x']);
+  assert.deepEqual(m.newsRising(null),[]);assert.deepEqual(m.newsRising({}),[]);
+  const reg={interest_by_region:[{region:'ข',score:40},{region:'ก',score:100},{region:'ค',score:100},{region:'ง',score:null}]};
+  assert.deepEqual(m.newsTopRegions(reg,2).map(r=>r.region),['ก','ค']);assert.equal(m.newsTopRegions(reg,0).length,3);assert.deepEqual(m.newsTopRegions(null,5),[]);
+  const wc=[{word:'x',count:3,tfidf:1},{word:'y',count:9,tfidf:0.5},{word:'z',count:3,tfidf:2}];
+  assert.deepEqual(m.newsTopByCount(wc,2).map(r=>r.word),['y','z']);assert.equal(m.newsTopByCount(wc,0).length,3);assert.deepEqual(m.newsTopByCount(null,3),[]);
+  assert.equal(m.sourceInitial('matichon.co.th'),'M');assert.equal(m.sourceInitial('ไทยรัฐ'),'ไ');assert.equal(m.sourceInitial('  '),'?');assert.equal(m.sourceInitial(null),'?');
+  // Trends timeline: daily means, 24 h windows, phase index
+  const pt=(h,v)=>({t:'2026-10-0'+(5+Math.floor(h/24))+'T'+String(h%24).padStart(2,'0')+':00+07:00',v});
+  const tlp=[];for(let h=0;h<48;h++)tlp.push(pt(h,[h<24?10:20,h<24?40:30,0]));
+  const tl={terms:['a','b','c'],points:tlp};
+  assert.deepEqual(m.timelineDaily(tl).map(d=>[d.date,d.hours,...d.values]),[['2026-10-05',24,10,40,0],['2026-10-06',24,20,30,0]]);
+  assert.deepEqual(m.timelineDaily(null),[]);assert.deepEqual(m.timelineDaily({terms:['a']}),[]);
+  assert.deepEqual(m.termWindows(tl),[{term:'a',index:20,previous:10,change:100},{term:'b',index:30,previous:40,change:-25},{term:'c',index:0,previous:0,change:null}]);
+  assert.equal(m.termWindows({terms:['a'],points:tlp.slice(0,10)}),null);
+  const shortPrev=m.termWindows({terms:['a','b','c'],points:tlp.slice(-30)});assert.equal(shortPrev[0].previous,null);assert.equal(shortPrev[0].change,null);
+  assert.equal(m.trendLevel(60),'สูง');assert.equal(m.trendLevel(59.4),'ปานกลาง');assert.equal(m.trendLevel(29),'ต่ำ');assert.equal(m.trendLevel(null),null);
+  const lc=m.lifecycle({timeline:tl,phases:[{key:'p1',label:'1',terms:['a','b'],categories:['x']},{key:'p2',label:'2',terms:['c'],categories:[]},{key:'p3',label:'3',terms:['zzz'],categories:[]}]});
+  assert.deepEqual(lc.phases.map(p=>[p.key,p.index,p.level]),[['p1',25,'ต่ำ'],['p2',0,'ต่ำ'],['p3',null,null]]);
+  assert.equal(lc.leading,'p1');assert.deepEqual(lc.phases[0].terms.map(t=>t.term),['a','b']);
+  assert.equal(m.lifecycle({timeline:null,phases:[{key:'p',terms:['a']}]}),null);assert.equal(m.lifecycle(null),null);assert.equal(m.lifecycle({timeline:tl,phases:[]}),null);
 }
 console.log('PASS: household boundaries, freshness, missing/zero totals, district severity, coordinates, news filters');
