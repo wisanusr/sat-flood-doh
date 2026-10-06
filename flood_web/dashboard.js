@@ -218,7 +218,7 @@ function addShelterPins(target,rows){
 const getShelterStatus = r => { let s=String(r.status_source||'').trim(); return s==='เปิดให้บริการ/ว่าง'?'ว่าง':s==='ใกล้เต็ม'?'ใกล้เต็ม':s==='เต็ม'?'เต็ม':'ไม่ทราบ'; };
 function renderShelterMap(){
  if(state.tab!=='bkk'||!window.L)return;
- if(!shelterMap){shelterScope=null;shelterMap=L.map('shelterMap',{scrollWheelZoom:false}).setView([13.75,100.55],10);shelterLayers=L.layerGroup().addTo(shelterMap)}
+ if(!shelterMap){shelterScope=null;shelterMap=L.map('shelterMap',{scrollWheelZoom:false,zoomSnap:0.5,zoomDelta:0.5,maxZoom:14}).setView([13.75,100.55],10);shelterLayers=L.layerGroup().addTo(shelterMap)}
  shelterMap.invalidateSize({pan:false});shelterLayers.clearLayers();
  
  const waterRows2=DATA.bkkStations.filter(r=>r.province==='กรุงเทพมหานคร');
@@ -465,7 +465,7 @@ function renderHealthRegions(){
  $('healthRegionStatus').textContent=window.HEALTH_REGIONS_GEOJSON.features.length+' เขตสุขภาพ';
 }
 let mapScope='',shelterScope='';
-function renderMap(){if(!window.L)return;const scope=[state.tab,state.region,state.province,state.district].join('|');const fit=!map||scope!==mapScope;mapScope=scope;if(!window.L)return;if(!map){$('map').innerHTML='';map=L.map('map',{scrollWheelZoom:false}).setView([13.7,100.5],6); document.getElementById('map').style.background = '#ffffff';map.createPane('nationalBoundaries');map.getPane('nationalBoundaries').style.zIndex=450;map.createPane('healthRegionBoundaries');map.getPane('healthRegionBoundaries').style.zIndex=650;map.getPane('healthRegionBoundaries').style.pointerEvents='none';layers=L.layerGroup().addTo(map)}layers.clearLayers();
+function renderMap(){if(!window.L)return;const scope=[state.tab,state.region,state.province,state.district].join('|');const fit=!map||scope!==mapScope;mapScope=scope;if(!window.L)return;if(!map){$('map').innerHTML='';map=L.map('map',{scrollWheelZoom:false,zoomSnap:0.5,zoomDelta:0.5,maxZoom:13}).setView([13.7,100.5],6); document.getElementById('map').style.background = '#ffffff';map.createPane('nationalBoundaries');map.getPane('nationalBoundaries').style.zIndex=450;map.createPane('healthRegionBoundaries');map.getPane('healthRegionBoundaries').style.zIndex=650;map.getPane('healthRegionBoundaries').style.pointerEvents='none';layers=L.layerGroup().addTo(map)}layers.clearLayers();map.setMaxZoom(state.tab==='bkk'?13:11);
 if(state.tab==='bkk'){renderHealthRegions();if(nationalBase&&map.hasLayer(nationalBase))map.removeLayer(nationalBase);if(nationalLegend){nationalLegend.getContainer()?.remove();nationalLegend.remove();nationalLegend=null}$('mobileMapKey').replaceChildren();try{renderDistrictWaterMap(fit);updateBkkMapKey(map,$('showShelterPins').checked);}catch(e){console.error("DIST_ERR:", e)} try{renderShelterMap();}catch(e){console.error("SHELTER_ERR:", e)} return}
 if(nationalBase&&map.hasLayer(nationalBase))map.removeLayer(nationalBase);
 $('map').style.background='#ffffff';
