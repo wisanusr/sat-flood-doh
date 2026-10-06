@@ -3,25 +3,19 @@ name: Build and deploy dashboard
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   schedule:
     - cron: '*/30 * * * *'
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: true
 
 jobs:
-  deploy:
+  # Runs on pull requests too (no deploy there), so a broken change is caught before it reaches main.
+  test:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -32,6 +26,26 @@ jobs:
       - run: python3 flood_web/test_server.py
       # Generated Apps Script files must match the sources in flood_web/ (run `python build.py` and commit).
       - run: python3 build.py && git diff --exit-code -- . ':!docs'
+
+  deploy:
+    needs: test
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: true
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
       - run: node fetch_data.cjs
       - run: python3 build_pages.py
       - uses: actions/upload-pages-artifact@v3
