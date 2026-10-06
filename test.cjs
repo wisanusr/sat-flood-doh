@@ -5,7 +5,6 @@ for(const name of ['Dashboard','DataModel'])new vm.Script(read(name+'.html').rep
 const ctx=vm.createContext({console, Date, Utilities:{formatDate:()=> '2026-10-05T00:00:00+07:00'}});
 vm.runInContext(read('Config.gs')+'\n'+read('Code.gs'),ctx);
 const evaluate=s=>vm.runInContext(s,ctx);
-evaluate("PropertiesService={getScriptProperties:()=>({getProperty:()=>'TEST_ID'})}");
 assert.equal(evaluate("normalize_('Affected_Households','1,234')"),1234);
 assert.equal(evaluate("normalize_('capacity','')"),null);
 assert.equal(evaluate("normalize_('Report_Date','05/10/2569')"),'2026-10-05T00:00:00+07:00');

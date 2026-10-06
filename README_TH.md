@@ -3,7 +3,7 @@
 จัดเตรียมจากเว็บปัจจุบัน วันที่ 5 ตุลาคม 2569 ยังไม่ได้ Deploy หรือทดสอบบนบัญชี Google จริง
 
 ## วิธีติดตั้ง
-1. เปิด Google Sheets ฐานข้อมูล (ลิงก์ชีตของหน่วยงาน — ไม่เก็บใน repo; ตั้งรหัสชีตเป็น Script Property ชื่อ `SPREADSHEET_ID`)
+1. เปิด Google Sheets ฐานข้อมูล https://docs.google.com/spreadsheets/d/1RQDU83exQhNpVYjp9JyD5UdocA6JB6GpJeXA-Qe8Pr4/edit
 2. เลือกส่วนขยาย → Apps Script สร้างโครงการสำหรับ Dashboard แยกจากสคริปต์นำเข้าข้อมูลเดิม เพื่อไม่ให้ doGet ชนกัน
 3. สร้างไฟล์สคริปต์ `Code` และ `Config` แล้ววางเนื้อหาจาก Code.gs และ Config.gs
 4. สร้างไฟล์ HTML ตามชื่อเดิมทั้ง 7 ไฟล์: Index, Styles, Dashboard, DataModel, GeoJSON, BkkGeoJSON, RegionsGeoJSON คัดลอกเนื้อหาให้ครบ

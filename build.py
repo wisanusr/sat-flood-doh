@@ -7,7 +7,7 @@ WEB = ROOT.parent / 'flood_web'
 spec = importlib.util.spec_from_file_location('backend', WEB / 'server.py')
 backend = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(backend)
-config = dict(required=backend.REQUIRED,
+config = dict(spreadsheetId=backend.SPREADSHEET_ID, required=backend.REQUIRED,
               numeric=sorted(backend.NUMERIC), dates=sorted(backend.DATES),
               districts=sorted(backend.BKK_DISTRICTS))
 (ROOT / 'Config.gs').write_text('const CONFIG = '+json.dumps(config, ensure_ascii=False, indent=2)+';\n', encoding='utf-8')

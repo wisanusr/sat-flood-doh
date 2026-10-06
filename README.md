@@ -4,7 +4,7 @@ Google Apps Script Web App แสดงสถานการณ์น้ำท�
 
 ## ตั้งค่าและ deploy
 1. สร้างโปรเจค Apps Script แล้วอัปโหลดไฟล์ด้วย `clasp` (`clasp login`, `clasp create`/`clasp clone`, `clasp push`)
-2. Project Settings → Script Properties → เพิ่ม `SPREADSHEET_ID` = รหัสของ Google Sheets (**ห้าม commit ค่านี้**)
+2. รหัส Google Sheets อยู่ใน `Config.gs` (`spreadsheetId`) — ชีตต้องเปิดอ่านได้โดยบัญชีที่ deploy
 3. Deploy → New deployment → Web app
 
 ## ทดสอบ

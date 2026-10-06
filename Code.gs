@@ -62,16 +62,11 @@ function transform_(name, rows) {
     return out;
   });
 }
-function spreadsheetId_() {
-  const id=PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
-  if(!id) throw new Error('ยังไม่ได้ตั้งค่า Script Property SPREADSHEET_ID');
-  return id;
-}
 function getDashboardData(source) {
   const mapping={Disaster_DB:'disasters',Vulnerable_group:'vulnerable',thai_water_DB:'stations',BKK_water_DB:'bkkStations',shelter_DB:'shelters'};
   if(source && !Object.prototype.hasOwnProperty.call(mapping,source)) throw new Error('แหล่งข้อมูลไม่ถูกต้อง');
-  const id=spreadsheetId_(), ss=SpreadsheetApp.openById(id);
-  const result={source:'รายงานสถานการณ์สาธารณภัยรายจังหวัด — Google Sheets',sourceType:'google_sheets',sourceUrl:'https://docs.google.com/spreadsheets/d/'+id+'/edit',loadedAt:new Date().toISOString(),sourceStatus:{},disasters:[],vulnerable:[],stations:[],bkkStations:[],shelters:[]};
+  const ss=SpreadsheetApp.openById(CONFIG.spreadsheetId);
+  const result={source:'รายงานสถานการณ์สาธารณภัยรายจังหวัด — Google Sheets',sourceType:'google_sheets',sourceUrl:'https://docs.google.com/spreadsheets/d/'+CONFIG.spreadsheetId+'/edit',loadedAt:new Date().toISOString(),sourceStatus:{},disasters:[],vulnerable:[],stations:[],bkkStations:[],shelters:[]};
   (source?[source]:Object.keys(mapping)).forEach(name=>{
     try{
       result[mapping[name]]=transform_(name,readRows_(ss,name));
