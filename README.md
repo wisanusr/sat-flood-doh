@@ -19,6 +19,15 @@ python build_pages.py
 python -m http.server 8000 --directory docs
 ```
 
+## แท็บ "ข่าว & Trends" (เฉพาะ GitHub Pages)
+ย้ายมาจากโปรเจกต์ SAT_flood: พาดหัวข่าวน้ำท่วม, Word Cloud (TF-IDF) และ Google Trends
+- `news/news_scraper.py` อ่าน RSS (Google News, มติชน, Thai PBS, ไทยรัฐ) ย้อนหลัง 30 ชม. → `docs/news_data/news.json` (เก็บเฉพาะพาดหัว/แหล่ง/ลิงก์/เวลา ไม่เก็บเนื้อหาข่าว)
+- `news/trends_scraper.py` อ่าน Google Trends → `docs/news_data/trends.json` ถ้าอ่านไม่ได้ (pytrends ไม่เป็นทางการ อาจถูกจำกัดบน GitHub runner) จะแสดงสถานะ "ไม่พร้อมใช้งาน" ไม่ใช้ข้อมูลสมมติ
+- ทั้งสองรันใน `pages.yml` ก่อน build และ `continue-on-error` จึงไม่ทำให้ deploy แดชบอร์ดล้ม ไฟล์ JSON ไม่ถูก commit (อยู่ใน `docs/`)
+- UI: `flood_web/news-view.js` (บล็อก `<!--@pages-only-begin-->` ใน `template.html` ถูกตัดออกจากแพ็กเกจ Apps Script โดย `build.py` และใส่กลับใน `build_pages.py`)
+- ทดสอบ: `python news/test_news.py` · รันในเครื่อง: `pip install -r news/requirements.txt && python news/news_scraper.py && python news/trends_scraper.py` ก่อน `python build_pages.py`
+- ข้อมูลข่าวเป็นการจัดกลุ่มด้วยกฎคำสำคัญ ไม่ใช่การยืนยันข้อเท็จจริง; ลิงก์ข่าวเป็นของเจ้าของเนื้อหาต้นทาง
+
 ## โครงสร้างและวิธีแก้ไข
 - **ต้นทางที่แก้ไข:** `flood_web/` (`template.html`, `dashboard.js`, `data-model.js`, `dashboard.css`, GeoJSON, `server.py` สำหรับทดสอบในเครื่อง)
 - **ไฟล์ที่สร้างอัตโนมัติ (อย่าแก้ตรงๆ):** `Index.html`, `Dashboard.html`, `DataModel.html`, `Styles.html`, `*GeoJSON.html`, `Config.gs`, `schema.json`, `appsscript.json` สร้างด้วย `python build.py` แล้ว commit

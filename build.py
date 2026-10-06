@@ -27,6 +27,10 @@ for name, text, tag in [('Dashboard',js,'script'),('DataModel',(WEB/'data-model.
 html=(WEB/'template.html').read_text(encoding='utf-8')
 html=html.replace('<link rel="stylesheet" href="/dashboard.css">', "<?!= include_('Styles'); ?>")
 html=html.replace('<script src="/data-model.js"></script><script src="/dashboard.js"></script>', '\n'.join("<?!= include_('"+n+"'); ?>" for n in ['GeoJSON','BkkGeoJSON','RegionsGeoJSON','DataModel','Dashboard']))
+# Blocks marked pages-only (the news tab) exist only on the GitHub Pages site: leave a numbered slot here and
+# build_pages.py fills it from template.html. The Apps Script package has no news.json, so it must not show the tab.
+pages_only = iter(range(1000))
+html=re.sub(r'<!--@pages-only-begin-->.*?<!--@pages-only-end-->', lambda m: '<!--@pages-slot-%d-->' % next(pages_only), html, flags=re.S)
 (ROOT/'Index.html').write_text(html,encoding='utf-8')
 (ROOT/'appsscript.json').write_text(json.dumps({'timeZone':'Asia/Bangkok','runtimeVersion':'V8','exceptionLogging':'STACKDRIVER','oauthScopes':['https://www.googleapis.com/auth/spreadsheets.readonly']},indent=2),encoding='utf-8')
 (ROOT/'schema.json').write_text(json.dumps(config,ensure_ascii=False,indent=2),encoding='utf-8')

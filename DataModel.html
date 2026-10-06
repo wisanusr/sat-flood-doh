@@ -19,7 +19,16 @@
     for(const x of valid){if(dayOf(x.t)!==day)continue;const key=x.row.station_id||[x.row.station_name,x.row.district_or_area,x.row.latitude,x.row.longitude].join('|');if(!stations.has(key)||x.t>stations.get(key).t)stations.set(key,x)}
     return {day,rows:Array.from(stations.values(),x=>x.row)};
   }
-  const model={latestStationDay,SOURCES,WATER_STATUS,canonicalWaterStatus,timestamp,sum,quality,householdBorderColor,validCoordinates,districtSummary};
+  // ── News tab (news.json from news/news_scraper.py) ──
+  const URGENCY={critical:{label:'เร่งด่วน',rank:3},warning:{label:'เฝ้าระวัง',rank:2},recovery:{label:'ฟื้นฟู',rank:1}};
+  const NEWS_CATEGORIES={monitoring:'เฝ้าระวัง/ระดับน้ำ',relief:'ช่วยเหลือ',post_flood:'หลังน้ำท่วม',location:'สถานที่',general:'ทั่วไป'};
+  function safeUrl(u){try{const x=new URL(String(u||''));return x.protocol==='https:'||x.protocol==='http:'?x.href:''}catch(e){return ''}}
+  function newsArticles(articles,f){const q=String(f.query||'').trim().toLowerCase();return (articles||[]).filter(a=>(!f.urgency||a.urgency===f.urgency)&&(!f.province||a.province===f.province)&&(!q||String(a.title||'').toLowerCase().includes(q)||String(a.source||'').toLowerCase().includes(q)))}
+  function newsProvinces(articles){const c=new Map();for(const a of articles||[])c.set(a.province,(c.get(a.province)||0)+1);return Array.from(c,([province,count])=>({province,count})).sort((a,b)=>b.count-a.count||a.province.localeCompare(b.province,'th'))}
+  function newsUrgencyCounts(articles){const c={critical:0,warning:0,recovery:0};for(const a of articles||[])if(a.urgency in c)c[a.urgency]++;return c}
+  function newsWords(doc,lang,category,limit){const freq=doc?.word_freq?.[lang]||{},tfidf=doc?.tfidf_scores?.[lang]||{},cats=doc?.word_categories||{};const rows=Object.keys(freq).map(word=>({word,count:freq[word],tfidf:tfidf[word]??null,category:lang==='th'?(cats[word]||'general'):'general'})).filter(r=>!category||r.category===category).sort((a,b)=>(b.tfidf??0)-(a.tfidf??0)||b.count-a.count);return limit>0?rows.slice(0,limit):rows}
+  function ageLabel(hours){if(!Number.isFinite(hours))return 'ไม่ระบุเวลา';if(hours<1)return Math.max(1,Math.round(hours*60))+' นาทีที่แล้ว';if(hours<48)return Math.round(hours)+' ชั่วโมงที่แล้ว';return Math.round(hours/24)+' วันที่แล้ว'}
+  const model={newsArticles,newsProvinces,newsUrgencyCounts,newsWords,ageLabel,safeUrl,URGENCY,NEWS_CATEGORIES,latestStationDay,SOURCES,WATER_STATUS,canonicalWaterStatus,timestamp,sum,quality,householdBorderColor,validCoordinates,districtSummary};
   if(typeof module!=='undefined')module.exports=model;else root.DashboardModel=model;
 })(typeof window!=='undefined'?window:globalThis);
 
