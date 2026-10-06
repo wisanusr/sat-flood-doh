@@ -30,5 +30,15 @@ assert.equal(m.validCoordinates({latitude:91,longitude:100}),false);
   assert.equal(m.newsWords(null,'th','',0).length,0);
   assert.equal(m.safeUrl('javascript:alert(1)'),'');assert.equal(m.safeUrl('//evil'),'');assert.equal(m.safeUrl('https://example.com/a'),'https://example.com/a');
   assert.equal(m.ageLabel(0.1),'6 นาทีที่แล้ว');assert.equal(m.ageLabel(5),'5 ชั่วโมงที่แล้ว');assert.equal(m.ageLabel(72),'3 วันที่แล้ว');assert.equal(m.ageLabel(null),'ไม่ระบุเวลา');
+  // News UI helpers
+  assert.equal(m.growthValue('+3650%'),3650);assert.equal(m.growthValue('Breakout'),Infinity);assert.equal(m.growthValue(''),-1);assert.equal(m.growthValue(null),-1);
+  const rq={rising_queries:[{query:'a',growth:'+100%'},{query:'b',growth:'Breakout'},{query:'c',growth:'+3000%'},{query:'a',growth:'+900%'},{query:'',growth:'+5%'},{query:'d',growth:'x'}]};
+  assert.deepEqual(m.newsRising(rq).map(r=>r.query+':'+r.growth),['b:Breakout','c:+3000%','a:+900%','d:x']);
+  assert.deepEqual(m.newsRising(null),[]);assert.deepEqual(m.newsRising({}),[]);
+  const reg={interest_by_region:[{region:'ข',score:40},{region:'ก',score:100},{region:'ค',score:100},{region:'ง',score:null}]};
+  assert.deepEqual(m.newsTopRegions(reg,2).map(r=>r.region),['ก','ค']);assert.equal(m.newsTopRegions(reg,0).length,3);assert.deepEqual(m.newsTopRegions(null,5),[]);
+  const wc=[{word:'x',count:3,tfidf:1},{word:'y',count:9,tfidf:0.5},{word:'z',count:3,tfidf:2}];
+  assert.deepEqual(m.newsTopByCount(wc,2).map(r=>r.word),['y','z']);assert.equal(m.newsTopByCount(wc,0).length,3);assert.deepEqual(m.newsTopByCount(null,3),[]);
+  assert.equal(m.sourceInitial('matichon.co.th'),'M');assert.equal(m.sourceInitial('ไทยรัฐ'),'ไ');assert.equal(m.sourceInitial('  '),'?');assert.equal(m.sourceInitial(null),'?');
 }
 console.log('PASS: household boundaries, freshness, missing/zero totals, district severity, coordinates, news filters');

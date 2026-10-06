@@ -27,6 +27,12 @@
   function newsUrgencyCounts(articles){const c={critical:0,warning:0,recovery:0};for(const a of articles||[])if(a.urgency in c)c[a.urgency]++;return c}
   function newsWords(doc,lang,category,limit){const freq=doc?.word_freq?.[lang]||{},tfidf=doc?.tfidf_scores?.[lang]||{},cats=doc?.word_categories||{};const rows=Object.keys(freq).map(word=>({word,count:freq[word],tfidf:tfidf[word]??null,category:lang==='th'?(cats[word]||'general'):'general'})).filter(r=>!category||r.category===category).sort((a,b)=>(b.tfidf??0)-(a.tfidf??0)||b.count-a.count);return limit>0?rows.slice(0,limit):rows}
   function ageLabel(hours){if(!Number.isFinite(hours))return 'ไม่ระบุเวลา';if(hours<1)return Math.max(1,Math.round(hours*60))+' นาทีที่แล้ว';if(hours<48)return Math.round(hours)+' ชั่วโมงที่แล้ว';return Math.round(hours/24)+' วันที่แล้ว'}
-  const model={newsArticles,newsProvinces,newsUrgencyCounts,newsWords,ageLabel,safeUrl,URGENCY,NEWS_CATEGORIES,latestStationDay,SOURCES,WATER_STATUS,canonicalWaterStatus,timestamp,sum,quality,householdBorderColor,validCoordinates,districtSummary};
+  // Google Trends "rising" growth is "+3650%" or "Breakout"; Breakout is the largest.
+  function growthValue(g){const s=String(g??'').trim();if(/^breakout$/i.test(s))return Infinity;const n=Number(s.replace(/[^\d.]/g,''));return s!==''&&Number.isFinite(n)?n:-1}
+  function newsRising(trends){const best=new Map();for(const q of trends?.rising_queries||[]){const k=String(q.query||'').trim();if(!k)continue;const v=growthValue(q.growth);if(!best.has(k)||v>best.get(k).value)best.set(k,{query:k,growth:String(q.growth??''),value:v})}return Array.from(best.values()).sort((a,b)=>b.value-a.value||a.query.localeCompare(b.query,'th')).map(({query,growth})=>({query,growth}))}
+  function newsTopRegions(trends,n){const rows=(trends?.interest_by_region||[]).filter(r=>Number.isFinite(r.score)).slice().sort((a,b)=>b.score-a.score||String(a.region).localeCompare(String(b.region),'th'));return n>0?rows.slice(0,n):rows}
+  function newsTopByCount(words,n){const rows=(words||[]).slice().sort((a,b)=>b.count-a.count||(b.tfidf??0)-(a.tfidf??0)||String(a.word).localeCompare(String(b.word),'th'));return n>0?rows.slice(0,n):rows}
+  function sourceInitial(name){const m=String(name??'').match(/[\p{L}\p{N}]/u);return m?m[0].toUpperCase():'?'}
+  const model={newsRising,newsTopRegions,newsTopByCount,sourceInitial,growthValue,newsArticles,newsProvinces,newsUrgencyCounts,newsWords,ageLabel,safeUrl,URGENCY,NEWS_CATEGORIES,latestStationDay,SOURCES,WATER_STATUS,canonicalWaterStatus,timestamp,sum,quality,householdBorderColor,validCoordinates,districtSummary};
   if(typeof module!=='undefined')module.exports=model;else root.DashboardModel=model;
 })(typeof window!=='undefined'?window:globalThis);
