@@ -40,5 +40,19 @@ assert.equal(m.validCoordinates({latitude:91,longitude:100}),false);
   const wc=[{word:'x',count:3,tfidf:1},{word:'y',count:9,tfidf:0.5},{word:'z',count:3,tfidf:2}];
   assert.deepEqual(m.newsTopByCount(wc,2).map(r=>r.word),['y','z']);assert.equal(m.newsTopByCount(wc,0).length,3);assert.deepEqual(m.newsTopByCount(null,3),[]);
   assert.equal(m.sourceInitial('matichon.co.th'),'M');assert.equal(m.sourceInitial('ไทยรัฐ'),'ไ');assert.equal(m.sourceInitial('  '),'?');assert.equal(m.sourceInitial(null),'?');
+  // Trends timeline: daily means, 24 h windows, phase index
+  const pt=(h,v)=>({t:'2026-10-0'+(5+Math.floor(h/24))+'T'+String(h%24).padStart(2,'0')+':00+07:00',v});
+  const tlp=[];for(let h=0;h<48;h++)tlp.push(pt(h,[h<24?10:20,h<24?40:30,0]));
+  const tl={terms:['a','b','c'],points:tlp};
+  assert.deepEqual(m.timelineDaily(tl).map(d=>[d.date,d.hours,...d.values]),[['2026-10-05',24,10,40,0],['2026-10-06',24,20,30,0]]);
+  assert.deepEqual(m.timelineDaily(null),[]);assert.deepEqual(m.timelineDaily({terms:['a']}),[]);
+  assert.deepEqual(m.termWindows(tl),[{term:'a',index:20,previous:10,change:100},{term:'b',index:30,previous:40,change:-25},{term:'c',index:0,previous:0,change:null}]);
+  assert.equal(m.termWindows({terms:['a'],points:tlp.slice(0,10)}),null);
+  const shortPrev=m.termWindows({terms:['a','b','c'],points:tlp.slice(-30)});assert.equal(shortPrev[0].previous,null);assert.equal(shortPrev[0].change,null);
+  assert.equal(m.trendLevel(60),'สูง');assert.equal(m.trendLevel(59.4),'ปานกลาง');assert.equal(m.trendLevel(29),'ต่ำ');assert.equal(m.trendLevel(null),null);
+  const lc=m.lifecycle({timeline:tl,phases:[{key:'p1',label:'1',terms:['a','b'],categories:['x']},{key:'p2',label:'2',terms:['c'],categories:[]},{key:'p3',label:'3',terms:['zzz'],categories:[]}]});
+  assert.deepEqual(lc.phases.map(p=>[p.key,p.index,p.level]),[['p1',25,'ต่ำ'],['p2',0,'ต่ำ'],['p3',null,null]]);
+  assert.equal(lc.leading,'p1');assert.deepEqual(lc.phases[0].terms.map(t=>t.term),['a','b']);
+  assert.equal(m.lifecycle({timeline:null,phases:[{key:'p',terms:['a']}]}),null);assert.equal(m.lifecycle(null),null);assert.equal(m.lifecycle({timeline:tl,phases:[]}),null);
 }
 console.log('PASS: household boundaries, freshness, missing/zero totals, district severity, coordinates, news filters');

@@ -9,10 +9,10 @@
   const $=id=>document.getElementById(id);
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const fmt=n=>Number.isFinite(n)?n.toLocaleString('th-TH'):'-';
-  const state={lang:'th',category:'',limit:60,urgency:'',province:'',query:'',pageSize:10};
+  const state={lang:'th',category:'',limit:60,urgency:'',province:'',query:'',pageSize:10,phase:''};
   const CATEGORY_TABS=[['','ทั้งหมด'],['monitoring','เฝ้าระวัง & สถานการณ์น้ำ'],['relief','การช่วยเหลือ & ศูนย์พักพิง'],['post_flood','ฟื้นฟูหลังน้ำท่วม'],['location','พื้นที่ & จังหวัด']];
   const URGENCY_TABS=[['','ทั้งหมด'],['critical','เร่งด่วน'],['warning','เฝ้าระวัง'],['recovery','ฟื้นฟู']];
-  let news=null,trends=null,loaded=false,loading=null,chart=null,fetchedAt=null,refreshing=false;
+  let news=null,trends=null,loaded=false,loading=null,chart=null,trendChart=null,fetchedAt=null,refreshing=false;
 
   async function getJson(name){
     const r=await fetch('news_data/'+name,{cache:'no-store'});
@@ -107,20 +107,50 @@
       +'</div></section>';
   }
   function regionsHtml(){
-    const all=M.newsTopRegions(trends,0),top=all.slice(0,5),rest=all.slice(5),kw=esc((trends.keywords||[])[0]||'');
-    const row=(r,i)=>'<tr><td class="muted">'+(i+1)+'</td><td><b>'+esc(r.region)+'</b></td><td>'+kw+'</td><td class="num"><span class="badge bad">'+fmt(r.score)+'</span><div class="freq-bar red"><i style="width:'+Math.max(4,Math.min(100,r.score))+'%"></i></div></td></tr>';
-    return '<section class="panel"><div class="panel-head"><div><h2>อันดับจังหวัดที่ค้นหาเรื่องน้ำท่วมมากที่สุด</h2><p class="sub">ดัชนี 100 = ค้นหามากที่สุดในช่วงเวลา · คอลัมน์ "คำที่วัด" คือคำที่ใช้คำนวณดัชนี</p></div></div><div class="panel-body">'
-      +(top.length?'<div class="freq-table"><table><thead><tr><th>#</th><th>จังหวัด</th><th>คำที่วัด</th><th class="num">ดัชนี</th></tr></thead><tbody>'+top.map(row).join('')+'</tbody></table></div>'
+    const all=M.newsTopRegions(trends,0),top=all.slice(0,5),rest=all.slice(5),tq=trends.region_top_query||{};
+    const row=(r,i)=>'<tr><td class="muted">'+(i+1)+'</td><td><b>'+esc(r.region)+'</b></td><td>'+(tq[r.region]?esc(tq[r.region].query):'<span class="muted">—</span>')+'</td><td class="num"><span class="badge bad">'+fmt(r.score)+'</span><div class="freq-bar red"><i style="width:'+Math.max(4,Math.min(100,r.score))+'%"></i></div></td></tr>';
+    return '<section class="panel"><div class="panel-head"><div><h2>อันดับจังหวัดที่ค้นหาเรื่องน้ำท่วมมากที่สุด</h2><p class="sub">ดัชนี 100 = ค้นหา "'+esc((trends.keywords||[])[0]||'')+'" มากที่สุด · คำค้นหาเด่น = คำที่ Google จัดเป็นอันดับ 1 ของจังหวัดนั้น (ไม่นับคำหลักเอง) ว่างเมื่อดึงไม่ได้</p></div></div><div class="panel-body">'
+      +(top.length?'<div class="freq-table"><table><thead><tr><th>#</th><th>จังหวัด</th><th>คำค้นหาเด่นในพื้นที่</th><th class="num">ดัชนี</th></tr></thead><tbody>'+top.map(row).join('')+'</tbody></table></div>'
         +(rest.length?'<details class="news-table"><summary>ดูอันดับที่ 6–'+(5+rest.length)+'</summary><div class="freq-table"><table><tbody>'+rest.map((r,i)=>row(r,i+5)).join('')+'</tbody></table></div></details>':''):'<p class="empty">ไม่มีข้อมูลรายจังหวัดในรอบนี้</p>')
       +'</div></section>';
+  }
+  const partNote=name=>{const v=trends&&trends.parts&&trends.parts[name];return v&&v!=='ok'?v:''};
+  function timelineHtml(){
+    const head='<section class="panel"><div class="panel-head"><div><h2>แนวโน้มความสนใจเปรียบเทียบ 7 วันย้อนหลัง</h2>';
+    const tl=trends.timeline;
+    if(!tl)return head+'<p class="sub">ไม่มีข้อมูลในรอบนี้</p></div></div><div class="panel-body"><p class="empty">Google Trends ไม่ส่งข้อมูลเส้นแนวโน้มมาในรอบนี้'+(partNote('timeline')?' ('+esc(partNote('timeline'))+')':'')+' จึงไม่แสดงเส้นสมมติ</p></div></section>';
+    return head+'<p class="sub">ค่าเฉลี่ยรายวันของ Google Trends (0–100) · 100 = จุดสูงสุดของทั้ง '+tl.terms.length+' คำใน 7 วัน · คำที่ใช้: '+tl.terms.map(esc).join(', ')+' · วันแรก/วันล่าสุดอาจมีไม่ครบ 24 ชม.</p></div></div><div class="panel-body"><div class="trend-chart"><canvas id="trendChart" role="img" aria-label="กราฟเส้นแนวโน้มความสนใจ 7 วัน"></canvas></div></div></section>';
+  }
+  function lifecycleHtml(){
+    const lc=M.lifecycle(trends);
+    const head='<section class="panel"><div class="panel-head news-head"><div><h2>ดัชนีความสนใจตามระยะของน้ำท่วม</h2><p class="sub">คำนวณจากข้อมูล Google Trends จริงด้านบน ไม่ใช่จำนวนผู้ประสบภัยหรือความต้องการจริง</p></div>';
+    const formula='<p class="mini-note">สูตร: ดัชนีของแต่ละคำ = ค่าเฉลี่ย 24 ชั่วโมงล่าสุดของค่า Google Trends (0–100 เทียบกับจุดสูงสุดของ 5 คำใน 7 วัน) · ดัชนีของระยะ = ค่าเฉลี่ยของคำในระยะนั้น · ระดับ: ตั้งแต่ 60 สูง, 30–59 ปานกลาง, ต่ำกว่า 30 ต่ำ · ลูกศร = เทียบกับ 24 ชั่วโมงก่อนหน้า · คำค้นหาเด่น = คำที่พุ่งขึ้นในรอบนี้ จัดกลุ่มด้วยกฎคำสำคัญ</p>';
+    if(!lc)return head+'</div><div class="panel-body"><p class="empty">ยังคำนวณดัชนีไม่ได้ เพราะไม่มีข้อมูลเส้นแนวโน้มจาก Google Trends ในรอบนี้</p>'+formula+'</div></section>';
+    const key=lc.phases.some(p=>p.key===state.phase)?state.phase:lc.leading;
+    const ph=lc.phases.find(p=>p.key===key)||lc.phases[0];
+    const lead=lc.phases.find(p=>p.key===lc.leading);
+    const tabs='<div class="seg" role="group" aria-label="ระยะ">'+lc.phases.map(p=>'<button type="button" class="seg-btn" data-phase="'+esc(p.key)+'" aria-pressed="'+String(p.key===ph.key)+'">'+esc(p.label)+'</button>').join('')+'</div>';
+    const lvlCls=l=>l==='สูง'?'bad':l==='ปานกลาง'?'warn':'good';
+    const bars=ph.terms.length?ph.terms.map(t=>{
+      const ch=t.change==null?'':t.change===0?'— เท่าเดิม':(t.change>0?'▲ ':'▼ ')+Math.abs(t.change)+'% จาก 24 ชม.ก่อนหน้า';
+      return '<div class="demand-row"><div class="demand-name"><span>'+esc(t.term)+'</span><b>'+fmt(t.index)+'/100</b></div><div class="freq-bar big"><i style="width:'+Math.max(2,Math.min(100,t.index||0))+'%"></i></div><small class="muted">'+esc(ch)+'</small></div>';
+    }).join(''):'<p class="empty">ไม่มีข้อมูลของคำในระยะนี้</p>';
+    const queries=ph.categories.flatMap(c=>((trends.categories||{})[c]?.queries||[]).map(q=>({q,label:trends.categories[c].label})));
+    const qtable=queries.length?'<div class="freq-table"><table><thead><tr><th>คำค้นหา</th><th class="num">อัตราพุ่งสูง</th><th>กลุ่มความต้องการ</th></tr></thead><tbody>'+queries.map(({q,label})=>'<tr><td>'+esc(q.query)+'</td><td class="num"><span class="badge warn">'+esc(q.growth)+'</span></td><td>'+esc(label)+'</td></tr>').join('')+'</tbody></table></div>':'<p class="empty">ไม่มีคำค้นหาที่พุ่งขึ้นในกลุ่มนี้ในรอบนี้</p>';
+    return head+(lead?'<span class="badge '+lvlCls(lead.level)+' lead-badge">ระยะที่ความสนใจสูงสุด: '+esc(lead.label.replace(/^ระยะ \d+: /,''))+' ('+fmt(lead.index)+'/100)</span>':'')+'</div>'
+      +'<div class="news-toolbar">'+tabs+'</div>'
+      +'<div class="panel-body"><div class="phase-title"><b>'+esc(ph.label)+'</b>'+(ph.index==null?'<span class="badge">ไม่มีข้อมูล</span>':'<span class="badge '+lvlCls(ph.level)+'">ดัชนี '+fmt(ph.index)+'/100 · '+esc(ph.level)+'</span>')+'</div>'
+      +'<div class="news-words"><div><h3>ดัชนีของแต่ละคำ</h3>'+bars+'</div><div><h3>คำค้นหาเด่นช่วงนี้</h3>'+qtable+'</div></div>'+formula+'</div></section>';
   }
   function trendsHtml(){
     const head='<section class="panel trend-panel">'+trendsHeader()+'</section>';
     if(!trends)return head+'<div class="alert news-alert">ยังไม่มีข้อมูล Google Trends (ไฟล์ trends.json ไม่พร้อมใช้งาน)</div>';
     if(trends.status!=='ok')return head+'<div class="alert news-alert">Google Trends ไม่พร้อมใช้งานในรอบข้อมูลนี้ จึงไม่แสดงข้อมูลสมมติแทน'+(trends.error?'<br><small>'+esc(trends.error)+'</small>':'')+'</div>';
+    const failed=Object.entries(trends.parts||{}).filter(([,v])=>v!=='ok'&&!String(v).startsWith('skipped')).map(([k])=>({related:'คำค้นหา',regions:'อันดับจังหวัด',timeline:'เส้นแนวโน้ม',region_queries:'คำเด่นรายจังหวัด'}[k]||k));
     return head
+      +(failed.length?'<div class="alert news-alert">Google Trends ส่งข้อมูลมาไม่ครบในรอบนี้ ส่วนที่ว่าง: '+failed.map(esc).join(', ')+' (Google จำกัดอัตราการเรียก จะลองใหม่รอบถัดไป)</div>':'')
       +'<div class="info-note">ข้อมูลเทรนด์คำค้นหาดึงตรงจาก Google Trends ประเทศไทย (geo=TH) ช่วง '+esc(String(trends.timeframe||'').replace('now 7-d','7 วันล่าสุด'))+' เป็นสัญญาณความสนใจของประชาชน ไม่ใช่ข้อเท็จจริงเรื่องสถานการณ์น้ำ</div>'
-      +'<div class="trend-grid">'+risingHtml()+regionsHtml()+'</div>';
+      +timelineHtml()+lifecycleHtml()+'<div class="trend-grid">'+risingHtml()+regionsHtml()+'</div>';
   }
 
   function render(){
@@ -128,7 +158,7 @@
     // Keep focus and typed text while the list below re-renders from a filter change.
     const focusId=document.activeElement&&pane.contains(document.activeElement)?document.activeElement.id:'';
     const sel=document.activeElement&&document.activeElement.selectionStart!=null?[document.activeElement.selectionStart,document.activeElement.selectionEnd]:null;
-    if(!news){pane.innerHTML='<div class="heading"><div><h1>ข่าวและแนวโน้มการค้นหา</h1></div></div>'+statusBanner()+trendsHtml();bind();return}
+    if(!news){pane.innerHTML='<div class="heading"><div><h1>ข่าวและแนวโน้มการค้นหา</h1></div></div>'+statusBanner()+trendsHtml();bind();drawTrendChart();return}
     const words=M.newsWords(news,state.lang,state.category,state.limit);
     const top15=M.newsTopByCount(M.newsWords(news,state.lang,state.category,0),15);
     const matches=M.newsArticles(news.articles,state);
@@ -158,7 +188,7 @@
       +'<div class="mini-note" style="padding:0 22px 16px">แหล่งข้อมูล: '+(news.sources||[]).map(s=>esc(s.name)+(s.status==='ok'?' ('+s.count+')':' (ผิดพลาด)')).join(' · ')+'</div></section>'
       // trends
       +trendsHtml();
-    bind();drawChart(top15);
+    bind();drawChart(top15);drawTrendChart();
     if(focusId&&$(focusId)){$(focusId).focus();if(sel&&$(focusId).setSelectionRange)try{$(focusId).setSelectionRange(sel[0],sel[1])}catch(e){}}
   }
   function bind(){
@@ -166,6 +196,7 @@
     on('newsLang','lang');on('newsLimit','limit',Number);on('newsProvince','province');on('newsPage','pageSize',Number);on('newsQuery','query');
     pane.querySelectorAll('[data-cat]').forEach(b=>b.addEventListener('click',()=>{state.category=b.dataset.cat;render()}));
     pane.querySelectorAll('[data-urg]').forEach(b=>b.addEventListener('click',()=>{state.urgency=b.dataset.urg;render()}));
+    pane.querySelectorAll('[data-phase]').forEach(b=>b.addEventListener('click',()=>{state.phase=b.dataset.phase;render()}));
     const r=$('newsRefresh');if(r)r.addEventListener('click',refresh);
   }
   function drawChart(top){
@@ -176,6 +207,17 @@
     // teal for the most frequent words fading to navy, so rank is readable without the numbers
     const color=i=>'hsl('+Math.round(172-i*(112/Math.max(1,top.length-1)))+',62%,'+Math.round(34+i*(10/Math.max(1,top.length-1)))+'%)';
     chart=new window.Chart(el,{type:'bar',data:{labels:top.map(r=>r.word),datasets:[{data:top.map(r=>r.count),backgroundColor:top.map((_,i)=>color(i)),borderRadius:3}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>fmt(c.parsed.x)+' ครั้ง'}}},scales:{x:{beginAtZero:true,ticks:{precision:0}},y:{ticks:{autoSkip:false}}}}});
+  }
+
+  const LINE_COLORS=['#2563eb','#dc2626','#16a34a','#f59e0b','#9333ea'];
+  function drawTrendChart(){
+    if(trendChart){trendChart.destroy();trendChart=null}
+    const el=$('trendChart');if(!el||!window.Chart||!trends||!trends.timeline)return;
+    const days=M.timelineDaily(trends.timeline),terms=trends.timeline.terms;
+    if(!days.length)return;
+    el.parentElement.style.height='320px';
+    const label=d=>d.date.slice(8,10)+'/'+d.date.slice(5,7);
+    trendChart=new window.Chart(el,{type:'line',data:{labels:days.map(label),datasets:terms.map((t,i)=>({label:t,data:days.map(d=>d.values[i]),borderColor:LINE_COLORS[i%LINE_COLORS.length],backgroundColor:LINE_COLORS[i%LINE_COLORS.length],tension:.25,pointRadius:3,borderWidth:2}))},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:'top'},tooltip:{callbacks:{title:items=>{const d=days[items[0].dataIndex];return d.date+(d.hours<24?' (มี '+d.hours+' ชม.)':'')}}}},scales:{y:{min:0,max:100,title:{display:true,text:'ดัชนี Google Trends'}}}}});
   }
 
   tab.addEventListener('click',open);

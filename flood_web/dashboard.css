@@ -218,3 +218,11 @@ body,button,input,select,textarea,table,.leaflet-container,.leaflet-tooltip,.lea
 .chips{display:flex;flex-wrap:wrap;gap:8px}.q-chip{font-size:13px;padding:6px 12px;background:#fff;color:var(--ink)}
 .info-note{margin:0 0 18px;padding:12px 16px;border-radius:10px;background:#e3f2fb;color:#23536f;font-size:14px}
 @media(max-width:767px){.news-grid{grid-template-columns:minmax(0,1fr);padding:12px 16px}.news-toolbar{padding:10px 16px}.trend-head,.news-head{flex-direction:column}.cloud-box .word-cloud{min-height:180px}}
+/* Trends: 7-day chart and the 3-phase index */
+.trend-chart{position:relative;min-height:240px}
+.lead-badge{align-self:flex-start}
+.phase-title{display:flex;gap:12px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+.demand-row{margin-bottom:14px}.demand-name{display:flex;justify-content:space-between;gap:12px;font-size:14px}
+.freq-bar.big{height:10px;border-radius:5px}.freq-bar.big i{border-radius:5px;background:#f59e0b}
+.news-words h3,.trend-grid h3{margin:0 0 8px;font-size:15px}
+.freq-table{overflow-x:auto}.freq-table td,.freq-table th{overflow-wrap:anywhere}.freq-table td.num,.freq-table th.num{overflow-wrap:normal}

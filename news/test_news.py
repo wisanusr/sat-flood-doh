@@ -130,7 +130,7 @@ class Trends(unittest.TestCase):
     def test_failure_is_reported_not_faked(self):
         class Broken:
             def build_payload(self, **kw): raise RuntimeError('429 Too Many Requests')
-        doc = ts.fetch_trends(Broken())
+        doc = ts.fetch_trends(Broken(), sleep=lambda s: None)
         self.assertEqual(doc['status'], 'unavailable')
         self.assertIn('429', doc['error'])
         self.assertEqual((doc['rising_queries'], doc['top_queries'], doc['interest_by_region']), ([], [], []))
@@ -140,7 +140,97 @@ class Trends(unittest.TestCase):
             def build_payload(self, **kw): pass
             def related_queries(self): return {}
             def interest_by_region(self, **kw): return None
-        self.assertEqual(ts.fetch_trends(Empty())['status'], 'unavailable')
+        self.assertEqual(ts.fetch_trends(Empty(), sleep=lambda s: None)['status'], 'unavailable')
+
+
+class FakeTrends:
+    """A pytrends stand-in. `fail_timeline` = how many interest_over_time calls raise before one succeeds."""
+    def __init__(self, fail_timeline=0, fail_regions=False):
+        import pandas as pd
+        self.pd, self.fail_timeline, self.fail_regions, self.geo, self.calls = pd, fail_timeline, fail_regions, None, []
+
+    def build_payload(self, kw_list, timeframe, geo):
+        self.kw, self.geo = kw_list, geo
+        self.calls.append((tuple(kw_list), geo))
+
+    def related_queries(self):
+        pd = self.pd
+        if self.geo != 'TH':   # per-province lookup: first row is the keyword itself
+            return {self.kw[0]: {'top': pd.DataFrame({'query': ['น้ำ ท่วม', 'เลข น้ำ ท่วม'], 'value': [100, 7]}), 'rising': None}}
+        rising = pd.DataFrame({'query': ['ลงทะเบียน เยียวยา'], 'value': [3400]})
+        top = pd.DataFrame({'query': ['น้ำ ท่วม วันนี้'], 'value': [80]})
+        return {kw: {'rising': rising, 'top': top} for kw in self.kw}
+
+    def interest_by_region(self, **kw):
+        if self.fail_regions:
+            raise RuntimeError('429')
+        return self.pd.DataFrame({'น้ำท่วม': [100, 40, 0]}, index=['กระบี่', 'ตาก', 'ภูเก็ต'])
+
+    def interest_over_time(self):
+        pd = self.pd
+        if self.fail_timeline > 0:
+            self.fail_timeline -= 1
+            raise RuntimeError('The request failed: Google returned a response with code 429')
+        idx = pd.date_range('2026-10-06 03:00', periods=3, freq='h')   # UTC, naive: 10:00-12:00 in Bangkok
+        data = {t: [10, 20, 30] for t in ts.TIMELINE_TERMS}
+        data['isPartial'] = [False, False, True]
+        return pd.DataFrame(data, index=idx)
+
+
+class TrendsParts(unittest.TestCase):
+    def fetch(self, fake):
+        return ts.fetch_trends(fake, sleep=lambda s: None)
+
+    def test_all_parts_succeed(self):
+        doc = self.fetch(FakeTrends())
+        self.assertEqual(doc['status'], 'ok')
+        self.assertEqual(set(doc['parts'].values()), {'ok'})
+        self.assertEqual(doc['rising_queries'][0]['growth'], '+3400%')
+        self.assertEqual([r['region'] for r in doc['interest_by_region']], ['กระบี่', 'ตาก'])   # zero scores dropped
+
+    def test_timeline_is_bangkok_time_without_the_incomplete_hour(self):
+        tl = self.fetch(FakeTrends())['timeline']
+        self.assertEqual(tl['terms'], ts.TIMELINE_TERMS)
+        self.assertEqual([p['t'] for p in tl['points']], ['2026-10-06T10:00+07:00', '2026-10-06T11:00+07:00'])
+        self.assertEqual(tl['points'][0]['v'], [10] * 5)
+
+    def test_timeline_429_is_retried_once(self):
+        fake = FakeTrends(fail_timeline=1)
+        doc = self.fetch(fake)
+        self.assertEqual(doc['parts']['timeline'], 'ok')
+        self.assertIsNotNone(doc['timeline'])
+
+    def test_timeline_failure_keeps_the_other_parts(self):
+        doc = self.fetch(FakeTrends(fail_timeline=5))
+        self.assertEqual(doc['status'], 'ok')
+        self.assertIsNone(doc['timeline'])
+        self.assertIn('429', doc['parts']['timeline'])
+        self.assertEqual(doc['parts']['related'], 'ok')
+        self.assertTrue(doc['interest_by_region'])
+
+    def test_province_top_query_skips_the_keyword_itself(self):
+        fake = FakeTrends()
+        doc = self.fetch(fake)
+        self.assertEqual(doc['region_top_query']['กระบี่'], {'query': 'เลข น้ำ ท่วม', 'score': 7})
+        self.assertIn((('น้ำท่วม',), 'TH-81'), fake.calls)        # Krabi
+        self.assertIn((('น้ำท่วม',), 'TH-63'), fake.calls)        # Tak
+
+    def test_no_province_ranking_skips_province_queries(self):
+        doc = self.fetch(FakeTrends(fail_regions=True))
+        self.assertEqual(doc['region_top_query'], {})
+        self.assertTrue(doc['parts']['region_queries'].startswith('skipped'))
+        self.assertEqual(doc['status'], 'ok')
+
+    def test_phases_use_real_timeline_terms_and_known_categories(self):
+        cats = {key for key, _, _ in ts.CATEGORIES}
+        for ph in ts.PHASES:
+            self.assertTrue(set(ph['terms']) <= set(ts.TIMELINE_TERMS), ph['key'])
+            self.assertTrue(set(ph['categories']) <= cats, ph['key'])
+        self.assertEqual({t for ph in ts.PHASES for t in ph['terms']}, set(ts.TIMELINE_TERMS))
+
+    def test_geo_codes_cover_every_province_once(self):
+        self.assertEqual(set(ts.PROVINCE_GEO), set(PROVINCES))
+        self.assertEqual(len(set(ts.PROVINCE_GEO.values())), 77)
 
 
 if __name__ == '__main__':
