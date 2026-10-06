@@ -21,6 +21,27 @@ function parseCsv(text) {
   return rows;
 }
 
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+// The import script rewrites a tab for a few seconds (a run on the hour once saw "BKK_water_DB: no rows"),
+// so an empty or failed read is retried before the build gives up. A failed build keeps the old Pages site.
+async function fetchSheetRows(name, url, { attempts = 4, delayMs = Number(process.env.FETCH_RETRY_DELAY_MS ?? 15000), fetchImpl = fetch } = {}) {
+  let last;
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      const res = await fetchImpl(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const rows = parseCsv(await res.text());
+      if (rows.length < 2) throw new Error('no rows');
+      return rows;
+    } catch (e) {
+      last = e;
+      if (i < attempts) { console.warn(`${name}: ${e.message}; retry ${i}/${attempts - 1} in ${delayMs / 1000}s`); await sleep(delayMs); }
+    }
+  }
+  throw new Error(`${name}: ${last.message} (after ${attempts} attempts)`);
+}
+
 async function main() {
   const ctx = vm.createContext({ console, Date, Utilities: { formatDate: d => d.toISOString() } });
   vm.runInContext(read('Config.gs') + '\n' + read('Code.gs'), ctx);
@@ -28,11 +49,7 @@ async function main() {
   const sheets = {};
   for (const name of Object.keys(config.required)) {
     const url = `https://docs.google.com/spreadsheets/d/${config.spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(name)}`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`${name}: HTTP ${res.status}`);
-    const rows = parseCsv(await res.text());
-    if (rows.length < 2) throw new Error(`${name}: no rows`);
-    sheets[name] = rows;
+    sheets[name] = await fetchSheetRows(name, url);
   }
   ctx.__sheets = sheets;
   vm.runInContext(`SpreadsheetApp={openById:()=>({getSheetByName:n=>__sheets[n]?({getDataRange:()=>({getValues:()=>__sheets[n]})}):null})}`, ctx);
@@ -43,4 +60,5 @@ async function main() {
   fs.writeFileSync(path.join(__dirname, 'docs', 'data.json'), JSON.stringify(data));
   console.log('Wrote docs/data.json', Object.fromEntries(['disasters', 'vulnerable', 'stations', 'bkkStations', 'shelters'].map(k => [k, data[k].length])));
 }
-main().catch(e => { console.error(e.message); process.exit(1); });
+module.exports = { parseCsv, fetchSheetRows };
+if (require.main === module) main().catch(e => { console.error(e.message); process.exit(1); });

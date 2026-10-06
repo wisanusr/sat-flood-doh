@@ -6,7 +6,8 @@ on:
   pull_request:
     branches: [main]
   schedule:
-    - cron: '*/30 * * * *'
+    # :12 and :42 avoid the top of the hour, when the import script rewrites BKK_water_DB (and :22/:24 for the others).
+    - cron: '12,42 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -22,6 +23,7 @@ jobs:
         with:
           node-version: 20
       - run: node test.cjs
+      - run: node test_fetch.cjs
       - run: node flood_web/test_model.cjs
       - run: python3 flood_web/test_server.py
       # Generated Apps Script files must match the sources in flood_web/ (run `python build.py` and commit).
