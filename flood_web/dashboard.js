@@ -145,7 +145,85 @@ renderBkkVulChart();
 $('sideBody').classList.toggle('ddpm-summary',state.tab==='national');
 paginateTables();requestAnimationFrame(updateTableHints);
 if(state.tab === 'bkk') $('bkkVulPanel').classList.remove('hidden');
-renderSourceStatus();updateAlert();
+renderSourceStatus();updateAlert();renderSituation();
+if(state.tab==='bkk'){refitIfResized(map);refitIfResized(shelterMap)}
+}
+
+// Plain-language summary under the main map, as ONE block that can be copied as plain text. Everything in it is
+// counted from the loaded sheets; the level rules (DashboardModel.provinceLevel) are printed under the block so nobody
+// has to guess how a province was classified. `notes` (data gaps, rules) stay out of the copied text.
+let situationText='';
+function situationBlock(host,title,facts,sections,notes,compact){
+ // facts: bullets under the title. sections: [{head, items[]}] or [{head}] for a heading with no list.
+ // compact (Bangkok): bullets follow their heading directly; otherwise a blank line separates them.
+ const lines=[title];if(!compact)lines.push('');
+ if(facts.length){facts.forEach(f=>lines.push('* '+f));lines.push('')}
+ sections.forEach(s=>{lines.push(s.head);if(s.items&&s.items.length){if(!compact)lines.push('');s.items.forEach(i=>lines.push('* '+i))}lines.push('')});
+ while(lines.length&&lines[lines.length-1]==='')lines.pop();
+ situationText=lines.join('\n');
+ host.innerHTML='<div class="situation-head"><h2>'+esc(title)+'</h2><button type="button" class="lightbtn" id="copySituation">คัดลอกข้อความ</button></div>'
+  +(facts.length?'<ul class="sit-facts">'+facts.map(f=>'<li>'+esc(f)+'</li>').join('')+'</ul>':'')
+  +sections.map(s=>'<h3>'+esc(s.head)+'</h3>'+(s.items&&s.items.length?'<ul>'+s.items.map(i=>'<li>'+esc(i)+'</li>').join('')+'</ul>':'')).join('')
+  +(notes.length?'<p class="mini-note situation-rule">'+notes.join(' · ')+'</p>':'');
+ $('copySituation').addEventListener('click',async e=>{
+  const btn=e.currentTarget,done=ok=>{btn.textContent=ok?'คัดลอกแล้ว':'คัดลอกไม่สำเร็จ';setTimeout(()=>{btn.textContent='คัดลอกข้อความ'},2000)};
+  try{await navigator.clipboard.writeText(situationText);done(true)}
+  catch(err){ // clipboard API needs https/localhost; fall back to a temporary textarea
+   const t=document.createElement('textarea');t.value=situationText;t.style.position='fixed';t.style.opacity='0';document.body.append(t);t.select();
+   let ok=false;try{ok=document.execCommand('copy')}catch(x){}t.remove();done(ok)}
+ });
+}
+function renderSituation(){
+ const host=$('situationSummary');if(!host)return;
+ const bkk=state.tab==='bkk',day=state.date?date(state.date+'T00:00:00+07:00'):'ไม่มีวันรายงาน';
+ if(failed('Disaster_DB')){situationText='';host.innerHTML='<h2>สรุปสถานการณ์</h2><p class="empty">อ่านรายงาน ปภ. ไม่สำเร็จ จึงยังสรุปสถานการณ์ไม่ได้</p>';return}
+ const reports=getReports(),fresh=r=>quality(r)==='ภายใน 24 ชั่วโมง',rank=r=>WATER_STATUS[canonicalWaterStatus(r.flood_status_source)]?.rank||0;
+ if(!bkk){
+  const allowed=new Set(allowedProvinces()),rows=reports.filter(r=>allowed.has(r.Province));
+  if(!rows.length){situationText='';host.innerHTML='<h2>'+esc(day)+' สรุปสถานการณ์</h2><p class="empty">ไม่มีรายงานพื้นที่ประสบภัยในวันและพื้นที่ที่เลือก</p>';return}
+  const hasBkk=rows.some(r=>r.Province==='กรุงเทพมหานคร'),provinces=rows.filter(r=>r.Province!=='กรุงเทพมหานคร').length;
+  const hh=sum(rows,'Affected_Households'),deaths=sum(rows,'Casualties_Deaths'),missing=rows.filter(r=>!Number.isFinite(r.Affected_Households)).length;
+  const crit=new Map();
+  for(const r of nationalStations().concat(DATA.bkkStations.filter(x=>x.province==='กรุงเทพมหานคร')))if(fresh(r)&&rank(r)>=4)crit.set(r.province,(crit.get(r.province)||0)+1);
+  const regionOf=p=>DATA.vulnerable.find(v=>v.province===p)?.region||'';
+  const g=DashboardModel.situationGroups(rows,regionOf,p=>crit.get(p)||0);
+  const count=list=>list.reduce((n,x)=>n+x.items.length,0),short=r=>String(r).replace('เขตสุขภาพที่ ','เขต ');
+  const section=(head,list)=>list.length?{head:head+' ('+fmt(count(list))+' จังหวัด)',items:list.map(x=>short(x.region)+' '+x.items.map(i=>i.province).join(' '))}:null;
+  const facts=['ครัวเรือนที่ได้รับผลกระทบ: '+fmt(hh)+' ครัวเรือน'].concat(deaths==null?[]:['ผู้เสียชีวิตตามรายงาน: '+fmt(deaths)+' ราย']);
+  const sections=[{head:'สถานการณ์น้ำ ณ วันรายงาน — พื้นที่ต้องเฝ้าระวัง'}].concat([
+   section('สถานการณ์วิกฤต',g.critical),section('เฝ้าระวังสูง',g.high),section('สถานการณ์เริ่มทรงตัว',g.stabilizing),section('ยังไม่มีแนวโน้มระดับน้ำในรายงาน',g.unknown)].filter(Boolean));
+  const notes=[];
+  if(missing)notes.push('ครัวเรือน: ไม่รวม '+fmt(missing)+' จังหวัดที่รายงานไม่มีตัวเลข');
+  if(deaths!=null)notes.push('ผู้เสียชีวิต: นับเฉพาะจังหวัดที่ระบุตัวเลข');
+  if(failed('thai_water_DB'))notes.push('<b>อ่านข้อมูลสถานีน้ำไม่สำเร็จ จึงยังแยกระดับวิกฤตไม่ได้</b>');
+  notes.push('จัดกลุ่มตามเขตสุขภาพ จากรายงาน ปภ. วันที่เลือกและสถานีวัดน้ำที่ข้อมูลไม่เกิน 24 ชั่วโมง ไม่ใช่การพยากรณ์ · วิกฤต = น้ำเพิ่มขึ้น + มีสถานีวิกฤต/ล้นตลิ่งอย่างน้อย 1 แห่งในจังหวัด · เฝ้าระวังสูง = น้ำเพิ่มขึ้นแต่ไม่มีสถานีวิกฤต หรือทรงตัว · เริ่มทรงตัว = น้ำลดลง');
+  situationBlock(host,day+' พื้นที่ประสบภัย '+fmt(provinces)+' จังหวัด'+(hasBkk?' และ กทม.':''),facts,sections,notes.map(n=>n.startsWith('<b>')?n:esc(n)));
+  return;
+ }
+ // Bangkok
+ const r=reports.find(x=>x.Province==='กรุงเทพมหานคร');
+ const stations=DATA.bkkStations.filter(x=>x.province==='กรุงเทพมหานคร'&&fresh(x)),stationsFailed=failed('BKK_water_DB');
+ const byDistrict=new Map();
+ for(const s of stations){const d=String(s.district_or_area??'').replace(/^เขต/,'').trim();if(d){if(!byDistrict.has(d))byDistrict.set(d,[]);byDistrict.get(d).push(s)}}
+ const level=new Map(Array.from(byDistrict,([d,rows])=>{const sm=districtWaterSummary(rows);return [d,WATER_STATUS[sm.status]?.rank||0]}));
+ const inLevel=f=>Array.from(level).filter(([,v])=>f(v)).map(([d])=>d).sort((a,b)=>a.localeCompare(b,'th'));
+ const critD=inLevel(v=>v>=4),warnD=inLevel(v=>v===3),critS=stations.filter(x=>rank(x)>=4).length,warnS=stations.filter(x=>rank(x)===3).length;
+ const shelters=DATA.shelters,sf=failed('shelter_DB'),st=s=>getShelterStatus(s);
+ const fullDistricts=districts.filter(d=>{const s=shelters.filter(x=>x.district===d);return s.length>0&&s.every(x=>st(x)==='เต็ม')});
+ const trend=r?String(r.Water_Level_Trend??'').replace(/^ระดับน้ำ/,'').trim():'';
+ const facts=[];
+ if(r){if(Number.isFinite(r.Casualties_Deaths))facts.push('ผู้เสียชีวิตตามรายงาน: '+fmt(r.Casualties_Deaths)+' ราย');if(trend)facts.push('แนวโน้มระดับน้ำตามรายงาน ปภ.: '+trend)}
+ else facts.push('ไม่มีรายงานภัยจาก ปภ. ในวันที่เลือก');
+ const sections=[];
+ if(stationsFailed)facts.push('อ่านข้อมูลสถานีวัดน้ำ กทม. ไม่สำเร็จ');
+ else{
+  facts.push('สถานีวัดน้ำที่ข้อมูลไม่เกิน 24 ชั่วโมง: '+fmt(stations.length)+' แห่ง (วิกฤต/ล้นตลิ่ง '+fmt(critS)+' · เตือนภัย '+fmt(warnS)+')');
+  sections.push(critD.length?{head:'เขตที่มีสถานีวิกฤต / ล้นตลิ่ง ('+fmt(critD.length)+' เขต)',items:[critD.join(' ')]}:{head:'ไม่มีเขตที่มีสถานีวิกฤต / ล้นตลิ่ง'});
+  if(warnD.length)sections.push({head:'เขตที่ระดับน้ำสูงสุดอยู่ที่เตือนภัย ('+fmt(warnD.length)+' เขต)',items:[warnD.join(' ')]});
+ }
+ if(sf)sections.push({head:'ศูนย์พักพิง: อ่านข้อมูลไม่สำเร็จ'});
+ else sections.push({head:'ศูนย์พักพิง',items:['ทั้งหมด '+fmt(shelters.length)+' แห่ง · ผู้พัก '+fmt(sum(shelters,'occupied'))+' คน จากความจุ '+fmt(sum(shelters,'capacity'))+' คน','เต็ม '+fmt(shelters.filter(x=>st(x)==='เต็ม').length)+' แห่ง · ใกล้เต็ม '+fmt(shelters.filter(x=>st(x)==='ใกล้เต็ม').length)+' แห่ง'].concat(fullDistricts.length?['เขตที่ศูนย์เต็มทุกแห่ง: '+fullDistricts.join(' ')]:[])});
+ situationBlock(host,day+' กรุงเทพมหานคร',facts,sections,[esc('นับจากข้อมูลล่าสุดในฐานข้อมูล: เขตจัดระดับจากสถานีที่รุนแรงที่สุดในเขต (ข้อมูลไม่เกิน 24 ชั่วโมง) ไม่ใช่การพยากรณ์ ไม่รวมสถานีขัดข้อง/ไม่ทราบสถานะ')],true);
 }
 
 function renderAreas(){
@@ -218,7 +296,7 @@ function addShelterPins(target,rows){
 const getShelterStatus = r => { let s=String(r.status_source||'').trim(); return s==='เปิดให้บริการ/ว่าง'?'ว่าง':s==='ใกล้เต็ม'?'ใกล้เต็ม':s==='เต็ม'?'เต็ม':'ไม่ทราบ'; };
 function renderShelterMap(){
  if(state.tab!=='bkk'||!window.L)return;
- if(!shelterMap){shelterScope=null;shelterMap=L.map('shelterMap',{scrollWheelZoom:false}).setView([13.75,100.55],10);shelterLayers=L.layerGroup().addTo(shelterMap)}
+ if(!shelterMap){shelterScope=null;shelterMap=L.map('shelterMap',{scrollWheelZoom:false,zoomSnap:0.5,zoomDelta:0.5,maxZoom:14}).setView([13.75,100.55],10);shelterLayers=L.layerGroup().addTo(shelterMap)}
  shelterMap.invalidateSize({pan:false});shelterLayers.clearLayers();
  
  const waterRows2=DATA.bkkStations.filter(r=>r.province==='กรุงเทพมหานคร');
@@ -465,7 +543,7 @@ function renderHealthRegions(){
  $('healthRegionStatus').textContent=window.HEALTH_REGIONS_GEOJSON.features.length+' เขตสุขภาพ';
 }
 let mapScope='',shelterScope='';
-function renderMap(){if(!window.L)return;const scope=[state.tab,state.region,state.province,state.district].join('|');const fit=!map||scope!==mapScope;mapScope=scope;if(!window.L)return;if(!map){$('map').innerHTML='';map=L.map('map',{scrollWheelZoom:false}).setView([13.7,100.5],6); document.getElementById('map').style.background = '#ffffff';map.createPane('nationalBoundaries');map.getPane('nationalBoundaries').style.zIndex=450;map.createPane('healthRegionBoundaries');map.getPane('healthRegionBoundaries').style.zIndex=650;map.getPane('healthRegionBoundaries').style.pointerEvents='none';layers=L.layerGroup().addTo(map)}layers.clearLayers();
+function renderMap(){if(!window.L)return;const scope=[state.tab,state.region,state.province,state.district].join('|');const fit=!map||scope!==mapScope;mapScope=scope;if(!window.L)return;if(!map){$('map').innerHTML='';map=L.map('map',{scrollWheelZoom:false,zoomSnap:0.5,zoomDelta:0.5,maxZoom:13}).setView([13.7,100.5],6); document.getElementById('map').style.background = '#ffffff';map.createPane('nationalBoundaries');map.getPane('nationalBoundaries').style.zIndex=450;map.createPane('healthRegionBoundaries');map.getPane('healthRegionBoundaries').style.zIndex=650;map.getPane('healthRegionBoundaries').style.pointerEvents='none';layers=L.layerGroup().addTo(map)}layers.clearLayers();map.setMaxZoom(state.tab==='bkk'?13:11);
 if(state.tab==='bkk'){renderHealthRegions();if(nationalBase&&map.hasLayer(nationalBase))map.removeLayer(nationalBase);if(nationalLegend){nationalLegend.getContainer()?.remove();nationalLegend.remove();nationalLegend=null}$('mobileMapKey').replaceChildren();try{renderDistrictWaterMap(fit);updateBkkMapKey(map,$('showShelterPins').checked);}catch(e){console.error("DIST_ERR:", e)} try{renderShelterMap();}catch(e){console.error("SHELTER_ERR:", e)} return}
 if(nationalBase&&map.hasLayer(nationalBase))map.removeLayer(nationalBase);
 $('map').style.background='#ffffff';
@@ -523,6 +601,18 @@ $('showShelterPins').addEventListener('change',()=>renderMap());
 document.querySelectorAll('.shelter-filter,.shelter-status-filter').forEach(cb=>cb.addEventListener('change',()=>{document.querySelectorAll('.shelter-filter,.shelter-status-filter').forEach(other=>{if(other.value===cb.value)other.checked=cb.checked});render()}));
 $('fitDistrictMap').addEventListener('click',()=>{mapScope='';renderMap()});$('fitShelterMap').addEventListener('click',()=>fitShelters(currentShelters.filter(validCoordinates).map(r=>[r.latitude,r.longitude])));
 // Table filtering changes height as well as width; refit only after layout settles.
+// The Bangkok maps are laid out in a grid with a legend column and a table that is paginated after the first render, so the
+// container can still change size after the first fit. When Leaflet's cached size no longer matches the container, re-measure
+// and fit again (a no-op otherwise, so a user's zoom/pan survives filter changes).
+function refitIfResized(target){
+ if(!target)return;
+ const el=target.getContainer(),w=el.clientWidth,h=el.clientHeight;
+ if(!w||!h)return;
+ const size=target.getSize();
+ if(size.x===w&&size.y===h)return;
+ target.stop();target.invalidateSize({pan:false,animate:false});
+ if(target._dashboardBounds?.isValid())target.fitBounds(target._dashboardBounds,{padding:[24,24],maxZoom:target===map&&state.tab==='national'?11:13,animate:false});
+}
 let mapResizeTimer;
 const mapSizes=new WeakMap();
 const mapResizeObserver=new ResizeObserver(entries=>{
@@ -642,6 +732,7 @@ function finishRender(){
  
  
  renderMap(); renderAreas(); paginateTables();requestAnimationFrame(updateTableHints);
+ if(state.tab==='bkk'){refitIfResized(map);refitIfResized(shelterMap)}
 }
 // Merge freshly read sources into DATA and rebuild the controls that depend on them.
 function applyReload(next,names){

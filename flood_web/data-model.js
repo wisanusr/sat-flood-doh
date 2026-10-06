@@ -65,6 +65,23 @@
     const best=out.filter(p=>p.index!=null).sort((a,b)=>b.index-a.index)[0];
     return {phases:out,leading:best?best.key:null};
   }
-  const model={timelineDaily,termWindows,lifecycle,trendLevel,newsRising,newsTopRegions,newsTopByCount,sourceInitial,growthValue,newsArticles,newsProvinces,newsUrgencyCounts,newsWords,ageLabel,safeUrl,URGENCY,NEWS_CATEGORIES,latestStationDay,SOURCES,WATER_STATUS,canonicalWaterStatus,timestamp,sum,quality,householdBorderColor,validCoordinates,districtSummary};
+  // ── Situation summary: group the day's DDPM reports by water-level trend and fresh critical stations ──
+  const trendOf=v=>String(v??'').replace(/^ระดับน้ำ/,'').trim();
+  // critical = water rising and at least one fresh critical/overflow station; high = rising without one, or steady;
+  // stabilizing = falling; unknown = no usable trend.
+  function provinceLevel(trend,criticalStations){const t=trendOf(trend);if(t==='เพิ่มขึ้น')return criticalStations>0?'critical':'high';if(t==='ทรงตัว')return 'high';if(t==='ลดลง')return 'stabilizing';return 'unknown'}
+  const regionNumber=label=>{const m=String(label??'').match(/\d+/);return m?Number(m[0]):null};
+  function situationGroups(reports,regionOf,criticalOf){
+    const out={critical:new Map(),high:new Map(),stabilizing:new Map(),unknown:new Map()};
+    for(const r of reports||[]){
+      const m=out[provinceLevel(r.Water_Level_Trend,criticalOf(r.Province)||0)],region=regionOf(r.Province)||'ไม่ทราบเขต';
+      if(!m.has(region))m.set(region,[]);
+      m.get(region).push({province:r.Province,households:Number.isFinite(r.Affected_Households)?r.Affected_Households:null});
+    }
+    const res={};
+    for(const [level,m] of Object.entries(out))res[level]=Array.from(m,([region,items])=>({region,number:regionNumber(region),items:items.sort((a,b)=>(b.households??-1)-(a.households??-1)||a.province.localeCompare(b.province,'th'))})).sort((a,b)=>(a.number??999)-(b.number??999)||a.region.localeCompare(b.region,'th'));
+    return res;
+  }
+  const model={provinceLevel,situationGroups,regionNumber,timelineDaily,termWindows,lifecycle,trendLevel,newsRising,newsTopRegions,newsTopByCount,sourceInitial,growthValue,newsArticles,newsProvinces,newsUrgencyCounts,newsWords,ageLabel,safeUrl,URGENCY,NEWS_CATEGORIES,latestStationDay,SOURCES,WATER_STATUS,canonicalWaterStatus,timestamp,sum,quality,householdBorderColor,validCoordinates,districtSummary};
   if(typeof module!=='undefined')module.exports=model;else root.DashboardModel=model;
 })(typeof window!=='undefined'?window:globalThis);
