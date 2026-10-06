@@ -134,7 +134,59 @@ renderBkkVulChart();
 $('sideBody').classList.toggle('ddpm-summary',state.tab==='national');
 paginateTables();requestAnimationFrame(updateTableHints);
 if(state.tab === 'bkk') $('bkkVulPanel').classList.remove('hidden');
-renderSourceStatus();updateAlert();
+renderSourceStatus();updateAlert();renderSituation();
+}
+
+// Plain-language summary above the maps. Everything in it is counted from the loaded sheets; the level rules
+// (DashboardModel.provinceLevel) are printed under it so nobody has to guess how a province was classified.
+function renderSituation(){
+ const host=$('situationSummary');if(!host)return;
+ const bkk=state.tab==='bkk',day=state.date?date(state.date+'T00:00:00+07:00'):'ไม่มีวันรายงาน';
+ if(failed('Disaster_DB')){host.innerHTML='<h2>สรุปสถานการณ์</h2><p class="empty">อ่านรายงาน ปภ. ไม่สำเร็จ จึงยังสรุปสถานการณ์ไม่ได้</p>';return}
+ const reports=getReports(),fresh=r=>quality(r)==='ภายใน 24 ชั่วโมง',rank=r=>WATER_STATUS[canonicalWaterStatus(r.flood_status_source)]?.rank||0;
+ const names=a=>a.map(esc).join(' ');
+ if(!bkk){
+  const allowed=new Set(allowedProvinces()),rows=reports.filter(r=>allowed.has(r.Province));
+  if(!rows.length){host.innerHTML='<h2>'+esc(day)+' สรุปสถานการณ์</h2><p class="empty">ไม่มีรายงานพื้นที่ประสบภัยในวันและพื้นที่ที่เลือก</p>';return}
+  const hasBkk=rows.some(r=>r.Province==='กรุงเทพมหานคร'),provinces=rows.filter(r=>r.Province!=='กรุงเทพมหานคร').length;
+  const hh=sum(rows,'Affected_Households'),deaths=sum(rows,'Casualties_Deaths'),missing=rows.filter(r=>!Number.isFinite(r.Affected_Households)).length;
+  const crit=new Map();
+  for(const r of nationalStations().concat(DATA.bkkStations.filter(x=>x.province==='กรุงเทพมหานคร')))if(fresh(r)&&rank(r)>=4)crit.set(r.province,(crit.get(r.province)||0)+1);
+  const regionOf=p=>DATA.vulnerable.find(v=>v.province===p)?.region||'';
+  const g=DashboardModel.situationGroups(rows,regionOf,p=>crit.get(p)||0);
+  const count=list=>list.reduce((n,x)=>n+x.items.length,0),short=r=>String(r).replace('เขตสุขภาพที่ ','เขต ');
+  const block=(cls,title,note,list)=>list.length?'<div class="sit-level sit-'+cls+'"><h3>'+title+' <small class="muted">('+fmt(count(list))+' จังหวัด)</small></h3><p class="sub">'+note+'</p><ul>'+list.map(x=>'<li><b>'+esc(short(x.region))+'</b> '+names(x.items.map(i=>i.province))+'</li>').join('')+'</ul></div>':'';
+  host.innerHTML='<h2>'+esc(day)+' พื้นที่ประสบภัย '+fmt(provinces)+' จังหวัด'+(hasBkk?' และ กทม.':'')+'</h2>'
+   +'<ul class="sit-facts"><li>ครัวเรือนที่ได้รับผลกระทบ: <b>'+fmt(hh)+'</b> ครัวเรือน'+(missing?' <small class="muted">(ไม่รวม '+fmt(missing)+' จังหวัดที่รายงานไม่มีตัวเลขครัวเรือน)</small>':'')+'</li>'
+   +(deaths==null?'':'<li>ผู้เสียชีวิตตามรายงาน: <b>'+fmt(deaths)+'</b> ราย <small class="muted">(นับเฉพาะจังหวัดที่ระบุตัวเลข)</small></li>')+'</ul>'
+   +'<h3>สถานการณ์น้ำ ณ วันรายงาน — พื้นที่ต้องเฝ้าระวัง</h3><div class="sit-levels">'
+   +block('critical','สถานการณ์วิกฤต','น้ำเพิ่มขึ้น และมีสถานีวัดน้ำวิกฤต / ล้นตลิ่ง',g.critical)
+   +block('high','เฝ้าระวังสูง','น้ำเพิ่มขึ้น (ยังไม่มีสถานีวิกฤต) หรือระดับน้ำทรงตัว',g.high)
+   +block('stabilizing','สถานการณ์เริ่มทรงตัว น้ำเริ่มลด เน้นฟื้นฟูหลังน้ำท่วม','รายงานระบุระดับน้ำลดลง',g.stabilizing)
+   +block('unknown','ยังไม่มีแนวโน้มระดับน้ำในรายงาน','',g.unknown)+'</div>'
+   +'<p class="mini-note situation-rule">จัดกลุ่มตามเขตสุขภาพ จากรายงาน ปภ. วันที่เลือกและสถานีวัดน้ำที่ข้อมูลไม่เกิน 24 ชั่วโมง ไม่ใช่การพยากรณ์: วิกฤต = น้ำเพิ่มขึ้น + มีสถานีวิกฤต/ล้นตลิ่งอย่างน้อย 1 แห่งในจังหวัด · เฝ้าระวังสูง = น้ำเพิ่มขึ้นแต่ไม่มีสถานีวิกฤต หรือทรงตัว · เริ่มทรงตัว/น้ำลด = น้ำลดลง'+(failed('thai_water_DB')?' · <b>อ่านข้อมูลสถานีน้ำไม่สำเร็จ จึงยังแยกระดับวิกฤตไม่ได้</b>':'')+'</p>';
+  return;
+ }
+ // Bangkok
+ const r=reports.find(x=>x.Province==='กรุงเทพมหานคร');
+ const stations=DATA.bkkStations.filter(x=>x.province==='กรุงเทพมหานคร'&&fresh(x)),stationsFailed=failed('BKK_water_DB');
+ const byDistrict=new Map();
+ for(const s of stations){const d=String(s.district_or_area??'').replace(/^เขต/,'').trim();if(d){if(!byDistrict.has(d))byDistrict.set(d,[]);byDistrict.get(d).push(s)}}
+ const level=new Map(Array.from(byDistrict,([d,rows])=>{const sm=districtWaterSummary(rows);return [d,WATER_STATUS[sm.status]?.rank||0]}));
+ const inLevel=f=>Array.from(level).filter(([,v])=>f(v)).map(([d])=>d).sort((a,b)=>a.localeCompare(b,'th'));
+ const critD=inLevel(v=>v>=4),warnD=inLevel(v=>v===3),critS=stations.filter(x=>rank(x)>=4).length,warnS=stations.filter(x=>rank(x)===3).length;
+ const shelters=DATA.shelters,sf=failed('shelter_DB'),st=s=>getShelterStatus(s);
+ const fullDistricts=districts.filter(d=>{const s=shelters.filter(x=>x.district===d);return s.length>0&&s.every(x=>st(x)==='เต็ม')});
+ const trend=r?String(r.Water_Level_Trend??'').replace(/^ระดับน้ำ/,'').trim():'';
+ host.innerHTML='<h2>'+esc(day)+' กรุงเทพมหานคร'+(r?'':' <small class="muted">(ไม่มีรายงานภัยจาก ปภ. ในวันนี้)</small>')+'</h2>'
+  +'<ul class="sit-facts">'
+  +(r?'<li>ครัวเรือนที่ได้รับผลกระทบ: <b>'+fmt(r.Affected_Households)+'</b> ครัวเรือน'+(Number.isFinite(r.Casualties_Deaths)?' · ผู้เสียชีวิตตามรายงาน <b>'+fmt(r.Casualties_Deaths)+'</b> ราย':'')+(trend?' · แนวโน้มระดับน้ำตามรายงาน ปภ.: <b>'+esc(trend)+'</b>':'')+'</li>':'')
+  +(stationsFailed?'<li><b>อ่านข้อมูลสถานีวัดน้ำ กทม. ไม่สำเร็จ</b></li>':'<li>สถานีวัดน้ำที่ข้อมูลไม่เกิน 24 ชั่วโมง: <b>'+fmt(stations.length)+'</b> แห่ง · วิกฤต/ล้นตลิ่ง <b>'+fmt(critS)+'</b> แห่ง · เตือนภัย <b>'+fmt(warnS)+'</b> แห่ง</li>')+'</ul>'
+  +(stationsFailed?'':'<div class="sit-levels">'
+   +(critD.length?'<div class="sit-level sit-critical"><h3>เขตที่มีสถานีวิกฤต / ล้นตลิ่ง <small class="muted">('+fmt(critD.length)+' เขต)</small></h3><ul><li>'+names(critD)+'</li></ul></div>':'<div class="sit-level sit-stabilizing"><h3>ไม่มีเขตที่มีสถานีวิกฤต / ล้นตลิ่ง</h3></div>')
+   +(warnD.length?'<div class="sit-level sit-high"><h3>เขตที่ระดับน้ำสูงสุดอยู่ที่เตือนภัย <small class="muted">('+fmt(warnD.length)+' เขต)</small></h3><ul><li>'+names(warnD)+'</li></ul></div>':'')+'</div>')
+  +(sf?'<h3>ศูนย์พักพิง</h3><p class="empty">อ่านข้อมูลศูนย์พักพิงไม่สำเร็จ</p>':'<h3>ศูนย์พักพิง</h3><ul class="sit-facts"><li>ทั้งหมด <b>'+fmt(shelters.length)+'</b> แห่ง · ผู้พัก <b>'+fmt(sum(shelters,'occupied'))+'</b> คน จากความจุ <b>'+fmt(sum(shelters,'capacity'))+'</b> คน · เต็ม <b>'+fmt(shelters.filter(x=>st(x)==='เต็ม').length)+'</b> แห่ง · ใกล้เต็ม <b>'+fmt(shelters.filter(x=>st(x)==='ใกล้เต็ม').length)+'</b> แห่ง'+(fullDistricts.length?' · เขตที่ศูนย์เต็มทุกแห่ง: <b>'+names(fullDistricts)+'</b>':'')+'</li></ul>')
+  +'<p class="mini-note situation-rule">นับจากข้อมูลล่าสุดในฐานข้อมูล: เขตจัดระดับจากสถานีที่รุนแรงที่สุดในเขต (ข้อมูลไม่เกิน 24 ชั่วโมง) ไม่ใช่การพยากรณ์ ไม่รวมสถานีขัดข้อง/ไม่ทราบสถานะ</p>';
 }
 
 function renderAreas(){

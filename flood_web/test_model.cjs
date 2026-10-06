@@ -54,5 +54,21 @@ assert.equal(m.validCoordinates({latitude:91,longitude:100}),false);
   assert.deepEqual(lc.phases.map(p=>[p.key,p.index,p.level]),[['p1',25,'ต่ำ'],['p2',0,'ต่ำ'],['p3',null,null]]);
   assert.equal(lc.leading,'p1');assert.deepEqual(lc.phases[0].terms.map(t=>t.term),['a','b']);
   assert.equal(m.lifecycle({timeline:null,phases:[{key:'p',terms:['a']}]}),null);assert.equal(m.lifecycle(null),null);assert.equal(m.lifecycle({timeline:tl,phases:[]}),null);
+  // Situation summary rules
+  assert.equal(m.provinceLevel('เพิ่มขึ้น',2),'critical');assert.equal(m.provinceLevel('ระดับน้ำเพิ่มขึ้น',1),'critical');
+  assert.equal(m.provinceLevel('เพิ่มขึ้น',0),'high');assert.equal(m.provinceLevel('ทรงตัว',5),'high');
+  assert.equal(m.provinceLevel('ลดลง',9),'stabilizing');assert.equal(m.provinceLevel(null,3),'unknown');assert.equal(m.provinceLevel('',0),'unknown');
+  assert.equal(m.regionNumber('เขตสุขภาพที่ 13'),13);assert.equal(m.regionNumber(''),null);
+  const reps=[{Province:'ก',Water_Level_Trend:'เพิ่มขึ้น',Affected_Households:10},{Province:'ข',Water_Level_Trend:'เพิ่มขึ้น',Affected_Households:500},{Province:'ค',Water_Level_Trend:'ลดลง',Affected_Households:null},{Province:'ง',Water_Level_Trend:'ทรงตัว',Affected_Households:7},{Province:'จ',Water_Level_Trend:null,Affected_Households:1},{Province:'ฉ',Water_Level_Trend:'เพิ่มขึ้น',Affected_Households:3}];
+  const region={ก:'เขตสุขภาพที่ 4',ข:'เขตสุขภาพที่ 4',ค:'เขตสุขภาพที่ 13',ง:'เขตสุขภาพที่ 5',จ:'เขตสุขภาพที่ 5'};
+  const grp=m.situationGroups(reps,p=>region[p],p=>({ก:1,ข:2,ค:0})[p]||0);
+  assert.deepEqual(grp.critical.map(g=>[g.region,g.items.map(i=>i.province)]),[['เขตสุขภาพที่ 4',['ข','ก']]]);   // more households first
+  assert.deepEqual(grp.high.map(g=>[g.region,g.items.map(i=>i.province)]),[['เขตสุขภาพที่ 5',['ง']],['ไม่ทราบเขต',['ฉ']]]);
+  assert.deepEqual(grp.stabilizing.map(g=>g.number),[13]);assert.equal(grp.stabilizing[0].items[0].households,null);
+  assert.deepEqual(grp.unknown.map(g=>g.items[0].province),['จ']);
+  assert.deepEqual(m.situationGroups([],()=>'',()=>0),{critical:[],high:[],stabilizing:[],unknown:[]});
+  assert.deepEqual(m.situationGroups(null,()=>'',()=>0).critical,[]);
+  const order=m.situationGroups([{Province:'x',Water_Level_Trend:'ลดลง'},{Province:'y',Water_Level_Trend:'ลดลง'},{Province:'z',Water_Level_Trend:'ลดลง'}],p=>({x:'เขตสุขภาพที่ 13',y:'เขตสุขภาพที่ 2',z:''})[p],()=>0).stabilizing.map(g=>g.region);
+  assert.deepEqual(order,['เขตสุขภาพที่ 2','เขตสุขภาพที่ 13','ไม่ทราบเขต']);   // numeric order, unknown last
 }
 console.log('PASS: household boundaries, freshness, missing/zero totals, district severity, coordinates, news filters');
