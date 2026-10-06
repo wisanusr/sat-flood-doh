@@ -146,6 +146,7 @@ $('sideBody').classList.toggle('ddpm-summary',state.tab==='national');
 paginateTables();requestAnimationFrame(updateTableHints);
 if(state.tab === 'bkk') $('bkkVulPanel').classList.remove('hidden');
 renderSourceStatus();updateAlert();renderSituation();
+if(state.tab==='bkk'){refitIfResized(map);refitIfResized(shelterMap)}
 }
 
 // Plain-language summary under the main map, as ONE block that can be copied as plain text. Everything in it is
@@ -600,6 +601,18 @@ $('showShelterPins').addEventListener('change',()=>renderMap());
 document.querySelectorAll('.shelter-filter,.shelter-status-filter').forEach(cb=>cb.addEventListener('change',()=>{document.querySelectorAll('.shelter-filter,.shelter-status-filter').forEach(other=>{if(other.value===cb.value)other.checked=cb.checked});render()}));
 $('fitDistrictMap').addEventListener('click',()=>{mapScope='';renderMap()});$('fitShelterMap').addEventListener('click',()=>fitShelters(currentShelters.filter(validCoordinates).map(r=>[r.latitude,r.longitude])));
 // Table filtering changes height as well as width; refit only after layout settles.
+// The Bangkok maps are laid out in a grid with a legend column and a table that is paginated after the first render, so the
+// container can still change size after the first fit. When Leaflet's cached size no longer matches the container, re-measure
+// and fit again (a no-op otherwise, so a user's zoom/pan survives filter changes).
+function refitIfResized(target){
+ if(!target)return;
+ const el=target.getContainer(),w=el.clientWidth,h=el.clientHeight;
+ if(!w||!h)return;
+ const size=target.getSize();
+ if(size.x===w&&size.y===h)return;
+ target.stop();target.invalidateSize({pan:false,animate:false});
+ if(target._dashboardBounds?.isValid())target.fitBounds(target._dashboardBounds,{padding:[24,24],maxZoom:target===map&&state.tab==='national'?11:13,animate:false});
+}
 let mapResizeTimer;
 const mapSizes=new WeakMap();
 const mapResizeObserver=new ResizeObserver(entries=>{
@@ -719,6 +732,7 @@ function finishRender(){
  
  
  renderMap(); renderAreas(); paginateTables();requestAnimationFrame(updateTableHints);
+ if(state.tab==='bkk'){refitIfResized(map);refitIfResized(shelterMap)}
 }
 // Merge freshly read sources into DATA and rebuild the controls that depend on them.
 function applyReload(next,names){
