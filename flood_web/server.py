@@ -165,7 +165,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_header('Content-Length', str(len(body)))
             self.end_headers()
             self.wfile.write(body)
-        elif route in ('/', '/index.html', '/dashboard.css', '/dashboard.js', '/data-model.js', '/news-view.js', '/thai_provinces.json', '/bkk_districts.geojson', '/regions.geojson'):
+        elif route in ('/', '/index.html', '/dashboard.css', '/dashboard.js', '/data-model.js', '/news-view.js', '/live-sheets.js', '/thai_provinces.json', '/bkk_districts.geojson', '/regions.geojson'):
             # template.html is the single source of the page (build.py reads it too); no separate index.html copy.
             if route in ('/', '/index.html'): self.path = '/template.html'
             super().do_GET()

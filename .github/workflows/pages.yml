@@ -25,6 +25,7 @@ jobs:
       - run: node test.cjs
       - run: node test_fetch.cjs
       - run: node flood_web/test_model.cjs
+      - run: node flood_web/test_live.cjs
       - run: python3 flood_web/test_server.py
       - uses: actions/setup-python@v5
         with:
