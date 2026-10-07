@@ -241,4 +241,25 @@ body,button,input,select,textarea,table,.leaflet-container,.leaflet-tooltip,.lea
 /* Legend swatches for the water-trend colours */
 .trend-swatch{display:inline-block;width:28px;height:14px;border:1px solid #94a3b8;margin-right:6px;vertical-align:middle;flex:none}
 
+/* Layer bar of the national map: toggle chips with a sample of each layer's symbology */
+.layer-bar{justify-content:flex-start;align-items:center;gap:8px;padding:0 20px 14px}
+.layer-bar-title{font-size:12px;font-weight:700;letter-spacing:.04em;color:var(--muted);margin-right:2px}
+.layer-chip{position:relative;display:inline-flex;align-items:center;gap:8px;min-height:38px;padding:5px 12px 5px 10px;border:1.5px solid #cbd5e1;border-radius:999px;background:#fff;color:var(--muted);cursor:pointer;user-select:none;transition:background .15s,border-color .15s,color .15s}
+.layer-chip:hover{border-color:#94a3b8;background:#f8fafc}
+.map-tools .layer-chip input{position:absolute;opacity:0;width:1px;height:1px;min-width:0;margin:0;pointer-events:none}
+.layer-chip:has(input:checked){border-color:var(--teal);background:#e6f4f3;color:var(--ink);font-weight:600}
+.layer-chip:has(input:focus-visible){outline:3px solid #7cc4c0;outline-offset:2px}
+.chip-icon{display:inline-block;flex:none;width:24px;height:14px;opacity:.45;filter:grayscale(1);transition:opacity .15s,filter .15s}
+.layer-chip:has(input:checked) .chip-icon{opacity:1;filter:none}
+.ic-heat{border-radius:50%;background:radial-gradient(ellipse at 50% 50%,#082f6b 0,#3b82f6 40%,#93c5fd88 70%,transparent 100%)}
+.ic-trend{border:1px solid #94a3b8;background:linear-gradient(90deg,#082f6b 0 33.3%,#3b82f6 33.3% 66.6%,#93c5fd 66.6%)}
+.ic-hh{height:13px;background:linear-gradient(#dc2626,#dc2626) 0 0/100% 3px no-repeat,linear-gradient(#f97316,#f97316) 0 5px/100% 3px no-repeat,linear-gradient(#22c55e,#22c55e) 0 10px/100% 3px no-repeat}
+.ic-regions{height:0;border-top:1.5px solid #111;margin:6px 0}
+.ic-pins{width:12px;height:12px;margin:1px 6px;border-radius:50%;background:#2563eb;border:2px solid #fff;box-shadow:0 0 0 1px #64748b}
+.chip-text{font-size:13px;line-height:1.3}
+.chip-check{width:16px;text-align:center;color:var(--teal);font-weight:700;opacity:0}
+.layer-chip:has(input:checked) .chip-check{opacity:1}
+.layer-bar-extra{display:inline-flex;align-items:center;gap:10px;margin-left:auto}
+@media(max-width:720px){.layer-bar{padding:0 16px 12px}.layer-bar-title{flex-basis:100%}.layer-bar-extra{margin-left:0;flex-basis:100%}.layer-chip{flex:1 1 auto}}
+
 </style>
