@@ -45,6 +45,8 @@ function transform_(name, rows) {
   });
   if(name==='Vulnerable_group') return rows.filter(r=>r['จังหวัด']).map(r=>({province:r['จังหวัด'],region:r['เขตสุขภาพ'],children:r[CONFIG.required[name][2]],pregnant:r[CONFIG.required[name][3]],elderly:r[CONFIG.required[name][4]]}));
   if(name==='shelter_DB') return rows.map(r=>pick_(r,'shelter_id district shelter_name capacity occupied available status_source latitude longitude updated_at_source fetched_at_th source_url map_url'));
+  if(name==='flood_risk') return rows.filter(r=>r.province).map(r=>pick_(r,'run_at province_code province risk_level rain_24h_max_mm rain_24h_station forecast_total_mm forecast_max_day_mm forecast_peak_date forecast_source rain_next_24h_mm wl_level5 wl_level4 wl_stations wl_rising_critical max_overbank_m in_active_cap reasons forecast_start forecast_fetched_at forecast_daily_mm cap_headlines tmd_warning_title tmd_warning_text'));
+  if(name==='flood_wl_critical') return rows.filter(r=>r.province).map(r=>pick_(r,'province province_code situation_level station_name river_name waterlevel_msl waterlevel_msl_prev diff_wl_bank diff_wl_bank_text discharge observed_at latitude longitude amphoe basin_name'));
   return rows.map(r=>{
     const out=pick_(r,'station_id station_name district_or_area latitude longitude observed_at_th water_in_m_msl warning_in_source critical_in_source flood_status_source age_minutes_at_fetch fetched_at_th source_url');
     if(name==='BKK_water_DB') {
@@ -82,11 +84,11 @@ function cachePut_(key, value) {
 // REFRESH_COOLDOWN_SECONDS is reused so repeated clicks cannot exhaust the Sheets quota.
 const REFRESH_COOLDOWN_SECONDS=30;
 function getDashboardData(source, refresh) {
-  const mapping={Disaster_DB:'disasters',Vulnerable_group:'vulnerable',thai_water_DB:'stations',BKK_water_DB:'bkkStations',shelter_DB:'shelters'};
+  const mapping={Disaster_DB:'disasters',Vulnerable_group:'vulnerable',thai_water_DB:'stations',BKK_water_DB:'bkkStations',shelter_DB:'shelters',flood_risk:'floodRisk',flood_wl_critical:'floodCritical'};
   if(source && !Object.prototype.hasOwnProperty.call(mapping,source)) throw new Error('แหล่งข้อมูลไม่ถูกต้อง');
   let ss=null;
   const getSs=()=>ss||(ss=SpreadsheetApp.openById(CONFIG.spreadsheetId));
-  const result={source:'รายงานสถานการณ์สาธารณภัยรายจังหวัด — Google Sheets',sourceType:'google_sheets',sourceUrl:'https://docs.google.com/spreadsheets/d/'+CONFIG.spreadsheetId+'/edit',loadedAt:new Date().toISOString(),sourceStatus:{},disasters:[],vulnerable:[],stations:[],bkkStations:[],shelters:[]};
+  const result={source:'รายงานสถานการณ์สาธารณภัยรายจังหวัด — Google Sheets',sourceType:'google_sheets',sourceUrl:'https://docs.google.com/spreadsheets/d/'+CONFIG.spreadsheetId+'/edit',loadedAt:new Date().toISOString(),sourceStatus:{},disasters:[],vulnerable:[],stations:[],bkkStations:[],shelters:[],floodRisk:[],floodCritical:[]};
   (source?[source]:Object.keys(mapping)).forEach(name=>{
     const cached=cacheGet_(CACHE_PREFIX+name);
     const cachedAge=cached?(Date.now()-Date.parse(cached.status.loadedAt))/1000:Infinity;

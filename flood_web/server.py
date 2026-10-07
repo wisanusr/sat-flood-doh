@@ -16,17 +16,23 @@ ROOT = Path(__file__).resolve().parent
 SPREADSHEET_ID = '1RQDU83exQhNpVYjp9JyD5UdocA6JB6GpJeXA-Qe8Pr4'
 SOURCE_URL = f'https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit'
 SHEETS = {'Disaster_DB': 0, 'Vulnerable_group': 1622234299,
-          'thai_water_DB': 32587398, 'BKK_water_DB': 1876038359, 'shelter_DB': 992577657}
+          'thai_water_DB': 32587398, 'BKK_water_DB': 1876038359, 'shelter_DB': 992577657,
+          'flood_risk': 651436760, 'flood_wl_critical': 69746994}
+# Tabs written by the flood-prep pipeline (geeks_project_google). The dashboard works without them: a tab that is missing or
+# empty only turns the "เตรียมรับน้ำท่วม" tab into a notice and never fails a build.
+OPTIONAL = {'flood_risk', 'flood_wl_critical'}
 REQUIRED = {
     'Disaster_DB': 'Record_ID Report_Date Province Affected_Households Current_Status'.split(),
     'Vulnerable_group': ['จังหวัด', 'เขตสุขภาพ', 'จำนวนเด็ก 0-4 ปีทั้งหมด (คน)', 'จำนวนหญิงตั้งครรภ์ทั้งหมด (คน)', 'จำนวนผู้สูงอายุ 60 ปีขึ้นไปทั้งหมด (คน)'],
     'thai_water_DB': 'station_id district_or_area latitude longitude observed_at_th fetched_at_th'.split(),
     'BKK_water_DB': 'station_id district_or_area latitude longitude observed_at_th fetched_at_th raw_station_json'.split(),
     'shelter_DB': 'shelter_id district shelter_name capacity occupied available latitude longitude'.split(),
+    'flood_risk': 'run_at province risk_level'.split(),
+    'flood_wl_critical': 'province situation_level station_name'.split(),
 }
-NUMERIC = set('Affected_Districts_Count Affected_Subdistricts_Count Affected_Villages_Count Affected_Households Casualties_Deaths latitude longitude water_in_m_msl warning_in_source critical_in_source age_minutes_at_fetch capacity occupied available'.split()) | set(REQUIRED['Vulnerable_group'][2:])
+NUMERIC = set('Affected_Districts_Count Affected_Subdistricts_Count Affected_Villages_Count Affected_Households Casualties_Deaths latitude longitude water_in_m_msl warning_in_source critical_in_source age_minutes_at_fetch capacity occupied available rain_24h_max_mm forecast_total_mm forecast_max_day_mm rain_next_24h_mm wl_level5 wl_level4 wl_stations wl_rising_critical max_overbank_m situation_level waterlevel_msl waterlevel_msl_prev diff_wl_bank discharge'.split()) | set(REQUIRED['Vulnerable_group'][2:])
 BKK_DISTRICTS = set('คลองสาน คลองสามวา คลองเตย คันนายาว จตุจักร จอมทอง ดอนเมือง ดินแดง ดุสิต ตลิ่งชัน ทวีวัฒนา ทุ่งครุ ธนบุรี บางกอกน้อย บางกอกใหญ่ บางกะปิ บางขุนเทียน บางคอแหลม บางซื่อ บางนา บางบอน บางพลัด บางรัก บางเขน บางแค บึงกุ่ม ปทุมวัน ประเวศ ป้อมปราบศัตรูพ่าย พญาไท พระนคร พระโขนง ภาษีเจริญ มีนบุรี ยานนาวา ราชเทวี ราษฎร์บูรณะ ลาดกระบัง ลาดพร้าว วังทองหลาง วัฒนา สวนหลวง สะพานสูง สัมพันธวงศ์ สาทร สายไหม หนองจอก หนองแขม หลักสี่ ห้วยขวาง'.split())
-DATES = set('Report_Date Ingested_At observed_at_th fetched_at_th updated_at_source'.split())
+DATES = set('Report_Date Ingested_At observed_at_th fetched_at_th updated_at_source run_at forecast_peak_date forecast_start forecast_fetched_at observed_at'.split())
 
 def normalize(key, value):
     value = value.strip() if isinstance(value, str) else value
@@ -106,14 +112,16 @@ def transform(raw):
         disasters=disasters,
         vulnerable=[dict(province=r['จังหวัด'], region=r['เขตสุขภาพ'], children=r[REQUIRED['Vulnerable_group'][2]], pregnant=r[REQUIRED['Vulnerable_group'][3]], elderly=r[REQUIRED['Vulnerable_group'][4]]) for r in raw['Vulnerable_group'] if r.get('จังหวัด')],
         stations=stations(raw['thai_water_DB']), bkkStations=stations(raw['BKK_water_DB'], True),
-        shelters=[pick(r, 'shelter_id district shelter_name capacity occupied available status_source latitude longitude updated_at_source fetched_at_th source_url map_url') for r in raw['shelter_DB']])
+        shelters=[pick(r, 'shelter_id district shelter_name capacity occupied available status_source latitude longitude updated_at_source fetched_at_th source_url map_url') for r in raw['shelter_DB']],
+        floodRisk=[pick(r, 'run_at province_code province risk_level rain_24h_max_mm rain_24h_station forecast_total_mm forecast_max_day_mm forecast_peak_date forecast_source rain_next_24h_mm wl_level5 wl_level4 wl_stations wl_rising_critical max_overbank_m in_active_cap reasons forecast_start forecast_fetched_at forecast_daily_mm cap_headlines tmd_warning_title tmd_warning_text') for r in raw['flood_risk'] if r.get('province')],
+        floodCritical=[pick(r, 'province province_code situation_level station_name river_name waterlevel_msl waterlevel_msl_prev diff_wl_bank diff_wl_bank_text discharge observed_at latitude longitude amphoe basin_name') for r in raw['flood_wl_critical'] if r.get('province')])
 
 def read_data(source=None):
     # A failed source must not discard the other live sources. No snapshot fallback.
     raw = {name: [] for name in SHEETS}
     statuses = {}
     selected = {source: SHEETS[source]} if source else SHEETS
-    with ThreadPoolExecutor(max_workers=5) as pool:
+    with ThreadPoolExecutor(max_workers=len(SHEETS)) as pool:
         futures = {name: pool.submit(fetch_sheet, item) for name, item in
                    ((name, (name, gid)) for name, gid in selected.items())}
         for name, future in futures.items():
@@ -165,7 +173,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_header('Content-Length', str(len(body)))
             self.end_headers()
             self.wfile.write(body)
-        elif route in ('/', '/index.html', '/dashboard.css', '/dashboard.js', '/data-model.js', '/news-view.js', '/live-sheets.js', '/thai_provinces.json', '/bkk_districts.geojson', '/regions.geojson'):
+        elif route in ('/', '/index.html', '/dashboard.css', '/dashboard.js', '/data-model.js', '/news-view.js', '/risk-view.js', '/live-sheets.js', '/thai_provinces.json', '/bkk_districts.geojson', '/regions.geojson'):
             # template.html is the single source of the page (build.py reads it too); no separate index.html copy.
             if route in ('/', '/index.html'): self.path = '/template.html'
             super().do_GET()

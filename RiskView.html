@@ -1,0 +1,279 @@
+<script>
+/* "เตรียมรับน้ำท่วม" tab: evidence for flood surveillance, province by province.
+   Reads the flood_risk and flood_wl_critical sheet tabs written by the flood-prep pipeline (geeks_project_google, DAG
+   flood_prep_pipeline, 09:00 and 13:00 Thai time) plus the Vulnerable_group rows the dashboard already loads.
+   Reads DATA through window.dashboardData (published by dashboard.js) and redraws on the 'dashboard:data' event.
+   The two flood tabs are optional: when they cannot be read this tab says so and the rest of the dashboard is unaffected.
+   Risk levels come from the pipeline's own thresholds; they are not an official warning. */
+(function(){
+  const M=window.DashboardModel;
+  const tab=document.getElementById('tab-risk'),pane=document.getElementById('riskPane');
+  if(!M||!tab||!pane)return;
+  const $=id=>document.getElementById(id);
+  const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const fmt=(n,d=0)=>Number.isFinite(n)?n.toLocaleString('th-TH',{maximumFractionDigits:d}):'-';
+  const mmText=v=>!Number.isFinite(v)?'-':v>0&&v<10?fmt(v,1):fmt(v,0);
+  const tz={timeZone:'Asia/Bangkok'};
+  const when=iso=>{const t=M.timestamp(iso);return Number.isFinite(t)?new Date(t).toLocaleString('th-TH',{...tz,day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+' น.':'-'};
+  const dayLabel=iso=>new Date(iso+'T00:00:00+07:00').toLocaleDateString('th-TH',{...tz,day:'numeric',month:'short'});
+  const state={sel:'',level:'',province:'',showAll:false};
+  const PAGE=20;
+  let map=null,ro=null,provLayers=new Map(),isOpen=false;
+
+  const data=()=>window.dashboardData;
+  const status=name=>data()?.sourceStatus?.[name];
+  const levelClass=l=>l==='สูง'?'bad':l==='กลาง'?'warn':'good';
+  const levelColor=l=>M.RISK_LEVELS[l]?.color||'#94a3b8';
+  const rowOf=(rows,p)=>rows.find(r=>r.province===p);
+
+  function select(active){
+    document.querySelectorAll('.tab').forEach(x=>x.setAttribute('aria-selected',String(x===active)));
+    $('workspace').setAttribute('aria-labelledby',active.id);
+  }
+  function open(){isOpen=true;document.body.classList.add('risk-mode');select(tab);render()}
+  function close(e){isOpen=false;document.body.classList.remove('risk-mode');if(e&&e.currentTarget)select(e.currentTarget)}
+
+  function notice(text,withRetry){
+    return '<section class="panel"><div class="panel-body"><div class="alert">'+text+'</div>'+(withRetry?'<p><button class="lightbtn" data-risk-retry>ลองอ่านใหม่</button></p>':'')+'</div></section>';
+  }
+  function card(label,value,note,accent){
+    return '<article class="card '+(accent?'accent':'')+'"><div class="eyebrow">'+label+'</div><div class="number">'+fmt(value)+'</div><div class="card-note">'+note+'</div></article>';
+  }
+
+  // ---------- 1. data freshness, forecast source, TMD warning ----------
+  function freshnessHtml(rows){
+    const runAt=rows.map(r=>r.run_at).filter(Boolean).sort().at(-1);
+    const f=M.riskFreshness(runAt,Date.now());
+    const age=f.hours==null?'':' · ผ่านมา '+(f.hours<1?'ไม่ถึง 1':fmt(Math.floor(f.hours)))+' ชม.';
+    const fc=rows.find(r=>r.forecast_source);
+    const src=fc?(fc.forecast_source==='TMD_NWP'?'ฝนพยากรณ์: แบบจำลองกรมอุตุนิยมวิทยา':'ฝนพยากรณ์: Open-Meteo (สำรอง)')+(fc.forecast_fetched_at?' รอบ '+when(fc.forecast_fetched_at):''):'';
+    let html='<div class="data-age age-'+(f.level==='bad'?'bad':f.level==='warn'?'warn':'ok')+'" style="display:block">ข้อมูลรอบล่าสุด '+when(runAt)+age+(src?' · '+src:'')+' · อัปเดตวันละ 2 รอบ (09:00 และ 13:00 น.)</div>';
+    if(f.level==='bad')html+='<div class="alert">ข้อมูลเก่ากว่ารอบปกติ อาจมีรอบที่รันไม่สำเร็จ อย่าใช้เป็นสถานการณ์ปัจจุบัน</div>';
+    if(rows.some(r=>r.forecast_source==='OPEN_METEO'))html+='<div class="alert">ฝนพยากรณ์รอบนี้ใช้ Open-Meteo แทนข้อมูลกรมอุตุนิยมวิทยา (รอบ TMD ล่าสุดเกิน 18 ชม. หรือดึงไม่ได้) ปริมาณฝนอาจต่างจากที่ TMD พยากรณ์</div>';
+    return html;
+  }
+  function warningHtml(rows,summary){
+    const w=rows.find(r=>r.tmd_warning_title);
+    if(!w&&!summary.inCap)return '';
+    // Folded by default: the full text is ~800 characters and would push the figures below the fold.
+    return '<details class="risk-warning"><summary><b>ประกาศ TMD:</b> '+(w?esc(w.tmd_warning_title):'ไม่พบประกาศฝนตกหนักฉบับล่าสุด')+(summary.inCap?' · CAP ครอบคลุม '+fmt(summary.inCap)+' จังหวัดเฝ้าระวัง':'')+' <span class="mini-note">(กดเพื่อดูข้อความเต็ม)</span></summary>'
+      +(w?'<p>'+esc(w.tmd_warning_text||'')+'</p>':'')
+      +'<p class="mini-note">ประกาศฉบับล่าสุดที่พบในฟีดของ TMD (ครอบคลุมทั้งประเทศ ไม่เฉพาะจังหวัดที่เฝ้าระวัง)</p></details>';
+  }
+
+  // ---------- 2. rain outlook: provinces x days ----------
+  function heatHtml(rows){
+    const first=rows.find(r=>r.forecast_start&&M.parseSeries(r.forecast_daily_mm).length);
+    if(!first)return '<section class="panel"><div class="panel-body"><div class="alert">ยังไม่มีฝนพยากรณ์รายวันในชีต (รอ pipeline รอบถัดไป)</div></div></section>';
+    const n=Math.max(...rows.map(r=>M.parseSeries(r.forecast_daily_mm).length));
+    const dates=M.seriesDates(first.forecast_start,n);
+    const head=dates.map((d,i)=>'<th class="num heat-day" scope="col">'+(+d.slice(8))+(i===0||d.endsWith('-01')?'<small>'+dayLabel(d).replace(/^\d+\s*/,'')+'</small>':'<small>&nbsp;</small>')+'</th>').join('');
+    const body=rows.map(r=>{
+      const s=M.parseSeries(r.forecast_daily_mm),nowCls=M.rainClass(r.rain_24h_max_mm),sum=s.filter(Number.isFinite).reduce((a,b)=>a+b,0);
+      const cells=dates.map((d,i)=>{
+        const v=s[i],c=M.rainClass(v);
+        return c?'<td class="num heat-cell" style="background:'+c.color+';color:'+c.ink+'" title="'+esc(r.province+' '+dayLabel(d)+': '+mmText(v)+' มม. — '+c.label)+'">'+mmText(v)+'</td>':'<td class="num heat-cell heat-na">-</td>';
+      }).join('');
+      return '<tr class="heat-row'+(r.province===state.sel?' sel':'')+'" data-prov="'+esc(r.province)+'"><th scope="row"><button class="heat-name" data-risk-sel="'+esc(r.province)+'"><i class="dot" style="background:'+levelColor(r.risk_level)+'"></i>'+esc(r.province)+'<span class="sr-lvl"> ความเสี่ยง'+esc(r.risk_level)+'</span></button></th>'
+        +'<td class="num heat-cell" style="'+(nowCls?'background:'+nowCls.color+';color:'+nowCls.ink:'')+'" title="'+esc(r.rain_24h_station||'')+'">'+mmText(r.rain_24h_max_mm)+'</td>'+cells+'<td class="num heat-total">'+(s.length?fmt(sum,0):'-')+'</td></tr>';
+    }).join('');
+    const legend=Object.values(M.RAIN_CLASSES).map(c=>'<span><i class="dot" style="background:'+c.color+';border:1px solid #cbd5e1"></i>'+esc(c.label)+'</span>').join('');
+    return '<section class="panel"><div class="panel-head"><div><h2>ฝนพยากรณ์รายวัน แยกจังหวัด</h2><p class="sub">ตัวเลขคือฝนรวมต่อวัน (มม.) · คอลัมน์ "จริง" คือฝน 24 ชม. สูงสุดที่สถานีวัดในจังหวัด · จุดสีหน้าชื่อ = ระดับความเสี่ยง · กดชื่อจังหวัดเพื่อดูรายละเอียด</p></div></div>'
+      +'<div class="panel-body"><div class="table-wrap heat-wrap"><table class="heat" aria-label="ฝนพยากรณ์รายวันแยกจังหวัด"><thead><tr><th scope="col">จังหวัด</th><th class="num heat-day" scope="col">จริง<small>24 ชม.</small></th>'+head+'<th class="num heat-day" scope="col">รวม<small>มม.</small></th></tr></thead><tbody>'+body+'</tbody></table></div>'
+      +'<div class="map-legend heat-legend">'+legend+'</div><p class="mini-note">ระดับฝนตามเกณฑ์รายวันที่เผยแพร่ทั่วไป (ยังไม่ได้ยืนยันกับเอกสารของกรมอุตุนิยมวิทยา) · แบบจำลองความละเอียดหยาบ ฝนเฉพาะจุดอาจสูงกว่าที่แสดง</p></div></section>';
+  }
+
+  // ---------- 3. selected province: evidence ----------
+  function barsSvg(r){
+    const s=M.parseSeries(r.forecast_daily_mm);
+    if(!s.length)return '<p class="empty">ไม่มีฝนพยากรณ์รายวัน</p>';
+    const dates=M.seriesDates(r.forecast_start,s.length),vals=s.map(v=>Number.isFinite(v)?v:0),max=Math.max(10,...vals);
+    const W=320,H=130,top=16,bot=22,bw=W/s.length,peak=vals.indexOf(Math.max(...vals));
+    const bars=s.map((v,i)=>{
+      const h=Number.isFinite(v)?Math.max(v>0?2:0,(v/max)*(H-top-bot)):0,x=i*bw+3,y=H-bot-h,c=M.rainClass(v);
+      return '<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+(bw-6).toFixed(1)+'" height="'+h.toFixed(1)+'" rx="2" fill="'+(c?c.color:'#e2e8f0')+'" stroke="'+(c&&c.key==='light'||c&&c.key==='none'?'#94a3b8':'none')+'" stroke-width="0.6"><title>'+esc(dayLabel(dates[i])+': '+mmText(v)+' มม.')+'</title></rect>'
+        +(Number.isFinite(v)&&v>0?'<text x="'+(x+(bw-6)/2).toFixed(1)+'" y="'+(y-3).toFixed(1)+'" text-anchor="middle" class="bar-val'+(i===peak?' peak':'')+'">'+mmText(v)+'</text>':'')
+        +'<text x="'+(x+(bw-6)/2).toFixed(1)+'" y="'+(H-7)+'" text-anchor="middle" class="bar-day">'+(+dates[i].slice(8))+'</text>';
+    }).join('');
+    const label='ฝนพยากรณ์รายวัน '+r.province+' วันที่ '+dayLabel(dates[0])+' ถึง '+dayLabel(dates.at(-1))+' สูงสุด '+mmText(Math.max(...vals))+' มม. วันที่ '+dayLabel(dates[peak]);
+    return '<svg class="bars" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="'+esc(label)+'">'+bars+'</svg>';
+  }
+  function detailHtml(rows,d){
+    const r=rowOf(rows,state.sel);if(!r)return '';
+    const reasons=M.reasonList(r.reasons).map(x=>'<li>'+esc(x)+'</li>').join('');
+    const v=(d.vulnerable||[]).find(x=>x.province===r.province);
+    const stations=(d.floodCritical||[]).filter(s=>s.province===r.province).sort((a,b)=>b.situation_level-a.situation_level||(M.overbankM(b)??-1)-(M.overbankM(a)??-1));
+    const arrow={up:'<span class="trend-up">▲</span>',down:'<span class="trend-down">▼</span>',flat:'—'};
+    const stat=(k,val,sub)=>'<div class="stat"><div class="stat-k">'+k+'</div><div class="stat-v">'+val+'</div>'+(sub?'<div class="stat-s">'+sub+'</div>':'')+'</div>';
+    return '<div class="panel-head"><div><h2>'+esc(r.province)+' <span class="badge '+levelClass(r.risk_level)+'">เสี่ยง'+esc(r.risk_level)+'</span></h2><p class="sub">'+(v?esc(v.region||''):'')+' · ข้อมูลจากการประเมินของ pipeline ไม่ใช่ประกาศทางการ</p></div></div>'
+      +'<div class="panel-body">'
+      +(reasons?'<h3 class="risk-h">เหตุผลที่ประเมิน</h3><ul class="reason-chips">'+reasons+'</ul>':'')
+      +'<h3 class="risk-h">ฝนพยากรณ์รายวัน (มม.)</h3>'+barsSvg(r)
+      +'<div class="stat-grid">'
+        +stat('ฝนจริง 24 ชม. สูงสุด',mmText(r.rain_24h_max_mm)+' มม.',esc(r.rain_24h_station||''))
+        +stat('ฝน 24 ชม.ข้างหน้า',Number.isFinite(r.rain_next_24h_mm)?mmText(r.rain_next_24h_mm)+' มม.':'-','จากพยากรณ์รายชั่วโมง')
+        +stat('ฝนพยากรณ์รวมทั้งช่วง',Number.isFinite(r.forecast_total_mm)?fmt(r.forecast_total_mm,0)+' มม.':'-','สูงสุด '+mmText(r.forecast_max_day_mm)+' มม. '+(r.forecast_peak_date?dayLabel(String(r.forecast_peak_date).slice(0,10)):''))
+        +stat('สถานีน้ำ ระดับ 5 / 4',fmt(r.wl_level5)+' / '+fmt(r.wl_level4),'จาก '+fmt(r.wl_stations)+' สถานีที่รายงาน')
+        +stat('น้ำกำลังขึ้น (สถานีวิกฤต)',fmt(r.wl_rising_critical),Number.isFinite(r.max_overbank_m)?'ล้นตลิ่งสูงสุด '+fmt(r.max_overbank_m,2)+' ม.':'')
+      +'</div>'
+      +(r.cap_headlines?'<h3 class="risk-h">ประกาศเตือนที่ครอบคลุมจังหวัดนี้</h3><p>'+esc(r.cap_headlines)+'</p>':'')
+      +'<h3 class="risk-h">ประชากรกลุ่มเปราะบางในจังหวัด</h3>'
+      +(v?'<div class="stat-grid vul"><div class="stat"><div class="stat-k">เด็ก 0-4 ปี</div><div class="stat-v">'+fmt(v.children)+'</div></div><div class="stat"><div class="stat-k">หญิงตั้งครรภ์</div><div class="stat-v">'+fmt(v.pregnant)+'</div></div><div class="stat"><div class="stat-k">ผู้สูงอายุ 60+</div><div class="stat-v">'+fmt(v.elderly)+'</div></div></div><p class="mini-note">ฐานประชากรทั้งจังหวัด ไม่ใช่จำนวนผู้ได้รับผลกระทบจริง</p>':'<p class="empty">ไม่พบข้อมูลในตารางกลุ่มเปราะบาง</p>')
+      +'<h3 class="risk-h">สถานีน้ำระดับ 4–5 ในจังหวัด ('+fmt(stations.length)+')</h3>'
+      +(stations.length?'<ul class="station-list">'+stations.slice(0,6).map(s=>'<li><span class="badge '+(s.situation_level>=5?'bad':'warn')+'">ระดับ '+fmt(s.situation_level)+'</span> <b>'+esc(s.station_name)+'</b> <span class="mini-note">'+esc([s.amphoe,s.river_name].filter(Boolean).join(' · '))+'</span> '+(arrow[M.waterTrend(s)]||'')+(M.overbankM(s)!=null?' <span class="mini-note">ล้นตลิ่ง '+fmt(M.overbankM(s),2)+' ม.</span>':'')+'</li>').join('')+'</ul>'+(stations.length>6?'<p class="mini-note">แสดง 6 จาก '+fmt(stations.length)+' สถานี ดูทั้งหมดในตารางด้านล่าง</p>':''):'<p class="empty">ไม่มีสถานีระดับ 4–5 ในรอบนี้</p>')
+      +'</div>';
+  }
+
+  // ---------- 4. map ----------
+  function mapPanel(){
+    return '<section class="panel"><div class="panel-head"><div><h2>แผนที่ความเสี่ยง</h2><p class="sub">กดจังหวัดเพื่อดูรายละเอียด · จุดคือสถานีน้ำระดับ 4–5</p></div></div>'
+      +'<div id="riskMap" class="risk-map" role="img" aria-label="แผนที่ความเสี่ยงน้ำท่วมรายจังหวัด"></div>'
+      +'<div class="map-legend"><span><i class="dot" style="background:#dc2626"></i>เสี่ยงสูง</span><span><i class="dot" style="background:#f97316"></i>เสี่ยงกลาง</span><span><i class="dot" style="background:#22c55e"></i>เสี่ยงต่ำ</span><span><i class="dot" style="background:#e2e8f0;border:1px solid #cbd5e1"></i>ไม่อยู่ในรายการเฝ้าระวัง</span><span><i class="dot" style="background:#7f1d1d"></i>สถานีระดับ 5</span><span><i class="dot" style="background:#1e293b"></i>สถานีระดับ 4</span></div></section>';
+  }
+  function provStyle(name,rowsByName){
+    const r=rowsByName.get(name),c=r&&M.RISK_LEVELS[r.risk_level]?.color,sel=name===state.sel;
+    return {color:sel?'#0f172a':'#ffffff',weight:sel?3:1,fillColor:c||'#e2e8f0',fillOpacity:c?0.78:0.55};
+  }
+  function drawMap(rows,critical){
+    const el=$('riskMap');if(!el||!window.L)return;
+    destroyMap();
+    const m=map=L.map(el,{scrollWheelZoom:false,zoomSnap:0.5}).setView([13.2,100.9],5.5);
+    const layer=L.layerGroup().addTo(m),byName=new Map(rows.map(r=>[r.province,r])),bounds=[];
+    if(window.PROVINCES_GEOJSON){
+      L.geoJSON(window.PROVINCES_GEOJSON,{
+        style:f=>provStyle(f.properties.pro_th,byName),
+        onEachFeature:(f,l)=>{
+          const name=f.properties.pro_th,r=byName.get(name);
+          l.bindTooltip(r?'<b>'+esc(r.province)+'</b> — ความเสี่ยง'+esc(r.risk_level)+'<br>'+esc(r.reasons||''):esc(name||''),{sticky:true});
+          if(r){bounds.push(l.getBounds());provLayers.set(name,l);l.on('click',()=>choose(name))}
+        }
+      }).addTo(layer);
+    }
+    for(const s of critical){
+      if(!Number.isFinite(s.latitude)||!Number.isFinite(s.longitude))continue;
+      L.circleMarker([s.latitude,s.longitude],{radius:5,weight:1.5,color:'#ffffff',fillColor:s.situation_level>=5?'#7f1d1d':'#1e293b',fillOpacity:0.95})
+        .bindTooltip(esc(s.station_name)+' ('+esc(s.province)+')<br>ระดับ '+fmt(s.situation_level),{sticky:true}).addTo(layer);
+    }
+    // The container may still be settling into the grid when the map is created, so the size is re-read and the fit redone
+    // once it has its real width (fitting against a too-narrow box leaves the map zoomed in on a few provinces).
+    const all=bounds.length?bounds.reduce((a,b)=>a.extend(b)):null;
+    // Never fit while the box has no size (hidden pane, grid not laid out): Leaflet would clamp to maxZoom and keep that view.
+    const fit=()=>{if(map!==m)return;m.invalidateSize();const s=m.getSize();if(!all||s.x<50||s.y<50)return;m.fitBounds(all,{padding:[20,20],maxZoom:7,animate:false})};   // only the map that is still current
+    fit();
+    if(typeof ResizeObserver!=='undefined'){ro=new ResizeObserver(fit);ro.observe(el)}else{requestAnimationFrame(fit);setTimeout(fit,250)}
+  }
+  // The pane's HTML is rebuilt on every full render, so the Leaflet map must be destroyed first: a live map whose container
+  // was removed from the page throws when it later redraws or resizes.
+  function destroyMap(){if(ro){ro.disconnect();ro=null}if(map){map.remove();map=null}provLayers=new Map()}
+
+  // Selecting a province must not rebuild the page (that would reset scroll and the map), so it patches the three places.
+  function choose(name){
+    const d=data(),rows=M.riskRows(d.floodRisk);
+    if(!rowOf(rows,name))return;
+    state.sel=name;
+    pane.querySelectorAll('.heat-row').forEach(tr=>tr.classList.toggle('sel',tr.dataset.prov===name));
+    const detail=$('riskDetail');if(detail)detail.innerHTML=detailHtml(rows,d);
+    const byName=new Map(rows.map(r=>[r.province,r]));
+    provLayers.forEach((l,n)=>l.setStyle(provStyle(n,byName)));
+    const l=provLayers.get(name);if(l&&l.bringToFront)l.bringToFront();
+    if(detail&&matchMedia('(max-width:900px)').matches)detail.scrollIntoView({behavior:'smooth',block:'start'});
+  }
+
+  // ---------- 5. all provinces table (CSV) and critical stations ----------
+  function tableHtml(rows){
+    const shown=rows.filter(r=>!state.level||r.risk_level===state.level);
+    const chips=[['','ทั้งหมด'],['สูง','สูง'],['กลาง','กลาง'],['ต่ำ','ต่ำ']].map(([v,l])=>'<button class="lightbtn" data-risk-level="'+v+'" aria-pressed="'+(state.level===v)+'">'+l+'</button>').join(' ');
+    const body=shown.map(r=>'<tr><td>'+esc(r.province)+'</td><td><span class="badge '+levelClass(r.risk_level)+'">'+esc(r.risk_level)+'</span></td>'
+      +'<td class="num">'+mmText(r.rain_24h_max_mm)+'<div class="mini-note">'+esc(r.rain_24h_station||'')+'</div></td>'
+      +'<td class="num">'+mmText(r.rain_next_24h_mm)+'</td>'
+      +'<td class="num">'+mmText(r.forecast_max_day_mm)+'<div class="mini-note">'+(r.forecast_peak_date?dayLabel(String(r.forecast_peak_date).slice(0,10)):'')+'</div></td>'
+      +'<td class="num">'+fmt(r.forecast_total_mm,1)+'</td>'
+      +'<td class="num">'+fmt(r.wl_level5)+' / '+fmt(r.wl_level4)+'</td><td class="num">'+fmt(r.wl_rising_critical)+'</td>'
+      +'<td class="num">'+(Number.isFinite(r.max_overbank_m)?fmt(r.max_overbank_m,2):'-')+'</td>'
+      +'<td>'+(M.parseBool(r.in_active_cap)?'<span class="badge warn">มีประกาศ</span>':'-')+'</td><td class="reasons">'+esc(r.reasons||'-')+'</td></tr>').join('');
+    return '<details class="panel risk-all"><summary><h2>ตารางข้อมูลทุกจังหวัด</h2><span class="sub">ตัวเลขทั้งหมดที่ใช้ประเมิน · ดาวน์โหลด CSV ได้</span></summary>'
+      +'<div class="panel-body"><div class="risk-chips" role="group" aria-label="กรองตามระดับความเสี่ยง">'+chips+' <button class="lightbtn" data-risk-csv>ดาวน์โหลด CSV</button></div>'
+      +'<div class="table-wrap"><table><thead><tr><th>จังหวัด</th><th>ความเสี่ยง</th><th class="num">ฝนจริง 24 ชม. สูงสุด (มม.)</th><th class="num">ฝน 24 ชม.ข้างหน้า (มม.)</th><th class="num">ฝนรายวันสูงสุดที่พยากรณ์ (มม.)</th><th class="num">ฝนพยากรณ์รวม (มม.)</th><th class="num">สถานีน้ำ ระดับ 5/4</th><th class="num">น้ำกำลังขึ้น (สถานีวิกฤต)</th><th class="num">ล้นตลิ่งสูงสุด (ม.)</th><th>ประกาศ TMD</th><th>เหตุผล</th></tr></thead><tbody>'
+      +(body||'<tr><td colspan="11" class="empty">ไม่มีจังหวัดในระดับที่เลือก</td></tr>')+'</tbody></table></div></div></details>';
+  }
+  function criticalHtml(rows){
+    if(status('flood_wl_critical')?.status==='error')return notice('อ่านรายการสถานีน้ำวิกฤตไม่สำเร็จ (แท็บ flood_wl_critical)',true);
+    const provinces=Array.from(new Set(rows.map(r=>r.province))).sort((a,b)=>a.localeCompare(b,'th'));
+    const list=rows.filter(r=>!state.province||r.province===state.province);
+    const limit=state.showAll?list.length:PAGE;
+    const arrow={up:'<span class="trend-up">▲ ขึ้น</span>',down:'<span class="trend-down">▼ ลง</span>',flat:'— คงที่'};
+    const body=list.slice(0,limit).map(r=>'<tr><td>'+esc(r.province)+'<div class="mini-note">'+esc(r.amphoe||'')+'</div></td><td>'+esc(r.station_name)+'</td><td>'+esc(r.river_name||'-')+'<div class="mini-note">'+esc(r.basin_name||'')+'</div></td>'
+      +'<td><span class="badge '+(r.situation_level>=5?'bad':'warn')+'">ระดับ '+fmt(r.situation_level)+'</span></td>'
+      +'<td class="num">'+fmt(r.waterlevel_msl,2)+'</td><td>'+(arrow[M.waterTrend(r)]||'-')+'</td>'
+      +'<td class="num">'+(M.overbankM(r)!=null?fmt(M.overbankM(r),2):'-')+'</td><td class="num">'+fmt(r.discharge,1)+'</td><td>'+when(r.observed_at)+'</td></tr>').join('');
+    return '<section class="panel"><div class="panel-head"><div><h2>สถานีน้ำวิกฤต (ระดับ 4–5) ทั้งหมด</h2><p class="sub">'+fmt(list.length)+' สถานี · ระดับน้ำเป็นเมตร รทก. ไม่ใช่ความลึกน้ำท่วม · แนวโน้มเทียบกับค่าที่รายงานก่อนหน้า</p></div>'
+      +'<select id="riskProvince" aria-label="กรองตามจังหวัด"><option value="">ทุกจังหวัด</option>'+provinces.map(p=>'<option'+(p===state.province?' selected':'')+'>'+esc(p)+'</option>').join('')+'</select></div>'
+      +'<div class="panel-body"><div class="table-wrap"><table><thead><tr><th>จังหวัด / อำเภอ</th><th>สถานี</th><th>แม่น้ำ/คลอง · ลุ่มน้ำ</th><th>ระดับ</th><th class="num">ระดับน้ำ (ม. รทก.)</th><th>แนวโน้ม</th><th class="num">ล้นตลิ่ง (ม.)</th><th class="num">อัตราไหล (ลบ.ม./วินาที)</th><th>เวลาตรวจวัด</th></tr></thead><tbody>'
+      +(body||'<tr><td colspan="9" class="empty">ไม่มีสถานีในขอบเขตที่เลือก</td></tr>')+'</tbody></table></div>'
+      +(list.length>PAGE?'<p><button class="lightbtn" data-risk-more>'+(state.showAll?'แสดงน้อยลง':'แสดงทั้งหมด '+fmt(list.length)+' สถานี')+'</button></p>':'')+'</div></section>';
+  }
+
+  // ---------- render ----------
+  function render(){
+    destroyMap();
+    const d=data();
+    if(!d){pane.innerHTML='<p class="empty">กำลังโหลดข้อมูล…</p>';return}
+    const riskSt=status('flood_risk');
+    const rows=M.riskRows(d.floodRisk);
+    let html='<div class="heading"><div><h1>เตรียมรับน้ำท่วม</h1><p class="sub">หลักฐานประกอบการเฝ้าระวังรายจังหวัด: ฝนพยากรณ์ ฝนจริง ระดับน้ำ ประกาศเตือน และประชากรกลุ่มเปราะบาง</p></div></div>';
+    if(!riskSt||riskSt.status==='error'){
+      pane.innerHTML=html+notice('ยังอ่านข้อมูลความเสี่ยงไม่ได้ (แท็บ flood_risk ในชีตไม่พบ ว่าง หรือรูปแบบไม่ตรง) แท็บอื่นของแดชบอร์ดยังใช้งานได้ตามปกติ',true);
+      bind();return;
+    }
+    if(!rows.length){pane.innerHTML=html+notice('ยังไม่มีข้อมูลความเสี่ยงในชีต รอรอบอัปเดตถัดไปของ pipeline',true);bind();return}
+    if(!rowOf(rows,state.sel))state.sel=rows[0].province;
+    const s=M.riskSummary(rows),high=rows.filter(r=>r.risk_level==='สูง').map(r=>r.province),exp=M.exposure(d.vulnerable,high);
+    html+=freshnessHtml(rows)+warningHtml(rows,s)
+      +'<div class="cards" aria-live="polite">'+card('เสี่ยงสูง',s.high,'จาก '+fmt(s.total)+' จังหวัดที่เฝ้าระวัง',true)+card('เสี่ยงกลาง',s.medium,'จังหวัด')
+      +card('สถานีน้ำระดับ 5',s.level5Stations,'สถานี (ล้นตลิ่ง) · น้ำกำลังขึ้น '+fmt(s.risingCritical)+' สถานีวิกฤต')
+      +card('กลุ่มเปราะบางในจังหวัดเสี่ยงสูง',exp.total,'เด็ก 0-4 ปี '+fmt(exp.children)+' · ตั้งครรภ์ '+fmt(exp.pregnant)+' · ผู้สูงอายุ '+fmt(exp.elderly)+(exp.missing.length?' (ไม่พบฐานข้อมูล '+exp.missing.length+' จังหวัด)':''))+'</div>'
+      +heatHtml(rows)
+      +'<div class="risk-split">'+mapPanel()+'<section class="panel" id="riskDetail" aria-live="polite">'+detailHtml(rows,d)+'</section></div>'
+      +criticalHtml(d.floodCritical||[])+tableHtml(rows)
+      +'<section class="panel"><div class="panel-body"><p class="mini-note">ระดับความเสี่ยงคำนวณจากเกณฑ์ภายในของ pipeline (ฝนรายวัน 35/90 มม., จำนวนสถานีน้ำระดับ 4–5, แนวโน้มระดับน้ำ, ประกาศเตือน) ไม่ใช่ประกาศอย่างเป็นทางการ · ฝนพยากรณ์จากแบบจำลองความละเอียดหยาบอาจต่ำกว่าฝนเฉพาะจุดจริง · ครอบคลุมเฉพาะจังหวัดที่ตั้งไว้ใน pipeline · ใช้ประกอบการตัดสินใจร่วมกับประกาศของหน่วยงานที่รับผิดชอบ</p></div></section>';
+    pane.innerHTML=html;
+    bind();drawMap(rows,d.floodCritical||[]);
+  }
+
+  function csv(rows){
+    const cols=[['province','จังหวัด'],['risk_level','ความเสี่ยง'],['rain_24h_max_mm','ฝนจริง 24 ชม. สูงสุด (มม.)'],['rain_24h_station','สถานีฝนสูงสุด'],['rain_next_24h_mm','ฝน 24 ชม.ข้างหน้า (มม.)'],['forecast_max_day_mm','ฝนรายวันสูงสุดที่พยากรณ์ (มม.)'],['forecast_peak_date','วันฝนสูงสุด'],['forecast_total_mm','ฝนพยากรณ์รวม (มม.)'],['forecast_start','วันแรกของฝนพยากรณ์'],['forecast_daily_mm','ฝนพยากรณ์รายวัน (มม. คั่นด้วย |)'],['wl_level5','สถานีน้ำระดับ 5'],['wl_level4','สถานีน้ำระดับ 4'],['wl_rising_critical','น้ำกำลังขึ้น'],['max_overbank_m','ล้นตลิ่งสูงสุด (ม.)'],['in_active_cap','ประกาศ TMD'],['cap_headlines','ประกาศ CAP'],['reasons','เหตุผล'],['forecast_source','แหล่งฝนพยากรณ์'],['run_at','รอบข้อมูล']];
+    const cell=v=>'"'+String(v??'').replace(/^[=+@-]/,"'$&").replace(/"/g,'""')+'"';
+    return '﻿'+[cols.map(c=>cell(c[1])).join(',')].concat(rows.map(r=>cols.map(c=>cell(r[c[0]])).join(','))).join('\r\n');
+  }
+
+  async function retry(button){
+    button.disabled=true;button.textContent='กำลังอ่าน…';
+    try{
+      if(typeof requestData!=='function')throw new Error('requestData unavailable');
+      for(const [name,key] of Object.entries(M.RISK_SOURCES)){
+        const next=await requestData(name,true);
+        if(next.sourceStatus?.[name]){data().sourceStatus[name]=next.sourceStatus[name];if(next.sourceStatus[name].status==='ok')data()[key]=next[key]}
+      }
+    }catch(e){console.warn('risk retry failed',e)}
+    render();
+  }
+
+  function bind(){
+    pane.querySelectorAll('[data-risk-sel]').forEach(b=>b.addEventListener('click',()=>choose(b.dataset.riskSel)));
+    pane.querySelectorAll('[data-risk-level]').forEach(b=>b.addEventListener('click',()=>{state.level=b.dataset.riskLevel;render();const t=pane.querySelector('.risk-all');if(t)t.open=true}));
+    const sel=$('riskProvince');if(sel)sel.addEventListener('change',()=>{state.province=sel.value;state.showAll=false;render()});
+    const more=pane.querySelector('[data-risk-more]');if(more)more.addEventListener('click',()=>{state.showAll=!state.showAll;render()});
+    const r=pane.querySelector('[data-risk-retry]');if(r)r.addEventListener('click',()=>retry(r));
+    const c=pane.querySelector('[data-risk-csv]');
+    if(c)c.addEventListener('click',()=>{
+      const u=URL.createObjectURL(new Blob([csv(M.riskRows(data().floodRisk))],{type:'text/csv;charset=utf-8'}));
+      const a=document.createElement('a');a.href=u;a.download='flood-risk.csv';a.click();setTimeout(()=>URL.revokeObjectURL(u),1000);
+    });
+  }
+
+  tab.addEventListener('click',open);
+  document.querySelectorAll('.tab').forEach(x=>{if(x!==tab)x.addEventListener('click',close)});
+  window.addEventListener('dashboard:data',()=>{if(isOpen)render()});
+})();
+
+</script>
