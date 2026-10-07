@@ -764,9 +764,10 @@ function finishRender(){
 }
 // Merge freshly read sources into DATA and rebuild the controls that depend on them.
 function applyReload(next,names){
+ const prevDates=uniq(DATA.disasters.map(r=>r.Report_Date.slice(0,10))).sort();
  for(const name of names){DATA[SOURCES[name]]=next[SOURCES[name]];DATA.sourceStatus[name]=next.sourceStatus[name]}
  DATA.loadedAt=next.loadedAt;indexSources();
- if(names.includes('Disaster_DB')){const dates=uniq(DATA.disasters.map(r=>r.Report_Date.slice(0,10))).sort();if(!dates.includes(state.date))state.date=dates.at(-1);opts('reportDate',dates);$('reportDate').value=state.date||''}
+ if(names.includes('Disaster_DB')){const dates=uniq(DATA.disasters.map(r=>r.Report_Date.slice(0,10))).sort();if(!dates.includes(state.date)||state.date===prevDates.at(-1))state.date=dates.at(-1);opts('reportDate',dates);$('reportDate').value=state.date||''}
  if(names.includes('Vulnerable_group')){opts('region',uniq(DATA.vulnerable.map(r=>r.region).filter(Boolean)),'ทุกเขตสุขภาพ');if(!Array.from($('region').options).some(o=>o.value===state.region))state.region='';$('region').value=state.region}
  opts('province',provinceNames(),'ทุกจังหวัด');if(!provinceNames().includes(state.province))state.province='';$('province').value=state.province;
  render();finishRender();
@@ -786,6 +787,8 @@ methodItems[3].textContent='กทม.: แสดงสถานีที่จ�
 methodItems[4].textContent='ศูนย์พักพิง: จำนวนศูนย์ เขต พิกัด และผู้พักเกินความจุคำนวณจาก Google Sheets ทุกครั้งที่โหลดหน้า';
 document.querySelector('#methods p.sub').textContent='อ่าน Google Sheets ผ่านเซิร์ฟเวอร์ทุกครั้งที่เปิดหรือรีเฟรชหน้า รอ Google Sheets บันทึกสำเร็จแล้วรีเฟรช เวลาข้อมูลต้นทางอาจเก่ากว่าเวลาที่อ่านไฟล์';
 render();
+// GitHub Pages build: the first paint used the published snapshot; now read the sheet itself and swap in what could be read.
+if(typeof upgradeLive==='function'){renderDataAge();upgradeLive().then(next=>{const ok=next?Object.keys(SOURCES).filter(n=>next.sourceStatus[n]?.status==='ok'):[];if(ok.length)applyReload(next,ok);else renderDataAge()}).catch(()=>renderDataAge())}
 // Optional page-scoped agent access uses the same visible navigation.
 if(document.modelContext?.registerTool){const lifecycle=new AbortController();try{Promise.resolve(document.modelContext.registerTool({name:'navigate_flood_dashboard',title:'เปิดมุมมองเฝ้าระวังน้ำ',description:'Switch the visible dashboard tab and optionally select a supported DDPM report date.',inputSchema:{type:'object',properties:{tab:{type:'string',enum:['national','bkk']},reportDate:{type:'string',enum:uniq(DATA.disasters.map(r=>r.Report_Date.slice(0,10)))}},required:['tab'],additionalProperties:false},annotations:{readOnlyHint:false,untrustedContentHint:true},execute(input){if(!input||!['national','bkk'].includes(input.tab)||Object.keys(input).some(k=>!['tab','reportDate'].includes(k))||(input.reportDate&&!uniq(DATA.disasters.map(r=>r.Report_Date.slice(0,10))).includes(input.reportDate)))throw new Error('Invalid dashboard selection');state.tab=input.tab;if(input.reportDate){state.date=input.reportDate;$('reportDate').value=state.date}render();return {tab:state.tab,reportDate:state.date,metrics:$('cards').innerText}}},{signal:lifecycle.signal})).catch(()=>{});window.addEventListener('pagehide',()=>lifecycle.abort(),{once:true})}catch{}}
 document.fonts?.ready.then(()=>{if(window.Chart)Object.values(Chart.instances).forEach(chart=>chart.update('none'));map?.invalidateSize({pan:true});shelterMap?.invalidateSize({pan:true})});
@@ -857,6 +860,8 @@ function renderDataAge(){
   ?(a.level==='ok'?'ข้อมูลอายุ <b>'+esc(a.text)+'</b> · ไฟล์สร้างเมื่อ '+esc(when)+' (หน้านี้แสดงไฟล์ที่สร้างตามรอบ ไม่ได้อ่านชีตสด)'
    :'<b>ข้อมูลอายุ '+esc(a.text)+'</b> (ไฟล์สร้างเมื่อ '+esc(when)+') — หน้านี้แสดงไฟล์ที่สร้างตามรอบ ไม่ได้อ่านชีตสด จึงอาจต่างจากชีตตอนนี้')
   :'ข้อมูลอ่านจากชีตเมื่อ '+esc(when)+' (อายุ '+esc(a.text)+')';
+ if(window.DATA_LIVE_PENDING===true)el.innerHTML+=' · <b>กำลังอ่านข้อมูลสดจากชีต…</b>';
+ else if(window.DATA_LIVE_ERROR===true&&snapshot)el.innerHTML+=' · อ่านชีตสดไม่สำเร็จ จึงใช้ไฟล์ที่เผยแพร่';
 }
 setInterval(()=>{try{renderDataAge()}catch(e){}},60000);
 
