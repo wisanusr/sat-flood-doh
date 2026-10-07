@@ -236,3 +236,6 @@ body,button,input,select,textarea,table,.leaflet-container,.leaflet-tooltip,.lea
 .situation .sit-facts{margin:0 0 4px}
 .situation-rule{margin:16px 0 0}
 @media(max-width:767px){.situation{padding:14px 16px}.situation-head{flex-direction:column}}
+
+/* Legend swatches for the water-trend hatching */
+.hatch-swatch{vertical-align:middle;margin-right:6px;flex:none}

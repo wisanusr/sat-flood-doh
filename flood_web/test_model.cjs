@@ -54,6 +54,9 @@ assert.equal(m.validCoordinates({latitude:91,longitude:100}),false);
   assert.deepEqual(lc.phases.map(p=>[p.key,p.index,p.level]),[['p1',25,'ต่ำ'],['p2',0,'ต่ำ'],['p3',null,null]]);
   assert.equal(lc.leading,'p1');assert.deepEqual(lc.phases[0].terms.map(t=>t.term),['a','b']);
   assert.equal(m.lifecycle({timeline:null,phases:[{key:'p',terms:['a']}]}),null);assert.equal(m.lifecycle(null),null);assert.equal(m.lifecycle({timeline:tl,phases:[]}),null);
+  // Trend hatching categories
+  assert.equal(m.trendKind('เพิ่มขึ้น'),'up');assert.equal(m.trendKind('ระดับน้ำเพิ่มขึ้น'),'up');assert.equal(m.trendKind(' ทรงตัว '),'steady');assert.equal(m.trendKind('ลดลง'),'down');
+  assert.equal(m.trendKind(''),null);assert.equal(m.trendKind(null),null);assert.equal(m.trendKind('ไม่ระบุ'),null);
   // Situation summary rules
   assert.equal(m.provinceLevel('เพิ่มขึ้น',2),'critical');assert.equal(m.provinceLevel('ระดับน้ำเพิ่มขึ้น',1),'critical');
   assert.equal(m.provinceLevel('เพิ่มขึ้น',0),'high');assert.equal(m.provinceLevel('ทรงตัว',5),'high');
