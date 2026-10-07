@@ -579,8 +579,8 @@ if (window.PROVINCES_GEOJSON) {
             layer.bindTooltip(`<b>${esc(prov)}</b><br>${!inScope?'นอกพื้นที่ที่เลือก':n===undefined?'ไม่มีข้อมูลครัวเรือนในวันที่เลือก':fmt(n)+' ครัวเรือน'}${trends.has(prov)?'<br>แนวโน้มระดับน้ำ: '+TREND_LABEL[trends.get(prov)]:''}<br>${date(state.date+'T00:00:00+07:00')}`);
         }
     }).addTo(layers);
-    // Solid colour by water-level trend (rising / steady / falling), drawn under the heatmap and the outlines; not interactive.
-    if ($('showTrendFill')?.checked && trends.size) L.geoJSON(window.PROVINCES_GEOJSON, {pane:'trendFill',interactive:false,filter:f=>trends.has(f.properties.pro_th),style:f=>({stroke:false,fill:true,fillColor:TREND_COLOR[trends.get(f.properties.pro_th)],fillOpacity:0.6})}).addTo(layers);
+    // Solid, fully opaque colour by water-level trend (rising / steady / falling): the same colours as the trend badges in the tables. Drawn under the heatmap and the outlines; not interactive.
+    if ($('showTrendFill')?.checked && trends.size) L.geoJSON(window.PROVINCES_GEOJSON, {pane:'trendFill',interactive:false,filter:f=>trends.has(f.properties.pro_th),style:f=>({stroke:false,fill:true,fillColor:TREND_COLOR[trends.get(f.properties.pro_th)],fillOpacity:1})}).addTo(layers);
 }
 // Legend sections follow their layers.
 document.querySelectorAll('.national-map-key .key-heat').forEach(e=>e.style.display=$('showWaterHeat').checked?'':'none');
