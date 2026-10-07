@@ -54,6 +54,13 @@ assert.equal(m.validCoordinates({latitude:91,longitude:100}),false);
   assert.deepEqual(lc.phases.map(p=>[p.key,p.index,p.level]),[['p1',25,'ต่ำ'],['p2',0,'ต่ำ'],['p3',null,null]]);
   assert.equal(lc.leading,'p1');assert.deepEqual(lc.phases[0].terms.map(t=>t.term),['a','b']);
   assert.equal(m.lifecycle({timeline:null,phases:[{key:'p',terms:['a']}]}),null);assert.equal(m.lifecycle(null),null);assert.equal(m.lifecycle({timeline:tl,phases:[]}),null);
+  // Vulnerable-group totals
+  const vrows=[{province:'ก',elderly:100,pregnant:10,children:50},{province:'ข',elderly:300,pregnant:null,children:150},{province:'ค',elderly:600,pregnant:30,children:null}];
+  const vt=m.vulnerableTotals(vrows,new Set(['ก','ข']));
+  assert.deepEqual(vt.all,{elderly:1000,pregnant:40,children:200});assert.deepEqual(vt.affected,{elderly:400,pregnant:10,children:200});
+  assert.deepEqual(vt.share,{elderly:40,pregnant:25,children:100});assert.equal(vt.provinces,3);assert.equal(vt.affectedProvinces,2);
+  const none=m.vulnerableTotals(vrows,new Set());assert.deepEqual(none.affected,{elderly:null,pregnant:null,children:null});assert.deepEqual(none.share,{elderly:null,pregnant:null,children:null});assert.equal(none.affectedProvinces,0);
+  const empty=m.vulnerableTotals([],new Set(['ก']));assert.deepEqual(empty.all,{elderly:null,pregnant:null,children:null});assert.equal(empty.provinces,0);assert.equal(m.vulnerableTotals(null,new Set()).provinces,0);
   // Trend hatching categories
   assert.equal(m.trendKind('เพิ่มขึ้น'),'up');assert.equal(m.trendKind('ระดับน้ำเพิ่มขึ้น'),'up');assert.equal(m.trendKind(' ทรงตัว '),'steady');assert.equal(m.trendKind('ลดลง'),'down');
   assert.equal(m.trendKind(''),null);assert.equal(m.trendKind(null),null);assert.equal(m.trendKind('ไม่ระบุ'),null);

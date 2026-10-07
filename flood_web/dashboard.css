@@ -269,3 +269,8 @@ body,button,input,select,textarea,table,.leaflet-container,.leaflet-tooltip,.lea
 .ic-numbers{position:relative;width:18px;height:18px;margin:-2px 3px;border:1.5px solid #334155;border-radius:50%;background:#fff;box-shadow:0 1px 3px #0003}
 .ic-numbers::after{content:"13";position:absolute;inset:0;display:grid;place-items:center;font:700 9px/1 var(--dashboard-font,inherit);color:#111827}
 .layer-bar-extra{margin-left:auto}
+
+/* Vulnerable-group totals box */
+#vulSummary{margin-bottom:18px}
+.vul-cards{grid-template-columns:repeat(3,minmax(0,1fr));margin:6px 0 0}
+@media(max-width:720px){.vul-cards{grid-template-columns:minmax(0,1fr)}}

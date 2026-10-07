@@ -65,7 +65,7 @@ function getReports(){return DATA.disasters.filter(r=>r.Report_Date.slice(0,10)=
 function render(){const bkk=state.tab==='bkk';$('workspace').classList.toggle('national-layout',!bkk);if(!bkk&&shelterLayers)shelterLayers.clearLayers();$('workspace').setAttribute('aria-labelledby',bkk?'tab-bkk':'tab-national');document.querySelectorAll('.tab').forEach(x=>x.setAttribute('aria-selected',String(x.dataset.tab===state.tab)));document.querySelectorAll('.national-filter').forEach(x=>x.classList.toggle('hidden',bkk));$('districtField').classList.toggle('hidden',!bkk);$('shelterMapPanel').classList.toggle('hidden',!bkk);
 $('shelterCards').classList.toggle('hidden',!bkk);
 $('allSheltersPanel').classList.toggle('hidden',!bkk);
-$('nationalVulPanel').classList.toggle('hidden', bkk);
+$('nationalVulPanel').classList.toggle('hidden', bkk);$('vulSummary').classList.toggle('hidden', bkk);
 $('bkkVulPanel').classList.toggle('hidden', !bkk);$('areaNote').classList.toggle('hidden',!bkk);$('shelterLegendReference').classList.toggle('hidden',bkk);$('pageTitle').textContent=bkk?'กรุงเทพมหานคร':'สถานการณ์น้ำและพื้นที่ได้รับผลกระทบ';$('pageSub').textContent=bkk?'ติดตามระดับน้ำ ความพร้อมศูนย์พักพิง และข้อมูลรายเขต':'ภาพรวมประเทศไทย รวมกรุงเทพมหานคร · เลือกพื้นที่เพื่อดูรายละเอียด';$('dateLabel').textContent='รายงาน ปภ. '+date(state.date+'T00:00:00+07:00');$('filterNote').textContent=bkk?'รายเขต: ใช้กับสถานีและศูนย์พักพิง':'วันรายงาน: ใช้กับข้อมูล ปภ. เท่านั้น';$('sourceName').innerHTML=link(DATA.sourceUrl,DATA.source);
  const all=getReports(),allowed=allowedProvinces(),reports=all.filter(r=>bkk?r.Province==='กรุงเทพมหานคร':allowed.includes(r.Province));
  currentStations=bkk?DATA.bkkStations.filter(r=>r.province==='กรุงเทพมหานคร'&&(!state.district||r.district_or_area===state.district)):nationalStations().filter(r=>allowed.includes(r.province));const activeShelterFilters=new Set(Array.from(document.querySelectorAll('.shelter-status-filter:checked')).map(el=>el.value)); currentShelters=bkk?DATA.shelters.filter(r=>(!state.district||r.district===state.district)&&activeShelterFilters.has(shelterStatusKey(r))):[];
@@ -129,7 +129,7 @@ renderMap();
 renderAreas();
 renderStations();
 renderShelterDetails();
-renderVulnerable();
+renderVulnerable();renderVulSummary();
 renderBkkVulChart();
 $('sideBody').classList.toggle('ddpm-summary',state.tab==='national');
 paginateTables();requestAnimationFrame(updateTableHints);
@@ -815,6 +815,20 @@ function renderBkkVulChart() {
             }
         });
     }
+}
+
+// Totals box above the vulnerable-group table: the whole selection and the provinces that have a flood report on the selected day.
+function renderVulSummary(){
+ const host=$('vulSummary');if(!host||state.tab==='bkk')return;
+ if(failed('Vulnerable_group')){host.innerHTML='<div class="panel-head"><div><h2>สรุปจำนวนกลุ่มเปราะบาง</h2></div></div><div class="panel-body"><p class="empty">โหลดฐานประชากรไม่สำเร็จ</p></div>';return}
+ const allowed=new Set(allowedProvinces()),rows=DATA.vulnerable.filter(r=>allowed.has(r.province));
+ const affected=new Set(getReports().filter(r=>allowed.has(r.Province)).map(r=>r.Province));
+ const t=DashboardModel.vulnerableTotals(rows,affected),scope=state.province||(state.region?state.region:'ทั้งประเทศ');
+ const groups=[['elderly','ผู้สูงอายุ 60 ปีขึ้นไป'],['pregnant','หญิงตั้งครรภ์'],['children','เด็กเล็ก 0–4 ปี']];
+ const note=k=>t.affectedProvinces?'ในจังหวัดที่ประสบภัย: <b>'+fmt(t.affected[k])+'</b> คน'+(t.share[k]==null?'':' ('+t.share[k].toFixed(1)+'%)'):'ไม่มีจังหวัดที่ประสบภัยในวันและพื้นที่ที่เลือก';
+ host.innerHTML='<div class="panel-head"><div><h2>สรุปจำนวนกลุ่มเปราะบาง</h2><p class="sub">'+esc(scope)+' · '+fmt(t.provinces)+' จังหวัด · ประสบภัย '+fmt(t.affectedProvinces)+' จังหวัด ('+(state.date?date(state.date+'T00:00:00+07:00'):'ไม่มีวันรายงาน')+')</p></div><span class="badge">ฐานประชากรทั้งจังหวัด</span></div>'
+  +'<div class="panel-body"><div class="cards vul-cards">'+groups.map(([k,label],i)=>card(label,t.all[k],'คน',note(k),i===0)).join('')+'</div>'
+  +'<p class="mini-note">จำนวนประชากรทั้งจังหวัดตามฐานข้อมูล ไม่ใช่จำนวนผู้ได้รับผลกระทบจริง · ร้อยละ = สัดส่วนของจังหวัดที่ประสบภัยต่อทั้งพื้นที่ที่เลือก</p></div>';
 }
 
 function renderVulnerable() {
