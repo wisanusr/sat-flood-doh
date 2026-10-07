@@ -11,4 +11,24 @@ assert.equal(m.districtSummary([],q).label,'ไม่มีสถานีใน
 assert.equal(m.districtSummary([{station_id:'a',observed_at_th:'2026-10-01T00:00:00+07:00',flood_status_source:'วิกฤต'}],q).label,'ไม่มีข้อมูลล่าสุดภายใน 24 ชั่วโมง');
 assert.equal(m.districtSummary([{station_id:'a',observed_at_th:loaded,flood_status_source:'วิกฤติ'},{station_id:'b',observed_at_th:loaded,flood_status_source:'ล้นตลิ่ง'}],q).status,'ล้นตลิ่ง');
 assert.equal(m.validCoordinates({latitude:91,longitude:100}),false);
-console.log('PASS: household boundaries, freshness, missing/zero totals, district severity, coordinates');
+// News tab rules
+{
+  const arts=[{title:'น้ำท่วมกรุงเทพ',source:'มติชน',urgency:'critical',province:'กรุงเทพมหานคร'},{title:'ฟื้นฟูหลังน้ำลด',source:'Thai PBS',urgency:'recovery',province:'ภาพรวมประเทศ'},{title:'เตือนฝนตกหนัก',source:'มติชน',urgency:'warning',province:'กรุงเทพมหานคร'}];
+  assert.equal(m.newsArticles(arts,{}).length,3);
+  assert.deepEqual(m.newsArticles(arts,{urgency:'critical'}).map(a=>a.title),['น้ำท่วมกรุงเทพ']);
+  assert.equal(m.newsArticles(arts,{province:'กรุงเทพมหานคร'}).length,2);
+  assert.equal(m.newsArticles(arts,{query:'thai pbs'}).length,1);
+  assert.equal(m.newsArticles(arts,{urgency:'warning',province:'ภาพรวมประเทศ'}).length,0);
+  assert.equal(m.newsArticles(null,{}).length,0);
+  assert.deepEqual(m.newsProvinces(arts)[0],{province:'กรุงเทพมหานคร',count:2});
+  assert.deepEqual(m.newsUrgencyCounts(arts),{critical:1,warning:1,recovery:1});
+  const doc={word_freq:{th:{เขื่อน:9,ฝน:4,ตัว:7},en:{dam:3}},tfidf_scores:{th:{เขื่อน:2,ฝน:3,ตัว:1}},word_categories:{เขื่อน:'monitoring',ฝน:'monitoring'}};
+  assert.deepEqual(m.newsWords(doc,'th','',0).map(r=>r.word),['ฝน','เขื่อน','ตัว']);
+  assert.deepEqual(m.newsWords(doc,'th','monitoring',1).map(r=>r.word),['ฝน']);
+  assert.equal(m.newsWords(doc,'th','',0).find(r=>r.word==='ตัว').category,'general');
+  assert.deepEqual(m.newsWords(doc,'en','monitoring',0),[]);
+  assert.equal(m.newsWords(null,'th','',0).length,0);
+  assert.equal(m.safeUrl('javascript:alert(1)'),'');assert.equal(m.safeUrl('//evil'),'');assert.equal(m.safeUrl('https://example.com/a'),'https://example.com/a');
+  assert.equal(m.ageLabel(0.1),'6 นาทีที่แล้ว');assert.equal(m.ageLabel(5),'5 ชั่วโมงที่แล้ว');assert.equal(m.ageLabel(72),'3 วันที่แล้ว');assert.equal(m.ageLabel(null),'ไม่ระบุเวลา');
+}
+console.log('PASS: household boundaries, freshness, missing/zero totals, district severity, coordinates, news filters');

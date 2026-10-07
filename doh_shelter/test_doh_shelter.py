@@ -1,0 +1,175 @@
+"""Tests for build_doh_shelter.py (synthetic sheet, no network): python doh_shelter/test_doh_shelter.py"""
+import csv, io, sys, unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import build_doh_shelter as B
+
+KEYS = ['c%d' % i for i in range(32)] + B.required_keys()
+
+
+def sheet(rows, keys=KEYS):
+    """rows: list of dicts using B.POS names, 'hazard' and question keys."""
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(['th'] * len(keys))
+    w.writerow(keys)
+    for r in rows:
+        line = [''] * len(keys)
+        for name, i in B.POS.items():
+            line[i] = str(r.get(name, ''))
+        line[31] = r.get('hazard', 'อุทกภัย')
+        for k, v in r.items():
+            if k in keys[32:]:
+                line[keys.index(k)] = v
+        w.writerow(line)
+    return buf.getvalue()
+
+
+def row(**kw):
+    base = {'shelter_id': 'S1', 'assess_date': '2026-10-05', 'name': 'A', 'province': 'ราชบุรี', 'lat': '13.9', 'lon': '99.7'}
+    base.update(kw)
+    return base
+
+
+class DateTests(unittest.TestCase):
+    def test_formats(self):
+        self.assertEqual(B.to_date('2569-10-03'), '2026-10-03')
+        self.assertEqual(B.to_date('2026-10-05'), '2026-10-05')
+        self.assertEqual(B.to_date('3/10/2569'), '2026-10-03')
+        self.assertEqual(B.to_date('30/9/2569'), '2026-09-30')
+        self.assertEqual(B.to_date('2026-10-04 9:36:22'), '2026-10-04')
+
+    def test_invalid(self):
+        self.assertEqual(B.to_date(''), '')
+        self.assertEqual(B.to_date('31/2/2569'), '')
+        self.assertEqual(B.to_date('abc'), '')
+
+
+class CleanTests(unittest.TestCase):
+    def test_skips_rows_without_id_and_bad_coords(self):
+        recs = B.clean_sheet(sheet([row(), row(shelter_id=''), row(shelter_id='S2', lat='0', lon='0'),
+                                    row(shelter_id='S3', lat='', lon='')]))
+        self.assertEqual([r['shelter_id'] for r in recs], ['S1', 'S2', 'S3'])
+        self.assertEqual(recs[0]['lat'], 13.9)
+        self.assertIsNone(recs[1]['lat'])
+        self.assertIsNone(recs[2]['lon'])
+
+    def test_numbers(self):
+        r = B.clean_sheet(sheet([row(occupants='1,200', capacity='abc')]))[0]
+        self.assertEqual(r['occupants'], 1200)
+        self.assertIsNone(r['capacity'])
+
+    def test_missing_column_fails_loudly(self):
+        keys = [k for k in KEYS if k != 'Q01_Result']
+        with self.assertRaisesRegex(ValueError, 'Q01_Result'):
+            B.clean_sheet(sheet([row()], keys))
+
+    def test_no_reporter_name_published(self):
+        r = B.clean_sheet(sheet([row()]))[0]
+        self.assertNotIn('reporter', r)
+
+
+class GradeTests(unittest.TestCase):
+    def lv(self, **answers):
+        return B.grade(answers)
+
+    def test_two_level_item(self):  # ส้วมเพียงพอ: ใช่=ดี ไม่ใช่=พอใช้
+        self.assertEqual(self.lv(Q01_Result='ใช่')['levels']['Q01_Result'], B.GOOD)
+        self.assertEqual(self.lv(Q01_Result='ไม่ใช่')['levels']['Q01_Result'], B.FAIR)
+
+    def test_item_whose_no_is_poor(self):  # ส้วมสะอาด: ไม่ใช่=ต้องปรับปรุง
+        self.assertEqual(self.lv(Q01_Cleanliness='ไม่ใช่')['levels']['Q01_Cleanliness'], B.POOR)
+
+    def test_inverted_item(self):  # ไม่พบน้ำเสีย: ถามเป็น "พบปัญหา" ใช่=ต้องปรับปรุง
+        self.assertEqual(self.lv(Q08_Result='ไม่ใช่')['levels']['Q08_Result'], B.GOOD)
+        self.assertEqual(self.lv(Q08_Result='ใช่')['levels']['Q08_Result'], B.POOR)
+
+    def test_garbage_accumulation_levels(self):
+        f = lambda v: self.lv(Q09_Level=v)['levels']['Q09_Level']
+        self.assertEqual(f('ไม่มีมูลฝอยสะสม'), B.GOOD)
+        self.assertEqual(f('ปริมาณเล็กน้อย (ยังไม่ส่งผลกระทบ)'), B.FAIR)
+        self.assertEqual(f('สะสมมาก'), B.POOR)
+        self.assertIsNone(f(''))
+
+    def test_blank_and_unknown_answers_have_no_level(self):
+        g = self.lv(Q01_Result='', Q12_Result='ไม่แน่ใจ')
+        self.assertIsNone(g['levels']['Q01_Result'])
+        self.assertIsNone(g['levels']['Q12_Result'])
+
+    def test_dimension_is_worst_answered_item(self):
+        g = self.lv(Q01_Result='ใช่', Q01_Cleanliness='ไม่ใช่', Q03_Soap_Result='ไม่ใช่')
+        self.assertEqual(g['dim_levels'][1], B.POOR)
+        g = self.lv(Q01_Result='ใช่', Q03_Soap_Result='ไม่ใช่')
+        self.assertEqual(g['dim_levels'][1], B.FAIR)
+
+    def test_shelter_is_worst_dimension_and_unmeasured_dimension_ignored(self):
+        g = self.lv(Q01_Result='ใช่', Q12_Result='ไม่ใช่')
+        self.assertIsNone(g['dim_levels'][6])  # no sheet columns for มิติ 6
+        self.assertEqual(g['level'], B.FAIR)
+        self.assertEqual(self.lv(Q01_Result='ใช่', Q12_Result='ใช่')['level'], B.GOOD)
+
+    def test_nothing_answered(self):
+        g = self.lv()
+        self.assertIsNone(g['level'])
+        self.assertIsNone(g['score']['p'])
+
+    def test_share_of_good_items(self):
+        g = self.lv(Q01_Result='ใช่', Q03_Soap_Result='ไม่ใช่', Q01_Cleanliness='')
+        self.assertEqual(g['score'], {'y': 1, 'n': 2, 'p': 50})
+
+    def test_record_gets_grade(self):
+        r = B.clean_sheet(sheet([row(Q01_Result='ใช่', Q01_Cleanliness='ไม่ใช่')]))[0]
+        self.assertEqual(r['level'], B.POOR)
+        self.assertEqual(r['score']['n'], 2)
+
+    def test_every_criteria_column_is_required(self):
+        self.assertTrue({k for _, k, _, _ in B.CRITERIA} <= set(B.required_keys()))
+
+
+class LatestTests(unittest.TestCase):
+    def test_latest_by_date_across_calendars(self):
+        recs = B.clean_sheet(sheet([row(assess_date='2569-10-03'), row(assess_date='2026-10-06'), row(assess_date='2026-10-02')]))
+        self.assertEqual([r['is_latest'] for r in recs], [False, True, False])
+
+    def test_tie_later_row_wins(self):
+        recs = B.clean_sheet(sheet([row(), row()]))
+        self.assertEqual([r['is_latest'] for r in recs], [False, True])
+
+    def test_one_latest_per_shelter(self):
+        recs = B.clean_sheet(sheet([row(), row(shelter_id='S2'), row(assess_date='2026-10-07')]))
+        self.assertEqual(sum(r['is_latest'] for r in recs), 2)
+
+
+class AnnotateTests(unittest.TestCase):
+    TODAY = __import__('datetime').date(2026, 10, 7)
+
+    def one(self, **kw):
+        recs = B.clean_sheet(sheet([row(status='เปิดให้บริการ', **kw)]))
+        B.annotate(recs, self.TODAY)
+        return recs[0]
+
+    def test_poor_fair_and_priority(self):
+        r = self.one(assess_date='2026-10-07', Q01_Cleanliness='ไม่ใช่', Q08_Result='ใช่', Q03_Soap_Result='ไม่ใช่', Q01_Result='ใช่')
+        self.assertEqual(r['poor'], ['ห้องส้วมสะอาด', 'ไม่พบน้ำเสีย/น้ำเอ่อล้น'])
+        self.assertEqual(r['fair'], ['มีสบู่ล้างมือ'])
+        self.assertEqual(r['age_days'], 0)
+        self.assertFalse(r['stale'])
+        self.assertEqual(r['priority'], 40 * 2 + 10)
+
+    def test_stale_only_when_open(self):
+        self.assertTrue(self.one(assess_date='2026-10-03')['stale'])
+        self.assertFalse(self.one(assess_date='2026-10-05')['stale'])
+        closed = B.clean_sheet(sheet([row(status='ปิดให้บริการ', assess_date='2026-09-01')]))
+        B.annotate(closed, self.TODAY)
+        self.assertFalse(closed[0]['stale'])
+
+    def test_missing_date_is_stale(self):
+        r = self.one(assess_date='')
+        self.assertIsNone(r['age_days'])
+        self.assertTrue(r['stale'])
+        self.assertEqual(r['priority'], 10)
+
+
+if __name__ == '__main__':
+    unittest.main()

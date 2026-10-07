@@ -30,6 +30,21 @@ def include(match):
 
 html = (ROOT / 'Index.html').read_text(encoding='utf-8')
 html = re.sub(r"<\?!= include_\('(\w+)'\); \?>", include, html)
+# Fill the pages-only slots (news tab) that build.py left in Index.html from flood_web/template.html.
+PAGES_ONLY = re.compile(r'<!--@pages-only-begin-->(.*?)<!--@pages-only-end-->', re.S)
+blocks = PAGES_ONLY.findall((ROOT / 'flood_web' / 'template.html').read_text(encoding='utf-8'))
+for i, block in enumerate(blocks):
+    assert html.count('<!--@pages-slot-%d-->' % i) == 1, 'pages-only slot %d missing in Index.html (run build.py)' % i
+    html = html.replace('<!--@pages-slot-%d-->' % i, block)
+assert '@pages-slot' not in html and blocks, 'unfilled pages-only slot'
+NEWS_TAG = '<script src="/news-view.js"></script>'
+assert html.count(NEWS_TAG) == 1
+news_js = (ROOT / 'flood_web' / 'news-view.js').read_text(encoding='utf-8').replace('</', '<\\/')
+html = html.replace(NEWS_TAG, '<script>\n' + news_js + '\n</script>')
+DOH_TAG = '<script src="/shelter-doh-view.js"></script>'
+assert html.count(DOH_TAG) == 1
+doh_js = (ROOT / 'flood_web' / 'shelter-doh-view.js').read_text(encoding='utf-8').replace('</', '<\\/')
+html = html.replace(DOH_TAG, '<script>\n' + doh_js + '\n</script>')
 html = html.replace('id="refreshData" type="button">', 'id="refreshData" type="button" title="โหลดข้อมูลชุดล่าสุดที่เผยแพร่ (อัปเดตทุก 30 นาที)">', 1)
 assert '<?!=' not in html and 'google.script.run.with' not in html, 'Unconverted Apps Script code'
 assert 'function requestData' in html and 'requestDashboard' not in html, 'Request bridge not converted'

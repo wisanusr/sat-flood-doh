@@ -165,11 +165,26 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_header('Content-Length', str(len(body)))
             self.end_headers()
             self.wfile.write(body)
-        elif route in ('/', '/index.html', '/dashboard.css', '/dashboard.js', '/data-model.js', '/thai_provinces.json', '/bkk_districts.geojson', '/regions.geojson'):
+        elif route in ('/', '/index.html', '/dashboard.css', '/dashboard.js', '/data-model.js', '/news-view.js', '/shelter-doh-view.js', '/thai_provinces.json', '/bkk_districts.geojson', '/regions.geojson'):
             # template.html is the single source of the page (build.py reads it too); no separate index.html copy.
             if route in ('/', '/index.html'): self.path = '/template.html'
             super().do_GET()
+        elif route in DOCS_FILES:
+            # Pages-only data written by CI scripts into docs/ (run the news/ and doh_shelter/ scripts to refresh).
+            f = DOCS_DIR / DOCS_FILES[route]
+            if not f.is_file(): self.send_error(404); return
+            body = f.read_bytes()
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Content-Length', str(len(body)))
+            self.send_header('Cache-Control', 'no-store')
+            self.end_headers()
+            self.wfile.write(body)
         else: self.send_error(404)
+
+DOCS_DIR = Path(__file__).resolve().parent.parent / 'docs'
+DOCS_FILES = {'/doh_shelter.json': 'doh_shelter.json', '/news_data/news.json': 'news_data/news.json',
+              '/news_data/trends.json': 'news_data/trends.json', '/news_data/flood_extent.json': 'news_data/flood_extent.json'}
 
 class DashboardServer(ThreadingHTTPServer):
     allow_reuse_address = False
