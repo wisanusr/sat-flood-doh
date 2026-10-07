@@ -134,7 +134,7 @@ renderBkkVulChart();
 $('sideBody').classList.toggle('ddpm-summary',state.tab==='national');
 paginateTables();requestAnimationFrame(updateTableHints);
 if(state.tab === 'bkk') $('bkkVulPanel').classList.remove('hidden');
-renderSourceStatus();updateAlert();renderSituation();
+renderSourceStatus();updateAlert();renderSituation();renderDataAge();
 if(state.tab==='bkk'){refitIfResized(map);refitIfResized(shelterMap)}
 }
 
@@ -832,6 +832,22 @@ function renderBkkVulChart() {
         });
     }
 }
+
+// How old is what the page shows? The GitHub Pages build serves a snapshot (data.json) rebuilt by GitHub Actions on a schedule
+// that GitHub does not guarantee, so say so instead of letting it pass as live data. Uses the oldest sheet read time.
+function renderDataAge(){
+ const el=$('dataAge');if(!el)return;
+ const times=Object.values(DATA.sourceStatus||{}).filter(s=>s.status==='ok'&&s.loadedAt).map(s=>s.loadedAt).sort(),loaded=times[0]||DATA.loadedAt;
+ const a=DashboardModel.dataAge(loaded,Date.now());
+ if(!a){el.style.display='none';return}
+ const snapshot=window.DATA_IS_SNAPSHOT===true,when=time(loaded);
+ el.style.display='';el.className='data-age age-'+a.level;
+ el.innerHTML=snapshot
+  ?(a.level==='ok'?'ข้อมูลอายุ <b>'+esc(a.text)+'</b> · ไฟล์สร้างเมื่อ '+esc(when)+' (หน้านี้แสดงไฟล์ที่สร้างตามรอบ ไม่ได้อ่านชีตสด)'
+   :'<b>ข้อมูลอายุ '+esc(a.text)+'</b> (ไฟล์สร้างเมื่อ '+esc(when)+') — หน้านี้แสดงไฟล์ที่สร้างตามรอบ ไม่ได้อ่านชีตสด จึงอาจต่างจากชีตตอนนี้')
+  :'ข้อมูลอ่านจากชีตเมื่อ '+esc(when)+' (อายุ '+esc(a.text)+')';
+}
+setInterval(()=>{try{renderDataAge()}catch(e){}},60000);
 
 // Totals box above the vulnerable-group table: the whole selection and the provinces that have a flood report on the selected day.
 function renderVulSummary(){

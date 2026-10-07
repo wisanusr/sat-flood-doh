@@ -80,6 +80,12 @@
     const all=tot(rows||[]),aff=tot(hit);
     return {all,affected:aff,share:Object.fromEntries(keys.map(k=>[k,all[k]>0&&aff[k]!=null?aff[k]/all[k]*100:null])),provinces:new Set((rows||[]).map(r=>r.province)).size,affectedProvinces:new Set(hit.map(r=>r.province)).size};
   }
+  // Age of the data the page is showing (ISO load time vs `now` in ms): ok <= 60 min, warn <= 180 min, bad beyond.
+  function dataAge(loadedAt,now){
+    const t=timestamp(loadedAt);if(!Number.isFinite(t)||!Number.isFinite(now))return null;
+    const min=Math.max(0,Math.floor((now-t)/60000));
+    return {minutes:min,level:min<=60?'ok':min<=180?'warn':'bad',text:min<60?min+' นาที':Math.floor(min/60)+' ชม. '+(min%60)+' นาที'};
+  }
   const regionNumber=label=>{const m=String(label??'').match(/\d+/);return m?Number(m[0]):null};
   function situationGroups(reports,regionOf,criticalOf){
     const out={critical:new Map(),high:new Map(),stabilizing:new Map(),unknown:new Map()};
@@ -92,6 +98,6 @@
     for(const [level,m] of Object.entries(out))res[level]=Array.from(m,([region,items])=>({region,number:regionNumber(region),items:items.sort((a,b)=>(b.households??-1)-(a.households??-1)||a.province.localeCompare(b.province,'th'))})).sort((a,b)=>(a.number??999)-(b.number??999)||a.region.localeCompare(b.region,'th'));
     return res;
   }
-  const model={vulnerableTotals,trendKind,provinceLevel,situationGroups,regionNumber,timelineDaily,termWindows,lifecycle,trendLevel,newsRising,newsTopRegions,newsTopByCount,sourceInitial,growthValue,newsArticles,newsProvinces,newsUrgencyCounts,newsWords,ageLabel,safeUrl,URGENCY,NEWS_CATEGORIES,latestStationDay,SOURCES,WATER_STATUS,canonicalWaterStatus,timestamp,sum,quality,householdBorderColor,validCoordinates,districtSummary};
+  const model={dataAge,vulnerableTotals,trendKind,provinceLevel,situationGroups,regionNumber,timelineDaily,termWindows,lifecycle,trendLevel,newsRising,newsTopRegions,newsTopByCount,sourceInitial,growthValue,newsArticles,newsProvinces,newsUrgencyCounts,newsWords,ageLabel,safeUrl,URGENCY,NEWS_CATEGORIES,latestStationDay,SOURCES,WATER_STATUS,canonicalWaterStatus,timestamp,sum,quality,householdBorderColor,validCoordinates,districtSummary};
   if(typeof module!=='undefined')module.exports=model;else root.DashboardModel=model;
 })(typeof window!=='undefined'?window:globalThis);

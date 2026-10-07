@@ -17,7 +17,7 @@ def read(name):
     return (ROOT / (name + '.html')).read_text(encoding='utf-8')
 
 BRIDGE = re.compile(r'/\*@bridge-begin\*/.*?/\*@bridge-end\*/', re.S)
-bridge_new = ("async function requestData(){const r=await fetch('data.json',{cache:'no-store'});"
+bridge_new = ("window.DATA_IS_SNAPSHOT=true;async function requestData(){const r=await fetch('data.json',{cache:'no-store'});"
               "if(!r.ok)throw new Error('HTTP '+r.status);return r.json();}")
 
 def include(match):

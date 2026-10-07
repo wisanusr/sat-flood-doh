@@ -54,6 +54,13 @@ assert.equal(m.validCoordinates({latitude:91,longitude:100}),false);
   assert.deepEqual(lc.phases.map(p=>[p.key,p.index,p.level]),[['p1',25,'ต่ำ'],['p2',0,'ต่ำ'],['p3',null,null]]);
   assert.equal(lc.leading,'p1');assert.deepEqual(lc.phases[0].terms.map(t=>t.term),['a','b']);
   assert.equal(m.lifecycle({timeline:null,phases:[{key:'p',terms:['a']}]}),null);assert.equal(m.lifecycle(null),null);assert.equal(m.lifecycle({timeline:tl,phases:[]}),null);
+  // Data age banner
+  const T0=Date.parse('2026-10-07T00:00:00Z');
+  assert.deepEqual(m.dataAge('2026-10-07T00:00:00Z',T0+5*60000),{minutes:5,level:'ok',text:'5 นาที'});
+  assert.deepEqual(m.dataAge('2026-10-07T00:00:00Z',T0+60*60000),{minutes:60,level:'ok',text:'1 ชม. 0 นาที'});
+  assert.equal(m.dataAge('2026-10-07T00:00:00Z',T0+61*60000).level,'warn');assert.equal(m.dataAge('2026-10-07T00:00:00Z',T0+180*60000).level,'warn');
+  assert.deepEqual(m.dataAge('2026-10-07T00:00:00Z',T0+336*60000),{minutes:336,level:'bad',text:'5 ชม. 36 นาที'});
+  assert.equal(m.dataAge('2026-10-07T00:00:00Z',T0-60000).minutes,0);assert.equal(m.dataAge(null,T0),null);assert.equal(m.dataAge('x',T0),null);assert.equal(m.dataAge('2026-10-07T00:00:00.516Z',T0+60000).minutes,0);
   // Vulnerable-group totals
   const vrows=[{province:'ก',elderly:100,pregnant:10,children:50},{province:'ข',elderly:300,pregnant:null,children:150},{province:'ค',elderly:600,pregnant:30,children:null}];
   const vt=m.vulnerableTotals(vrows,new Set(['ก','ข']));
