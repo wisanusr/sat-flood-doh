@@ -390,5 +390,12 @@ details.risk-all[open]>summary::before{content:"▾"}
 .doh-trend-card{display:flex;align-items:center;gap:12px;color:#fff;border:0}
 .doh-trend-card svg{flex:none}.doh-trend-label{font-size:18px;font-weight:700;line-height:1.2}
 .doh-trend-num{font-size:clamp(28px,3vw,40px);font-weight:800;line-height:1.1}.doh-trend-num span{font-size:.6em}
+/* Screenshot button next to the definitions button; not shown on the news, flood-prep and DOH tabs */
+.subnav-actions{display:flex;gap:8px;align-items:center}
+.subnav-actions .lightbtn:disabled{opacity:.6;cursor:progress}
+.news-mode #shotBtn,.risk-mode #shotBtn,.doh-mode #shotBtn{display:none}
+@media(max-width:767px){.subnav-actions{margin-bottom:8px}}
+.layer-chip .chip-text{white-space:nowrap}
+.data-age .age-basis{margin-top:3px;font-size:12.5px;opacity:.9}
 
 </style>

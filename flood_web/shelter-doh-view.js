@@ -27,7 +27,9 @@
     const geo=window.PROVINCES_GEOJSON?Promise.resolve(window.PROVINCES_GEOJSON):getJson('/thai_provinces.json').catch(()=>null);
     const regions=window.HEALTH_REGIONS_GEOJSON?Promise.resolve(window.HEALTH_REGIONS_GEOJSON):getJson('/regions.geojson').catch(()=>null);
     loading=Promise.all([getJson('doh_shelter.json'),ddpmRows,geo,regions]).then(([d,rows,g,hr])=>{
-      P=rows&&rows.length?rows:null;PG=g&&g.features?g:null;HR=hr&&hr.features?hr:null;
+      // data.json can hold several snapshots of one report row (the importers append): keep the newest, as dashboard.js does, so households are not added twice.
+      const M=window.DashboardModel;
+      P=rows&&rows.length?(M&&M.latestPerKey?M.latestPerKey(rows,r=>[String(r.Report_Date||'').slice(0,10),r.Province,r.Disaster_Type].join('|'),M.disasterTime):rows):null;PG=g&&g.features?g:null;HR=hr&&hr.features?hr:null;
       D=d;latest=d.records.filter(r=>r.is_latest);byShelter=new Map();
       d.records.forEach(r=>{(byShelter.get(r.shelter_id)||byShelter.set(r.shelter_id,[]).get(r.shelter_id)).push(r)});
       byShelter.forEach(a=>a.sort((x,y)=>(x.assess_date||'').localeCompare(y.assess_date||'')));

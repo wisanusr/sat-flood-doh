@@ -5,7 +5,7 @@ if(window.Chart)Chart.defaults.font.family="'Google Sans', Tahoma, sans-serif";
 document.getElementById('pageTitle').textContent='กำลังอ่านข้อมูลจาก Google Sheets…';
 const DATA=await requestData();
 if(!DATA.sourceStatus)throw new Error(DATA.error||'รูปแบบข้อมูลจากเซิร์ฟเวอร์ไม่ถูกต้อง');
-const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),fmt=v=>typeof v==='number'&&Number.isFinite(v)?v.toLocaleString('th-TH'):'ไม่มีข้อมูล',sum=DashboardModel.sum,uniq=a=>[...new Set(a)],date=v=>!v||String(v).startsWith('undefined')?'ไม่มีวันรายงาน':new Date(v).toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'numeric',timeZone:'Asia/Bangkok'}),time=v=>v?new Date(v).toLocaleString('th-TH',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Bangkok'}):'ไม่ทราบเวลาข้อมูล';
+const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),fmt=v=>typeof v==='number'&&Number.isFinite(v)?v.toLocaleString('th-TH'):'ไม่มีข้อมูล',sum=DashboardModel.sum,uniq=a=>[...new Set(a)],date=v=>!v||String(v).startsWith('undefined')?'ไม่มีวันรายงาน':new Date(v).toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'numeric',timeZone:'Asia/Bangkok'}),time=v=>v?new Date(Number.isFinite(DashboardModel.timestamp(v))?DashboardModel.timestamp(v):v).toLocaleString('th-TH',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Bangkok'}):'ไม่ทราบเวลาข้อมูล';
 const districts='คลองสาน คลองสามวา คลองเตย คันนายาว จตุจักร จอมทอง ดอนเมือง ดินแดง ดุสิต ตลิ่งชัน ทวีวัฒนา ทุ่งครุ ธนบุรี บางกอกน้อย บางกอกใหญ่ บางกะปิ บางขุนเทียน บางคอแหลม บางซื่อ บางนา บางบอน บางพลัด บางรัก บางเขน บางแค บึงกุ่ม ปทุมวัน ประเวศ ป้อมปราบศัตรูพ่าย พญาไท พระนคร พระโขนง ภาษีเจริญ มีนบุรี ยานนาวา ราชเทวี ราษฎร์บูรณะ ลาดกระบัง ลาดพร้าว วังทองหลาง วัฒนา สวนหลวง สะพานสูง สัมพันธวงศ์ สาทร สายไหม หนองจอก หนองแขม หลักสี่ ห้วยขวาง'.split(' ');
 const {SOURCES,validCoordinates}=DashboardModel;
 const rowSources=new WeakMap();
@@ -14,25 +14,12 @@ function indexSources(){
     
     // Trend labels differ across report days ("ระดับน้ำเพิ่มขึ้น" vs "เพิ่มขึ้น"); keep one form.
     for (const r of DATA.disasters || []) if (typeof r.Water_Level_Trend === 'string') r.Water_Level_Trend = r.Water_Level_Trend.replace(/^ระดับน้ำ/, '').trim();
-    // Deduplicate stations by id (names repeat across provinces) keeping the latest
-    function dedup(arr) {
-        const map = new Map();
-        for (const r of arr) {
-            const key = r.station_id || r.station_name;
-            if (!key) continue;
-            if (!map.has(key)) {
-                map.set(key, r);
-            } else {
-                const existing = map.get(key);
-                const t1 = new Date(r.observed_at_th || r.updated_at_source || r.Ingested_At).getTime() || 0;
-                const t2 = new Date(existing.observed_at_th || existing.updated_at_source || existing.Ingested_At).getTime() || 0;
-                if (t1 > t2) {
-                    map.set(key, r);
-                }
-            }
-        }
-        return Array.from(map.values());
-    }
+    // Several snapshots of one record (the importers append): keep the newest, comparing times as real instants (see DashboardModel.latestPerKey).
+    // Stations by id (names repeat across provinces); a report row by day + province + disaster type; a shelter by id.
+    const ts = DashboardModel.timestamp;
+    function dedup(arr) { return DashboardModel.latestPerKey(arr.filter(r => r.station_id || r.station_name), r => r.station_id || r.station_name, r => ts(r.observed_at_th || r.updated_at_source || r.Ingested_At)); }
+    if (DATA.disasters) DATA.disasters = DashboardModel.latestPerKey(DATA.disasters, r => [String(r.Report_Date || '').slice(0, 10), r.Province, r.Disaster_Type].join('|'), DashboardModel.disasterTime);
+    if (DATA.shelters) DATA.shelters = DashboardModel.latestPerKey(DATA.shelters, r => r.shelter_id, r => { const f = ts(r.fetched_at_th); return Number.isFinite(f) ? f : ts(r.updated_at_source); });
     if (DATA.stations) DATA.stations = dedup(DATA.stations);
     if (DATA.bkkStations) DATA.bkkStations = dedup(DATA.bkkStations);
     // BMA sheet also lists canal stations just outside Bangkok; their province is only in the area name (e.g. "อำเภอเมืองปทุมธานี").
@@ -266,8 +253,8 @@ function renderStations(){
     const rankA = WATER_STATUS[sa]?.rank || 0;
     const rankB = WATER_STATUS[sb]?.rank || 0;
     if (rankA !== rankB) return rankB - rankA;
-    const timeA = new Date(a.observed_at_th || a.updated_at_source || a.Ingested_At).getTime() || 0;
-    const timeB = new Date(b.observed_at_th || b.updated_at_source || b.Ingested_At).getTime() || 0;
+    const timeA = timestamp(a.observed_at_th || a.updated_at_source || a.Ingested_At) || 0;
+    const timeB = timestamp(b.observed_at_th || b.updated_at_source || b.Ingested_At) || 0;
     return timeB - timeA;
   });$('stationSub').textContent=`${latest.day?'เฉพาะวันที่ตรวจวัดล่าสุด '+date(latest.day+'T00:00:00+07:00'):'ไม่มีข้อมูลตรวจวัดที่ระบุเวลาได้'} · ${fmt(rows.length)} สถานีในพื้นที่เลือก · ใช้รายการล่าสุดของแต่ละสถานีในวันนั้น ไม่รวมวันอื่น · ระดับน้ำเป็นเมตร รทก. ไม่ใช่ความลึกน้ำท่วม · ไม่รวมสถานีขัดข้อง/ไม่ทราบสถานะ ${fmt(state.tab==='bkk'?DATA.excludedStations.bkk:DATA.excludedStations.national)} แห่ง`;$('stationTable').innerHTML=table(['สถานี',state.tab==='bkk'?'เขต':'พื้นที่','ระดับน้ำ (ม. รทก.)','สถานะต้นทาง','เวลาตรวจวัด'],rows.map(r=>[esc(r.station_name),esc(r.district_or_area),typeof r.water_in_m_msl==='number'?r.water_in_m_msl.toFixed(2):'ไม่มีข้อมูล',statusBadge(r.flood_status_source),time(r.observed_at_th)]));paginateTables();}
 function sourceLinks(rows,label){const urls=uniq(rows.map(r=>r.source_url).filter(Boolean));return 'ที่มา: '+esc(label)+(urls.length?' · '+urls.map((u,i)=>link(u,urls.length===1?'เปิดแหล่งข้อมูล':'แหล่งข้อมูล '+(i+1))).join(' '):' · ไม่มีลิงก์ต้นทางในข้อมูลพื้นที่ที่เลือก')}
@@ -328,7 +315,7 @@ function renderShelterMap(){
  shelterMap.invalidateSize();
  if(shelterScope!==state.district){shelterScope=state.district;fitShelters(pts)}
  
- const timeStr = filteredShelters.map(r=>r.fetched_at_th).filter(x=>x).sort().pop();
+ const latestShelterTime = DashboardModel.latestTime(filteredShelters, 'fetched_at_th'), timeStr = Number.isFinite(latestShelterTime) ? new Date(latestShelterTime).toISOString() : '';
  $('shelterMapSource').innerHTML = sourceLinks(filteredShelters,'ระบบช่วยเหลือผู้ประสบภัย กรุงเทพมหานคร')+`<br><b>ปรับปรุงข้อมูล:</b> ${timeStr ? time(timeStr) : 'ไม่ระบุ'} · แสดงพิกัด ${pts.length} จาก ${filteredShelters.length} แห่ง`;
  $('shelterMapNote').innerHTML = '<b style="color:#334155">คำอธิบายแผนที่:</b><br/>' + '• <b>เส้นกรอบเขต:</b> สีบ่งบอกสถานะของสถานีน้ำที่รุนแรงที่สุดในเขตนั้นๆ<br/>' + (heatData.length ? '• <b>Heatmap (สีฟุ้ง):</b> แสดงจุดหนาแน่นของสถานีน้ำ <i>*ไม่ใช่พื้นที่น้ำท่วมจริง</i><br/>' : '• <b>Heatmap:</b> (ไม่มีข้อมูลสถานีอัปเดตใน 24 ชม. จึงไม่แสดง Heatmap)<br/>') + '• <b>หมุด:</b> ตำแหน่งศูนย์พักพิง กรองตามสถานะที่เลือกไว้ด้านบน';
  
@@ -658,6 +645,30 @@ document.querySelectorAll('.tab:not([data-tab="news"]):not([data-tab="risk"]):no
 $('region').addEventListener('change',e=>{state.region=e.target.value;state.province='';opts('province',DATA.vulnerable.filter(r=>!state.region||r.region===state.region).map(r=>r.province).sort((a,b)=>a.localeCompare(b,'th')),'ทุกจังหวัด');render()});$('province').addEventListener('change',e=>{state.province=e.target.value;render()});$('district').addEventListener('change',e=>{state.district=e.target.value;render()});
 document.addEventListener('click',e=>{const p=e.target.closest('[data-province]'),d=e.target.closest('[data-district]');if(p){state.province=p.dataset.province;$('province').value=state.province;render();window.scrollTo({top:0,behavior:'smooth'})}if(d){state.district=d.dataset.district;$('district').value=state.district;render();window.scrollTo({top:0,behavior:'smooth'})}});
 $('reset').addEventListener('click',()=>{tableFilters.clear();document.querySelectorAll('[data-table-filters]').forEach(el=>el.remove());state.region='';state.province='';state.district='';$('region').value='';$('district').value='';opts('province',provinceNames(),'ทุกจังหวัด');render()});
+// Save the page being looked at (national or BKK) as a PNG: heading, data-age line, cards, map and table.
+// modern-screenshot (loaded on first use) lets the browser itself draw the page, so the Leaflet layers come out as they look on screen.
+let screenshotLib=null;
+function loadScreenshotLib(){
+ if(window.modernScreenshot)return Promise.resolve(window.modernScreenshot);
+ return screenshotLib||(screenshotLib=new Promise((ok,fail)=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/modern-screenshot@4.6.0/dist/index.js';s.onload=()=>ok(window.modernScreenshot);s.onerror=()=>{screenshotLib=null;fail(new Error('load'))};document.head.appendChild(s)}));
+}
+async function saveScreenshot(){
+ const btn=$('shotBtn'),label=btn.textContent;btn.disabled=true;btn.textContent='กำลังสร้างภาพ…';
+ try{
+  const ms=await loadScreenshotLib(),ws=$('workspace'),grid=ws.querySelector(':scope > .grid'),shown='.heading,#dataAge,#cards,#alert,.grid';
+  // Only the blocks in `shown` are drawn; the filter rows etc. above the grid are left out, so the image is that much shorter.
+  const gap=parseFloat(getComputedStyle(ws).rowGap)||0;let height=grid.getBoundingClientRect().bottom-ws.getBoundingClientRect().top;
+  for(const el of ws.children){if(el===grid)break;if(!el.matches(shown)&&getComputedStyle(el).display!=='none')height-=el.getBoundingClientRect().height+gap}
+  const canvas=await ms.domToCanvas(ws,{scale:2,height:Math.ceil(height)+8,backgroundColor:getComputedStyle(document.body).backgroundColor,
+   filter:n=>n.nodeType!==1||!((n.parentElement===ws&&!n.matches(shown))||n.classList.contains('leaflet-control-zoom')||n.classList.contains('expand-map'))});
+  const blob=await new Promise(r=>canvas.toBlob(r,'image/png'));if(!blob)throw new Error('empty');
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='flood-'+(state.tab==='bkk'?'bkk':'national')+'-'+(state.date||'latest')+'.png';
+  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),10000);
+  btn.textContent='✓ บันทึกแล้ว';
+ }catch(e){console.warn('screenshot failed',e);btn.textContent='สร้างภาพไม่สำเร็จ'}
+ finally{setTimeout(()=>{btn.textContent=label;btn.disabled=false},1800)}
+}
+$('shotBtn').addEventListener('click',saveScreenshot);
 $('methodBtn').addEventListener('click',()=>$('methods').showModal());$('closeMethods').addEventListener('click',()=>$('methods').close());$('methods').addEventListener('click',e=>{if(e.target===$('methods')){let r=$('methods').getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)$('methods').close()}});
 $('export').addEventListener('click',()=>{const csv='\uFEFF'+filteredExportRows().map(row=>row.map(v=>'"'+String(v??'').replace(/^[=+@-]/,"'$&").replace(/"/g,'""')+'"').join(',')).join('\r\n');const u=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=u;a.download=`flood-${state.tab}-${state.date}.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)});
 function provinceNames(){const names=window.PROVINCES_GEOJSON?.features.map(f=>f.properties.pro_th)||[...DATA.disasters.map(r=>r.Province),...DATA.vulnerable.map(r=>r.province)];return uniq(names.filter(Boolean)).sort((a,b)=>a.localeCompare(b,'th'))}
@@ -856,6 +867,24 @@ function renderDataAge(){
   :'ข้อมูลอ่านจากชีตเมื่อ '+esc(when)+' (อายุ '+esc(a.text)+')';
  if(window.DATA_LIVE_PENDING===true)el.innerHTML+=' · <b>กำลังอ่านข้อมูลสดจากชีต…</b>';
  else if(window.DATA_LIVE_ERROR===true&&snapshot)el.innerHTML+=' · อ่านชีตสดไม่สำเร็จ จึงใช้ไฟล์ที่เผยแพร่';
+ const basis=timeBasis();if(basis)el.innerHTML+='<div class="age-basis">'+basis+'</div>';
+}
+// The data on one page comes from sources with different clocks: the report day is a ปภ. day, the stations are read 'now' and
+// the sheet keeps only the newest reading per station. Show each block's own time so they can be compared at a glance.
+function timeBasis(){
+ const bkk=state.tab==='bkk',parts=[],stamp=ms=>Number.isFinite(ms)?time(new Date(ms).toISOString()):'ไม่ทราบเวลา';
+ if(!bkk){
+  const rows=DATA.disasters.filter(r=>r.Report_Date.slice(0,10)===state.date),w=rows.map(DashboardModel.disasterTime).filter(Number.isFinite),written=w.length?Math.max(...w):NaN;
+  const at=rows.map(r=>/เวลา\s*(\d{1,2})[.:](\d{2})\s*น/.exec(r.Remarks||'')).filter(Boolean).map(x=>x[1].padStart(2,'0')+':'+x[2]).sort().pop();
+  parts.push('รายงาน ปภ. <b>'+esc(state.date?date(state.date+'T00:00:00+07:00'):'-')+'</b>'+(at?' เวลา '+esc(at)+' น.':'')+(Number.isFinite(written)?' (นำเข้า '+esc(stamp(written))+')':''));
+ }
+ const stationRows=bkk?DATA.bkkStations.filter(r=>r.province==='กรุงเทพมหานคร'):nationalStations(),src=bkk?'BKK_water_DB':'thai_water_DB';
+ const cutoff=DashboardModel.timestamp(DATA.sourceStatus[src]?.loadedAt||DATA.loadedAt);
+ parts.push('สถานีน้ำ'+(bkk?' กทม.':'')+' ตรวจวัดล่าสุด <b>'+esc(stamp(DashboardModel.latestTime(stationRows,'observed_at_th',cutoff)))+'</b>');
+ if(bkk)parts.push('ศูนย์พักพิง ปรับปรุง <b>'+esc(stamp(DashboardModel.latestTime(DATA.shelters,'fetched_at_th')))+'</b>');
+ const dates=uniq(DATA.disasters.map(r=>r.Report_Date.slice(0,10))).sort();
+ if(!bkk&&state.date&&state.date!==dates.at(-1))parts.push('<b>วันรายงานที่เลือกไม่ใช่วันล่าสุด</b> — สถานีน้ำยังเป็นค่าล่าสุดตอนนี้ ไม่ย้อนตามวัน');
+ return 'เวลาของข้อมูล: '+parts.join(' · ');
 }
 setInterval(()=>{try{renderDataAge()}catch(e){}},60000);
 
