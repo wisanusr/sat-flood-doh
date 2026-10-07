@@ -98,6 +98,82 @@
     for(const [level,m] of Object.entries(out))res[level]=Array.from(m,([region,items])=>({region,number:regionNumber(region),items:items.sort((a,b)=>(b.households??-1)-(a.households??-1)||a.province.localeCompare(b.province,'th'))})).sort((a,b)=>(a.number??999)-(b.number??999)||a.region.localeCompare(b.region,'th'));
     return res;
   }
-  const model={dataAge,vulnerableTotals,trendKind,provinceLevel,situationGroups,regionNumber,timelineDaily,termWindows,lifecycle,trendLevel,newsRising,newsTopRegions,newsTopByCount,sourceInitial,growthValue,newsArticles,newsProvinces,newsUrgencyCounts,newsWords,ageLabel,safeUrl,URGENCY,NEWS_CATEGORIES,latestStationDay,SOURCES,WATER_STATUS,canonicalWaterStatus,timestamp,sum,quality,householdBorderColor,validCoordinates,districtSummary};
+  // ── Flood-prep tab (flood_risk / flood_wl_critical, written by the flood-prep pipeline) ──
+  // Kept apart from SOURCES on purpose: SOURCES drives the retry banners, footer and refresh of the core dashboard, and
+  // these two optional tabs must never add errors or "undefined" labels to it.
+  const RISK_SOURCES={flood_risk:'floodRisk',flood_wl_critical:'floodCritical'};
+  const RISK_LEVELS={'สูง':{rank:3,color:'#dc2626',key:'high'},'กลาง':{rank:2,color:'#f97316',key:'medium'},'ต่ำ':{rank:1,color:'#22c55e',key:'low'}};
+  const riskRank=v=>RISK_LEVELS[String(v??'').trim()]?.rank??0;
+  // The pipeline writes every cell as text, so booleans arrive as 'True'/'False'.
+  const parseBool=v=>v===true||/^(true|1|yes)$/i.test(String(v??'').trim());
+  const finite=v=>typeof v==='number'&&Number.isFinite(v);
+  function riskRows(rows,level){
+    return (rows||[]).filter(r=>r&&r.province&&riskRank(r.risk_level)>0&&(!level||r.risk_level===level))
+      .sort((a,b)=>riskRank(b.risk_level)-riskRank(a.risk_level)||(b.forecast_total_mm??-1)-(a.forecast_total_mm??-1)||String(a.province).localeCompare(String(b.province),'th'));
+  }
+  function riskSummary(rows){
+    const out={total:0,high:0,medium:0,low:0,level5Stations:0,risingCritical:0,inCap:0};
+    for(const r of rows||[]){
+      const lv=RISK_LEVELS[String(r&&r.risk_level||'').trim()];if(!lv||!r.province)continue;
+      out.total++;out[lv.key]++;
+      out.level5Stations+=finite(r.wl_level5)?r.wl_level5:0;
+      out.risingCritical+=finite(r.wl_rising_critical)?r.wl_rising_critical:0;
+      if(parseBool(r.in_active_cap))out.inCap++;
+    }
+    return out;
+  }
+  // Water level against the previous reading: 'up' | 'down' | 'flat' | null (unknown). 5 mm is below gauge resolution.
+  function waterTrend(r){
+    const a=r&&r.waterlevel_msl,b=r&&r.waterlevel_msl_prev;
+    if(!finite(a)||!finite(b))return null;
+    const d=a-b;return Math.abs(d)<0.005?'flat':d>0?'up':'down';
+  }
+  // Metres above the bank, only when the station itself says it is over the bank ("ล้นตลิ่ง").
+  function overbankM(r){return r&&finite(r.diff_wl_bank)&&String(r.diff_wl_bank_text??'').startsWith('ล้น')?r.diff_wl_bank:null}
+  // The pipeline runs at 09:00 and 13:00 (Thai time), so the normal gap overnight is about 20 h: that is "ok", not stale.
+  function riskFreshness(runAt,now){
+    const t=timestamp(runAt);if(!Number.isFinite(t)||!Number.isFinite(now))return {level:'unknown',hours:null};
+    const h=(now-t)/3600000;
+    if(h<-0.1)return {level:'unknown',hours:null};
+    return {level:h<=21?'ok':h<=30?'warn':'bad',hours:Math.max(0,h)};
+  }
+  // Daily rain series as the pipeline writes it: "1.9|19.3||69.6" (empty = no value for that day).
+  function parseSeries(s){
+    if(s==null||String(s).trim()==='')return [];
+    return String(s).split('|').map(x=>{const v=x.trim();if(v==='')return null;const n=Number(v);return Number.isFinite(n)?n:null});
+  }
+  // Rain classes: the commonly published daily bands (0.1-10 light, 10.1-35 moderate, 35.1-90 heavy, >90 very heavy).
+  // Not yet confirmed against the Thai Meteorological Department's own document, so the page labels them as such.
+  const RAIN_CLASSES={
+    none:{key:'none',label:'ไม่มีฝน',color:'#f1f5f9',ink:'#475569'},
+    light:{key:'light',label:'ฝนเล็กน้อย (≤10 มม.)',color:'#dbeafe',ink:'#1e3a8a'},
+    moderate:{key:'moderate',label:'ฝนปานกลาง (10-35 มม.)',color:'#93c5fd',ink:'#0f172a'},
+    heavy:{key:'heavy',label:'ฝนหนัก (35-90 มม.)',color:'#2563eb',ink:'#ffffff'},
+    very:{key:'very',label:'ฝนหนักมาก (>90 มม.)',color:'#1e1b4b',ink:'#ffffff'},
+  };
+  function rainClass(mm){
+    if(!finite(mm))return null;
+    return mm<0.1?RAIN_CLASSES.none:mm<=10?RAIN_CLASSES.light:mm<=35?RAIN_CLASSES.moderate:mm<=90?RAIN_CLASSES.heavy:RAIN_CLASSES.very;
+  }
+  // n consecutive calendar days from "YYYY-MM-DD..." as ISO dates (pure date arithmetic, no time zone involved).
+  function seriesDates(startIso,n){
+    const m=String(startIso??'').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if(!m)return [];
+    const base=Date.UTC(+m[1],+m[2]-1,+m[3]);
+    return Array.from({length:n},(_,i)=>new Date(base+i*86400000).toISOString().slice(0,10));
+  }
+  // Vulnerable population (Vulnerable_group rows) living in the given provinces; `missing` lists provinces with no row.
+  function exposure(rows,provinces){
+    const want=new Set(provinces||[]),seen=new Set(),out={children:0,pregnant:0,elderly:0,total:0,matched:0,missing:[]};
+    for(const r of rows||[]){
+      if(!want.has(r.province)||seen.has(r.province))continue;
+      seen.add(r.province);
+      for(const k of ['children','pregnant','elderly'])if(finite(r[k]))out[k]+=r[k];
+    }
+    out.total=out.children+out.pregnant+out.elderly;out.matched=seen.size;out.missing=[...want].filter(p=>!seen.has(p));
+    return out;
+  }
+  const reasonList=s=>String(s??'').split(';').map(x=>x.trim()).filter(Boolean);
+  const model={parseSeries,RAIN_CLASSES,rainClass,seriesDates,exposure,reasonList,RISK_SOURCES,RISK_LEVELS,riskRank,parseBool,riskRows,riskSummary,waterTrend,overbankM,riskFreshness,dataAge,vulnerableTotals,trendKind,provinceLevel,situationGroups,regionNumber,timelineDaily,termWindows,lifecycle,trendLevel,newsRising,newsTopRegions,newsTopByCount,sourceInitial,growthValue,newsArticles,newsProvinces,newsUrgencyCounts,newsWords,ageLabel,safeUrl,URGENCY,NEWS_CATEGORIES,latestStationDay,SOURCES,WATER_STATUS,canonicalWaterStatus,timestamp,sum,quality,householdBorderColor,validCoordinates,districtSummary};
   if(typeof module!=='undefined')module.exports=model;else root.DashboardModel=model;
 })(typeof window!=='undefined'?window:globalThis);

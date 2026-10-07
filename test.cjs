@@ -9,9 +9,24 @@ assert.equal(evaluate("normalize_('Affected_Households','1,234')"),1234);
 assert.equal(evaluate("normalize_('capacity','')"),null);
 assert.equal(evaluate("normalize_('Report_Date','05/10/2569')"),'2026-10-05T00:00:00+07:00');
 assert.equal(evaluate("transform_('BKK_water_DB',[{district_or_area:'เขตบางรัก'}])[0].province"),'กรุงเทพมหานคร');
+// flood-prep tabs: typed output, rows without a province dropped, never confused with the station tabs
+assert.deepEqual(evaluate("CONFIG.optional"),['flood_risk','flood_wl_critical']);
+{
+  const risk=evaluate("transform_('flood_risk',[{run_at:'2026-10-07T15:04:00+07:00',province:'ระนอง',risk_level:'สูง',forecast_total_mm:224.6,in_active_cap:'True'},{province:'',risk_level:'สูง'}])");
+  assert.equal(risk[0].forecast_daily_mm,null);assert.equal(evaluate("transform_('flood_risk',[{province:'ก',forecast_start:'2026-10-07T00:00:00+07:00',forecast_daily_mm:'1.9|19.3||69.6',cap_headlines:'x',tmd_warning_title:'t',tmd_warning_text:'b',forecast_fetched_at:'2026-10-07T15:03:00+07:00'}])[0].forecast_daily_mm"),'1.9|19.3||69.6');
+  assert.equal(evaluate("transform_('flood_risk',[{province:'ก',cap_headlines:'x',tmd_warning_title:'t'}])[0].tmd_warning_title"),'t');
+  assert.equal(evaluate("transform_('flood_wl_critical',[{province:'ก',amphoe:'ลาดพร้าว',basin_name:'บ'}])[0].amphoe"),'ลาดพร้าว');
+  assert.equal(evaluate("normalize_('forecast_start','2026-10-07')"),'2026-10-07T00:00:00+07:00');
+  assert.equal(risk.length,1);assert.equal(risk[0].province,'ระนอง');assert.equal(risk[0].in_active_cap,'True');assert.equal(risk[0].wl_level5,null);
+  const crit=evaluate("transform_('flood_wl_critical',[{province:'กรุงเทพมหานคร',station_name:'x',situation_level:5,latitude:13.9,longitude:100.6}])");
+  assert.equal(crit.length,1);assert.equal(crit[0].latitude,13.9);assert.equal(crit[0].province_code,null);
+  assert.equal(evaluate("normalize_('run_at','2026-10-07 15:04')"),'2026-10-07T15:04:00+07:00');
+  assert.equal(evaluate("normalize_('rain_24h_max_mm','119.5')"),119.5);
+  assert.equal(evaluate("normalize_('situation_level','5')"),5);
+}
 evaluate(`SpreadsheetApp={openById:()=>({getSheetByName:name=>({getDataRange:()=>({getValues:()=>[CONFIG.required[name]]})})})}`);
 let data=evaluate('getDashboardData()');
-assert.equal(Object.keys(data.sourceStatus).length,5);
+assert.equal(Object.keys(data.sourceStatus).length,7);
 assert(Object.values(data.sourceStatus).every(s=>s.status==='ok'));
 evaluate(`SpreadsheetApp={openById:()=>({getSheetByName:name=>name==='shelter_DB'?null:({getDataRange:()=>({getValues:()=>[CONFIG.required[name]]})})})}`);
 data=evaluate('getDashboardData()');

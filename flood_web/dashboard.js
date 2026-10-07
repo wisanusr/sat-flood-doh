@@ -58,6 +58,8 @@ function indexSources(){
 // National view = Thaiwater stations + BMA-sheet stations around Bangkok (province known, not Bangkok itself).
 function nationalStations() { return DATA.stations.concat(DATA.bkkStations.filter(r => r.province && r.province !== 'กรุงเทพมหานคร')); }
 indexSources();
+// The flood-prep tab (risk-view.js) reads the same DATA object; it is told when DATA is first ready or reloaded.
+window.dashboardData=DATA;
 const timestamp=DashboardModel.timestamp;
 const quality=r=>DashboardModel.quality(r,DATA.sourceStatus[rowSources.get(r)]?.loadedAt||DATA.loadedAt);
 const badge=(s,kind='')=>`<span class="badge ${kind}">${esc(s)}</span>`;
@@ -663,7 +665,7 @@ const mapResizeObserver=new ResizeObserver(entries=>{
 });
 mapResizeObserver.observe($('map'));mapResizeObserver.observe($('shelterMap'));
 
-document.querySelectorAll('.tab:not([data-tab="news"])').forEach(x=>x.addEventListener('click',()=>{state.tab=x.dataset.tab;render();requestAnimationFrame(()=>window.dispatchEvent(new Event('resize')))}));$('reportDate').addEventListener('change',e=>{state.date=e.target.value;render()});
+document.querySelectorAll('.tab:not([data-tab="news"]):not([data-tab="risk"])').forEach(x=>x.addEventListener('click',()=>{state.tab=x.dataset.tab;render();requestAnimationFrame(()=>window.dispatchEvent(new Event('resize')))}));$('reportDate').addEventListener('change',e=>{state.date=e.target.value;render()});
 $('region').addEventListener('change',e=>{state.region=e.target.value;state.province='';opts('province',DATA.vulnerable.filter(r=>!state.region||r.region===state.region).map(r=>r.province).sort((a,b)=>a.localeCompare(b,'th')),'ทุกจังหวัด');render()});$('province').addEventListener('change',e=>{state.province=e.target.value;render()});$('district').addEventListener('change',e=>{state.district=e.target.value;render()});
 document.addEventListener('click',e=>{const p=e.target.closest('[data-province]'),d=e.target.closest('[data-district]');if(p){state.province=p.dataset.province;$('province').value=state.province;render();window.scrollTo({top:0,behavior:'smooth'})}if(d){state.district=d.dataset.district;$('district').value=state.district;render();window.scrollTo({top:0,behavior:'smooth'})}});
 $('reset').addEventListener('click',()=>{tableFilters.clear();document.querySelectorAll('[data-table-filters]').forEach(el=>el.remove());state.region='';state.province='';state.district='';$('region').value='';$('district').value='';opts('province',provinceNames(),'ทุกจังหวัด');render()});
@@ -727,7 +729,7 @@ function paginateTables(){
 }
 function filteredExportRows(){const indices=tablePages.get('areaTable')?.rowIndices;return indices?[csvRows[0],...indices.map(i=>csvRows[i+1]).filter(Boolean)]:csvRows}
 const sourceLabels={Disaster_DB:'รายงานภัย ปภ.',Vulnerable_group:'ฐานประชากรกลุ่มเปราะบาง',thai_water_DB:'สถานีน้ำทั่วประเทศ',BKK_water_DB:'สถานีน้ำ กทม.',shelter_DB:'ศูนย์พักพิง'};
-function renderSourceStatus(){const failed=Object.entries(DATA.sourceStatus).filter(([,s])=>s.status==='error');$('sourceStatus').innerHTML=failed.map(([name,s])=>`<div class="alert source-error"><span><b>${sourceLabels[name]}</b> — ${esc(s.message)}</span><button class="lightbtn" data-retry-source="${name}">ลองใหม่</button></div>`).join('');$('sourceStatus').classList.toggle('hidden',!failed.length)}
+function renderSourceStatus(){const failed=Object.entries(DATA.sourceStatus).filter(([name,s])=>s.status==='error'&&sourceLabels[name]);$('sourceStatus').innerHTML=failed.map(([name,s])=>`<div class="alert source-error"><span><b>${sourceLabels[name]}</b> — ${esc(s.message)}</span><button class="lightbtn" data-retry-source="${name}">ลองใหม่</button></div>`).join('');$('sourceStatus').classList.toggle('hidden',!failed.length)}
 function unavailable(id,name){if(DATA.sourceStatus[name]?.status!=='error')return;const el=$(id);if(el)el.innerHTML=`<div class="empty">โหลด${sourceLabels[name]}ไม่สำเร็จ — กดลองใหม่ด้านบน</div>`}
 function updateTableHints(){for(const el of document.querySelectorAll('.table-wrap,#sideBody,#shelterSideBody,#allSheltersBody')){const hint=el.previousElementSibling?.classList.contains('table-scroll-hint')?el.previousElementSibling:null;const overflow=el.clientWidth>0&&el.scrollWidth>el.clientWidth+2;if(overflow){if(!hint){const p=document.createElement('p');p.className='table-scroll-hint';p.textContent='เลื่อนตารางซ้าย–ขวาเพื่อดูข้อมูลครบทุกคอลัมน์';el.before(p)}el.setAttribute('tabindex','0');el.setAttribute('aria-label','ตารางข้อมูล เลื่อนซ้ายและขวาได้')}else{hint?.remove();el.removeAttribute('tabindex')}}}
 window.addEventListener('resize',()=>requestAnimationFrame(updateTableHints));
@@ -756,7 +758,7 @@ function finishRender(){
  $('selectedFilters').textContent=[bkk?'กรุงเทพมหานคร':'ภาพรวมประเทศ',state.district||state.province||state.region||'ทุกพื้นที่','วันรายงาน ปภ.: '+(state.date?date(state.date+'T00:00:00+07:00'):'ไม่มีวันรายงาน')].join(' · ');
  $('filterNote').textContent='วันรายงานใช้กับ ปภ. เท่านั้น · สถานีน้ำและศูนย์พักพิงใช้ข้อมูลล่าสุดที่อ่านได้';
  $('region').disabled=failed('Vulnerable_group');$('reportDate').disabled=!DATA.disasters.length;
- document.querySelector('.foot > span:last-child').textContent=Object.entries(DATA.sourceStatus).filter(([,s])=>s.status==='ok').map(([name,s])=>sourceLabels[name]+': '+time(s.loadedAt)).join(' · ');
+ document.querySelector('.foot > span:last-child').textContent=Object.entries(DATA.sourceStatus).filter(([name,s])=>s.status==='ok'&&sourceLabels[name]).map(([name,s])=>sourceLabels[name]+': '+time(s.loadedAt)).join(' · ');
  
  
  renderMap(); renderAreas(); paginateTables();requestAnimationFrame(updateTableHints);
@@ -766,11 +768,13 @@ function finishRender(){
 function applyReload(next,names){
  const prevDates=uniq(DATA.disasters.map(r=>r.Report_Date.slice(0,10))).sort();
  for(const name of names){DATA[SOURCES[name]]=next[SOURCES[name]];DATA.sourceStatus[name]=next.sourceStatus[name]}
+ for(const [name,key] of Object.entries(DashboardModel.RISK_SOURCES))if(next.sourceStatus?.[name]?.status==='ok'){DATA[key]=next[key];DATA.sourceStatus[name]=next.sourceStatus[name]}
  DATA.loadedAt=next.loadedAt;indexSources();
  if(names.includes('Disaster_DB')){const dates=uniq(DATA.disasters.map(r=>r.Report_Date.slice(0,10))).sort();if(!dates.includes(state.date)||state.date===prevDates.at(-1))state.date=dates.at(-1);opts('reportDate',dates);$('reportDate').value=state.date||''}
  if(names.includes('Vulnerable_group')){opts('region',uniq(DATA.vulnerable.map(r=>r.region).filter(Boolean)),'ทุกเขตสุขภาพ');if(!Array.from($('region').options).some(o=>o.value===state.region))state.region='';$('region').value=state.region}
  opts('province',provinceNames(),'ทุกจังหวัด');if(!provinceNames().includes(state.province))state.province='';$('province').value=state.province;
  render();finishRender();
+ window.dispatchEvent(new Event('dashboard:data'));
 }
 $('sourceStatus').addEventListener('click',async e=>{const button=e.target.closest('[data-retry-source]');if(!button)return;const name=button.dataset.retrySource;button.disabled=true;button.textContent='กำลังอ่าน…';try{const next=await requestData(name);if(!next.sourceStatus?.[name])throw new Error('รูปแบบข้อมูลไม่ถูกต้อง');applyReload(next,[name])}catch(error){button.disabled=false;button.textContent='ลองใหม่';const text=button.parentElement.querySelector('span');text.textContent='อ่านข้อมูลไม่สำเร็จ กรุณาลองใหม่';console.error(error)}});
 // Refresh: re-read every sheet bypassing the server cache. A sheet that fails keeps its previous data.
@@ -787,6 +791,7 @@ methodItems[3].textContent='กทม.: แสดงสถานีที่จ�
 methodItems[4].textContent='ศูนย์พักพิง: จำนวนศูนย์ เขต พิกัด และผู้พักเกินความจุคำนวณจาก Google Sheets ทุกครั้งที่โหลดหน้า';
 document.querySelector('#methods p.sub').textContent='อ่าน Google Sheets ผ่านเซิร์ฟเวอร์ทุกครั้งที่เปิดหรือรีเฟรชหน้า รอ Google Sheets บันทึกสำเร็จแล้วรีเฟรช เวลาข้อมูลต้นทางอาจเก่ากว่าเวลาที่อ่านไฟล์';
 render();
+window.dispatchEvent(new Event('dashboard:data'));
 // GitHub Pages build: the first paint used the published snapshot; now read the sheet itself and swap in what could be read.
 if(typeof upgradeLive==='function'){renderDataAge();upgradeLive().then(next=>{const ok=next?Object.keys(SOURCES).filter(n=>next.sourceStatus[n]?.status==='ok'):[];if(ok.length)applyReload(next,ok);else renderDataAge()}).catch(()=>renderDataAge())}
 // Optional page-scoped agent access uses the same visible navigation.

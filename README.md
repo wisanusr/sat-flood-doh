@@ -31,9 +31,23 @@ python -m http.server 8000 --directory docs
 - ทดสอบ: `python news/test_news.py` · รันในเครื่อง: `pip install -r news/requirements.txt && python news/news_scraper.py && python news/trends_scraper.py` ก่อน `python build_pages.py`
 - ข้อมูลข่าวเป็นการจัดกลุ่มด้วยกฎคำสำคัญ ไม่ใช่การยืนยันข้อเท็จจริง; ลิงก์ข่าวเป็นของเจ้าของเนื้อหาต้นทาง
 
+## แท็บ "เตรียมรับน้ำท่วม" (ทั้ง GitHub Pages และ Apps Script)
+สรุปความเสี่ยงรายจังหวัดที่เฝ้าระวัง จากข้อมูลที่ pipeline `flood_prep_pipeline` (repo `geeks_project_google`, วันละ 2 รอบ 09:00 และ 13:00 น.) เขียนลง Google Sheet เดียวกับแดชบอร์ด
+- ชีต: `flood_risk` (รายจังหวัด: ระดับความเสี่ยง ฝนจริง/ฝนพยากรณ์ สถานีน้ำระดับ 5/4 ประกาศเตือน เหตุผล) และ `flood_wl_critical` (สถานีน้ำระดับ 4-5 พร้อมพิกัดและแนวโน้ม)
+- **เป็นชีต optional** (`OPTIONAL` ใน `flood_web/server.py` → `optional` ใน `Config.gs`): ถ้าอ่านไม่ได้ `fetch_data.cjs` ข้ามชีตนั้นแทนที่จะทำให้ deploy ล้ม และแท็บนี้แสดงข้อความแจ้ง แท็บอื่นไม่ได้รับผลกระทบ
+- `flood_web/risk-view.js` อ่านข้อมูลจาก `window.dashboardData` (ที่ `dashboard.js` เผยแพร่) และวาดใหม่เมื่อมี event `dashboard:data`; กฎคำนวณล้วน (จัดเรียง สรุป แนวโน้มระดับน้ำ ความสดของข้อมูล) อยู่ใน `data-model.js` และมีทดสอบใน `test_model.cjs`
+- ชีตทั้งสองถูกแยกไว้ใน `DashboardModel.RISK_SOURCES` ไม่ใส่ใน `SOURCES` โดยตั้งใจ เพื่อไม่ให้ไปปรากฏในแถบแจ้งเตือน ฟุตเตอร์ หรือปุ่มรีเฟรชของแท็บหลัก
+- ความสดของข้อมูล: ปกติห่างกันได้ถึง ~20 ชม. (ระหว่างรอบ 13:00 ถึง 09:00 วันถัดไป) จึงเตือนเมื่อเกิน 21 ชม. (เหลือง) และ 30 ชม. (แดง ถือว่าพลาดทั้งรอบ)
+- ระดับความเสี่ยงมาจากเกณฑ์ภายในของ pipeline ไม่ใช่ประกาศทางการ (หน้าเว็บระบุข้อความนี้ไว้)
+- โครงหน้า (หลักฐานประกอบการเฝ้าระวัง): ประกาศ TMD (พับไว้) → ตัวเลขสรุปรวมกลุ่มเปราะบางในจังหวัดเสี่ยงสูง → ตาราง "ฝนพยากรณ์รายวัน × จังหวัด" (สีตามระดับฝน) → แผนที่ + รายละเอียดจังหวัดที่เลือก (เหตุผล กราฟฝนรายวัน สถานีน้ำ กลุ่มเปราะบาง) → สถานีวิกฤตทั้งหมด → ตารางทุกจังหวัด/CSV
+- คอลัมน์หลักฐานที่ pipeline ต่อท้ายใน `flood_risk`: `forecast_start`, `forecast_fetched_at`, `forecast_daily_mm` (ฝนรายวันคั่นด้วย `|` ช่องว่าง = ไม่มีข้อมูลวันนั้น), `cap_headlines`, `tmd_warning_title`, `tmd_warning_text`; ใน `flood_wl_critical`: `amphoe`, `basin_name`
+- ประชากรกลุ่มเปราะบางมาจากชีต `Vulnerable_group` ที่แดชบอร์ดอ่านอยู่แล้ว (จับคู่ด้วยชื่อจังหวัด) ไม่ต้องมีข้อมูลเพิ่ม
+- แผนที่ fit กรอบใหม่ด้วย `ResizeObserver` และไม่ fit ขณะคอนเทนเนอร์ขนาด 0 (แท็บถูกซ่อน/กริดยังไม่จัด)
+- เพิ่ม/เปลี่ยนคอลัมน์ในชีต: ปรับ `REQUIRED`/`NUMERIC`/`DATES` และ `transform()` ใน `flood_web/server.py` กับ `transform_` ใน `Code.gs` ให้ตรงกัน แล้วรัน `python build.py`
+
 ## โครงสร้างและวิธีแก้ไข
 - **ต้นทางที่แก้ไข:** `flood_web/` (`template.html`, `dashboard.js`, `data-model.js`, `dashboard.css`, GeoJSON, `server.py` สำหรับทดสอบในเครื่อง)
-- **ไฟล์ที่สร้างอัตโนมัติ (อย่าแก้ตรงๆ):** `Index.html`, `Dashboard.html`, `DataModel.html`, `Styles.html`, `*GeoJSON.html`, `Config.gs`, `schema.json`, `appsscript.json` สร้างด้วย `python build.py` แล้ว commit
+- **ไฟล์ที่สร้างอัตโนมัติ (อย่าแก้ตรงๆ):** `Index.html`, `Dashboard.html`, `DataModel.html`, `RiskView.html`, `Styles.html`, `*GeoJSON.html`, `Config.gs`, `schema.json`, `appsscript.json` สร้างด้วย `python build.py` แล้ว commit
 - **เขียนมือ:** `Code.gs` (อ่านชีต แปลงข้อมูล แคช 5 นาทีเมื่อรันบน Apps Script), `fetch_data.cjs`, `build_pages.py`, `test.cjs`
 
 ลำดับหลังแก้หน้าเว็บ:

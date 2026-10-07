@@ -19,6 +19,7 @@ function csvFor(name) {
     Record_ID: 'r1', Report_Date: '05/10/2569', Province: 'กรุงเทพมหานคร', Affected_Households: '1,234', Current_Status: 'กำลังประสบภัย',
     station_id: 's1', district_or_area: name === 'BKK_water_DB' ? 'เขตบางรัก' : 'ปทุมธานี', latitude: '13.7', longitude: '100.5',
     observed_at_th: '2026-10-05T10:00:00+07:00', fetched_at_th: '2026-10-05T10:05:00+07:00', raw_station_json: '{"district_name":"เขตบางรัก"}',
+    run_at: '2026-10-07 15:04', province: 'ระนอง', risk_level: 'สูง', situation_level: '5', station_name: 'สถานีทดสอบ',
     shelter_id: 'sh1', district: 'บางรัก', shelter_name: 'โรงเรียน, ทดสอบ', capacity: '100', occupied: '40', available: '60',
   };
   const rows = [headers.map(h => quote(h)).join(',')];
@@ -44,17 +45,29 @@ const reader = fetchImpl => live.createReader({ configSrc, codeSrc, fetchImpl, a
   // --- full read: URLs, cache mode and values
   let f = makeFetch();
   let data = await reader(f).read();
-  assert.strictEqual(f.calls.length, 5);
+  assert.strictEqual(f.calls.length, 7);
   for (const c of f.calls) {
     assert(c.url.startsWith('https://docs.google.com/spreadsheets/d/' + config.spreadsheetId + '/gviz/tq?tqx=out:csv&sheet='), c.url);
     assert.strictEqual(c.opts.cache, 'no-store');
   }
-  assert.deepStrictEqual(Object.values(data.sourceStatus).map(s => s.status), ['ok', 'ok', 'ok', 'ok', 'ok']);
+  assert.deepStrictEqual(Object.values(data.sourceStatus).map(s => s.status), ['ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok']);
   assert.strictEqual(data.disasters[0].Affected_Households, 1234);
   assert.strictEqual(data.disasters[0].Report_Date, '2026-10-05T00:00:00+07:00');
   assert.strictEqual(data.shelters[0].shelter_name, 'โรงเรียน, ทดสอบ');
   assert.strictEqual(data.bkkStations[0].district_or_area, 'บางรัก');
   assert.deepStrictEqual(data.liveErrors, {});
+  // flood-prep tabs: cells arrive as text and must come out typed, in the same shape as the Apps Script build
+  assert.strictEqual(data.floodRisk.length, 1);
+  assert.strictEqual(data.floodRisk[0].risk_level, 'สูง');
+  assert.strictEqual(data.floodRisk[0].run_at, '2026-10-07T15:04:00+07:00');
+  assert.strictEqual(data.floodCritical[0].situation_level, 5);
+  // a flood tab that is empty/unreadable is an error for that tab only
+  f = makeFetch({ flood_risk: () => respond(200, '') });
+  data = await reader(f).read();
+  assert.deepStrictEqual(Object.keys(data.liveErrors), ['flood_risk']);
+  assert.strictEqual(data.sourceStatus.flood_risk.status, 'error');
+  assert.strictEqual(data.sourceStatus.flood_wl_critical.status, 'ok');
+  assert.strictEqual(data.sourceStatus.Disaster_DB.status, 'ok');
 
   // --- same result as running Code.gs directly on the same rows (the way fetch_data.cjs builds data.json)
   const ctx = vm.createContext({ console, Date, Utilities: { formatDate: d => d.toISOString() } });
@@ -91,7 +104,7 @@ const reader = fetchImpl => live.createReader({ configSrc, codeSrc, fetchImpl, a
     f = makeFetch(Object.fromEntries(Object.keys(config.required).map(n => [n, () => respond(503, '')])));
     data = await reader(f).read();
     assert(Object.values(data.sourceStatus).every(s => s.status === 'error'));
-    assert.strictEqual(Object.keys(data.liveErrors).length, 5);
+    assert.strictEqual(Object.keys(data.liveErrors).length, 7);
   } finally { console.warn = warn; console.error = err; }
 
   // --- a single tab (per-sheet retry button)

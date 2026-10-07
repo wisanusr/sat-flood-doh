@@ -88,4 +88,48 @@ assert.equal(m.validCoordinates({latitude:91,longitude:100}),false);
   const order=m.situationGroups([{Province:'x',Water_Level_Trend:'ลดลง'},{Province:'y',Water_Level_Trend:'ลดลง'},{Province:'z',Water_Level_Trend:'ลดลง'}],p=>({x:'เขตสุขภาพที่ 13',y:'เขตสุขภาพที่ 2',z:''})[p],()=>0).stabilizing.map(g=>g.region);
   assert.deepEqual(order,['เขตสุขภาพที่ 2','เขตสุขภาพที่ 13','ไม่ทราบเขต']);   // numeric order, unknown last
 }
-console.log('PASS: household boundaries, freshness, missing/zero totals, district severity, coordinates, news filters');
+// Flood-prep tab rules
+{
+  const rows=[{province:'ก',risk_level:'กลาง',forecast_total_mm:50,wl_level5:0,wl_rising_critical:1,in_active_cap:'False'},
+              {province:'ข',risk_level:'สูง',forecast_total_mm:10,wl_level5:2,wl_rising_critical:0,in_active_cap:'True'},
+              {province:'ค',risk_level:'สูง',forecast_total_mm:90,wl_level5:1,wl_rising_critical:2,in_active_cap:true},
+              {province:'ง',risk_level:'ต่ำ'},{province:'จ',risk_level:'???'},{province:'',risk_level:'สูง'}];
+  assert.deepEqual(m.riskRows(rows).map(r=>r.province),['ค','ข','ก','ง']);      // level, then forecast total; unknown level/empty province dropped
+  assert.deepEqual(m.riskRows(rows,'สูง').map(r=>r.province),['ค','ข']);
+  assert.deepEqual(m.riskSummary(rows),{total:4,high:2,medium:1,low:1,level5Stations:3,risingCritical:3,inCap:2});
+  assert.deepEqual(m.riskSummary(null),{total:0,high:0,medium:0,low:0,level5Stations:0,risingCritical:0,inCap:0});
+  assert.equal(m.parseBool('True'),true);assert.equal(m.parseBool('false'),false);assert.equal(m.parseBool(''),false);assert.equal(m.parseBool(null),false);
+  assert.equal(m.waterTrend({waterlevel_msl:2.01,waterlevel_msl_prev:2.01}),'flat');
+  assert.equal(m.waterTrend({waterlevel_msl:2.02,waterlevel_msl_prev:2.01}),'up');
+  assert.equal(m.waterTrend({waterlevel_msl:202.18,waterlevel_msl_prev:202.19}),'down');   // 1 cm is above the 5 mm "flat" band
+  assert.equal(m.waterTrend({waterlevel_msl:2.003,waterlevel_msl_prev:2.0}),'flat');
+  assert.equal(m.waterTrend({waterlevel_msl:null,waterlevel_msl_prev:1}),null);
+  assert.equal(m.overbankM({diff_wl_bank:0.83,diff_wl_bank_text:'ล้นตลิ่ง (ม.)'}),0.83);
+  assert.equal(m.overbankM({diff_wl_bank:0.83,diff_wl_bank_text:'ต่ำกว่าตลิ่ง (ม.)'}),null);   // only stations that say they are over the bank
+  assert.equal(m.overbankM({diff_wl_bank:null,diff_wl_bank_text:'ล้นตลิ่ง (ม.)'}),null);
+  const run='2026-10-07T13:00:00+07:00',at=h=>Date.parse(run)+h*3600000;
+  assert.equal(m.riskFreshness(run,at(1)).level,'ok');
+  assert.equal(m.riskFreshness(run,at(20)).level,'ok');       // overnight gap between the 13:00 and 09:00 runs is normal
+  assert.equal(m.riskFreshness(run,at(25)).level,'warn');
+  assert.equal(m.riskFreshness(run,at(31)).level,'bad');      // a whole missed run
+  assert.equal(m.riskFreshness(run,at(-2)).level,'unknown');  // timestamp in the future
+  assert.equal(m.riskFreshness(null,at(1)).level,'unknown');
+  assert(!('flood_risk' in m.SOURCES),'flood tabs must stay out of SOURCES (core retry/footer/refresh loops)');
+  assert.deepEqual(m.RISK_SOURCES,{flood_risk:'floodRisk',flood_wl_critical:'floodCritical'});
+}
+// Flood-prep evidence view: rain series, rain classes, dates, exposure
+{
+  assert.deepEqual(m.parseSeries('1.9|19.3||69.6|x'),[1.9,19.3,null,69.6,null]);   // empty and non-numeric days stay as gaps, never 0
+  assert.deepEqual(m.parseSeries(''),[]);assert.deepEqual(m.parseSeries(null),[]);assert.deepEqual(m.parseSeries('0'),[0]);
+  const key=v=>m.rainClass(v)?.key;
+  assert.deepEqual([0,0.05,0.1,10,10.1,35,35.1,90,90.1].map(key),['none','none','light','light','moderate','moderate','heavy','heavy','very']);
+  assert.equal(m.rainClass(null),null);assert.equal(m.rainClass(NaN),null);
+  assert.deepEqual(m.seriesDates('2026-10-30T00:00:00+07:00',4),['2026-10-30','2026-10-31','2026-11-01','2026-11-02']);   // month rollover
+  assert.deepEqual(m.seriesDates('2026-12-31',2),['2026-12-31','2027-01-01']);                                           // year rollover
+  assert.deepEqual(m.seriesDates('not a date',3),[]);
+  const vul=[{province:'ก',children:1,pregnant:2,elderly:3},{province:'ก',children:99,pregnant:99,elderly:99},{province:'ข',children:10,pregnant:null,elderly:5}];
+  assert.deepEqual(m.exposure(vul,['ก','ข','ค']),{children:11,pregnant:2,elderly:8,total:21,matched:2,missing:['ค']});   // a province counts once; null is not 0
+  assert.deepEqual(m.exposure(null,['ก']),{children:0,pregnant:0,elderly:0,total:0,matched:0,missing:['ก']});
+  assert.deepEqual(m.reasonList('ก; ข ;; ค'),['ก','ข','ค']);assert.deepEqual(m.reasonList(null),[]);
+}
+console.log('PASS: household boundaries, freshness, missing/zero totals, district severity, coordinates, news filters, flood-prep rules, rain series/classes, exposure');

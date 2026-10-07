@@ -41,6 +41,16 @@ const CONFIG = {
       "available",
       "latitude",
       "longitude"
+    ],
+    "flood_risk": [
+      "run_at",
+      "province",
+      "risk_level"
+    ],
+    "flood_wl_critical": [
+      "province",
+      "situation_level",
+      "station_name"
     ]
   },
   "numeric": [
@@ -53,11 +63,25 @@ const CONFIG = {
     "available",
     "capacity",
     "critical_in_source",
+    "diff_wl_bank",
+    "discharge",
+    "forecast_max_day_mm",
+    "forecast_total_mm",
     "latitude",
     "longitude",
+    "max_overbank_m",
     "occupied",
+    "rain_24h_max_mm",
+    "rain_next_24h_mm",
+    "situation_level",
     "warning_in_source",
     "water_in_m_msl",
+    "waterlevel_msl",
+    "waterlevel_msl_prev",
+    "wl_level4",
+    "wl_level5",
+    "wl_rising_critical",
+    "wl_stations",
     "จำนวนผู้สูงอายุ 60 ปีขึ้นไปทั้งหมด (คน)",
     "จำนวนหญิงตั้งครรภ์ทั้งหมด (คน)",
     "จำนวนเด็ก 0-4 ปีทั้งหมด (คน)"
@@ -66,8 +90,17 @@ const CONFIG = {
     "Ingested_At",
     "Report_Date",
     "fetched_at_th",
+    "forecast_fetched_at",
+    "forecast_peak_date",
+    "forecast_start",
+    "observed_at",
     "observed_at_th",
+    "run_at",
     "updated_at_source"
+  ],
+  "optional": [
+    "flood_risk",
+    "flood_wl_critical"
   ],
   "districts": [
     "คลองสาน",
