@@ -275,5 +275,19 @@ body,button,input,select,textarea,table,.leaflet-container,.leaflet-tooltip,.lea
 #vulSummary{margin-bottom:18px}
 .vul-cards{grid-template-columns:repeat(3,minmax(0,1fr));margin:6px 0 0}
 @media(max-width:720px){.vul-cards{grid-template-columns:minmax(0,1fr)}}
+/* Bangkok map tools: same chip design, status chips with a coloured dot and a shelter count */
+.ic-shelter{width:12px;height:12px;margin:1px 6px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:#0f766e;border:2px solid #fff;box-shadow:0 0 0 1px #64748b}
+.layer-bar-sep{width:1px;height:26px;background:var(--line);margin:0 4px}
+.chip-dot{display:inline-block;flex:none;width:12px;height:12px;border-radius:50%;background:#94a3b8;opacity:.5;transition:opacity .15s}
+.st-free .chip-dot{background:#16a34a}.st-near .chip-dot{background:#ea580c}.st-full .chip-dot{background:#dc2626}.st-unknown .chip-dot{background:#64748b}
+.status-chip:has(input:checked) .chip-dot{opacity:1}
+.st-free:has(input:checked){background:#dcfce7;border-color:#86efac}
+.st-near:has(input:checked){background:#ffedd5;border-color:#fdba74}
+.st-full:has(input:checked){background:#fee2e2;border-color:#fca5a5}
+.st-unknown:has(input:checked){background:#f1f5f9;border-color:#94a3b8}
+.chip-count{margin-left:2px;font-variant-numeric:tabular-nums;font-weight:700}
+.layer-note{flex-basis:100%;margin-top:2px;padding:7px 12px;border:1px solid #fed7aa;border-radius:8px;background:#fff7ed;color:#9a3412;font-size:13px;line-height:1.5}
+.layer-note:empty{display:none}
+#shelterMapTools{flex-wrap:wrap}
 
 </style>

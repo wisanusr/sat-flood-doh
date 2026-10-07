@@ -139,7 +139,7 @@ $('cards').innerHTML=bkk?card('เขตวิกฤต / ล้นตลิ่�
 renderMap();
 renderAreas();
 renderStations();
-renderShelterDetails();
+renderShelterDetails();renderShelterToolbar();
 renderVulnerable();renderVulSummary();
 renderBkkVulChart();
 $('sideBody').classList.toggle('ddpm-summary',state.tab==='national');
@@ -344,6 +344,22 @@ function renderShelterMap(){
 
 }
 
+
+// Shows how many shelters each status chip stands for and, when a status is switched off, how many shelters are hidden.
+// These chips filter the pins on both Bangkok maps AND the shelter cards and tables, so the hidden count is spelled out
+// next to the chips instead of leaving the user to wonder where the shelters went.
+function renderShelterToolbar(){
+ if(state.tab!=='bkk')return;
+ const rows=DATA.shelters.filter(r=>!state.district||r.district===state.district),counts={};
+ for(const r of rows){const k=shelterStatusKey(r);counts[k]=(counts[k]||0)+1}
+ document.querySelectorAll('.chip-count').forEach(el=>{el.textContent=fmt(counts[el.dataset.status]||0)});
+ const off=Array.from(document.querySelectorAll('.shelter-status-filter')).filter(cb=>!cb.checked).map(cb=>cb.value);
+ const hidden=off.reduce((n,v)=>n+(counts[v]||0),0),note=$('shelterFilterNote');
+ if(!note)return;
+ note.innerHTML=off.length?'<b>ซ่อนศูนย์พักพิง '+fmt(hidden)+' จาก '+fmt(rows.length)+' แห่ง</b> ตามสถานะที่ปิดอยู่ · แผนที่ ตัวเลขการ์ดและตารางศูนย์พักพิงด้านล่างใช้ตัวกรองเดียวกัน <button type="button" class="linkbutton" id="showAllShelters">แสดงทั้งหมด</button>':'';
+ const all=$('showAllShelters');
+ if(all)all.onclick=()=>{document.querySelectorAll('.shelter-filter,.shelter-status-filter').forEach(cb=>{cb.checked=true});render()};
+}
 
 function renderShelterDetails(){
  const getStatus = r => { let s=String(r.status_source||'').trim(); return s==='เปิดให้บริการ/ว่าง'?'ว่าง':s==='ใกล้เต็ม'?'ใกล้เต็ม':s==='เต็ม'?'เต็ม':'ไม่ทราบ'; };
