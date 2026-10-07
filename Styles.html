@@ -357,4 +357,38 @@ details.risk-all>summary::before{content:"▸";color:var(--muted)}
 details.risk-all[open]>summary::before{content:"▾"}
 @media(max-width:767px){table.heat{font-size:12px}.heat-cell{min-width:34px}.stat-v{font-size:17px}}
 
+/* DOH shelter tab (GitHub Pages build only): body.doh-mode hides the dashboard sections and shows #dohPane. */
+#dohPane{display:none}
+.doh-mode #dohPane{display:flex;flex-direction:column;gap:var(--layout-gap,24px)}
+.doh-mode #workspace>:not(#dohPane){display:none!important}
+.doh-alert{display:block}
+.doh-filters{align-items:end}
+.doh-grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr)}.doh-grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+.doh-map{height:clamp(360px,60svh,620px);background:#e8eef0;border-radius:0 0 12px 12px}
+.doh-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);padding:0 20px 10px}.doh-legend i{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+.doh-bar{display:grid;grid-template-columns:150px minmax(0,1fr) 64px;gap:10px;align-items:center;font-size:13px;margin:7px 0}.doh-bar.sm{grid-template-columns:minmax(110px,1.2fr) minmax(0,1fr) 56px}
+.doh-track{display:block;height:12px;background:#e7eef0;border-radius:6px;overflow:hidden}.doh-fill{display:block;height:100%;border-radius:6px}.doh-val{text-align:right;font-variant-numeric:tabular-nums}
+.doh-tablewrap{max-height:520px;overflow:auto}#dohTbl{width:100%;border-collapse:collapse;font-size:13px}#dohTbl th,#dohTbl td,.doh-detail td{padding:8px 10px;border-bottom:1px solid #edf1f2;text-align:left;vertical-align:top}
+#dohTbl th{position:sticky;top:0;background:#f6f9fa;color:var(--muted);font-weight:600;cursor:pointer;white-space:nowrap}#dohTbl .n{text-align:right;font-variant-numeric:tabular-nums}
+.doh-row{cursor:pointer}.doh-row:hover{background:#f3f8f8}
+.doh-pill{display:inline-block;padding:1px 9px;border-radius:99px;font-size:12px;font-weight:600;color:#fff;white-space:nowrap}.doh-pill.g{background:#2f8a4a}.doh-pill.a{background:#b87a14}.doh-pill.r{background:#b34540}.doh-pill.x{background:#8a9aa0}
+.doh-prob{border-left:3px solid #b87a14;padding:6px 12px;margin:8px 0;background:#fbf7ef;border-radius:0 8px 8px 0;font-size:13px}.doh-prob b{display:block;font-size:12px;color:var(--muted);font-weight:600}
+.doh-scroll{max-height:460px;overflow:auto}
+.doh-dlg{border:0;border-radius:14px;max-width:min(760px,94vw);width:100%;padding:0;box-shadow:0 10px 40px #0005}.doh-dlg::backdrop{background:#0006}
+.doh-dlg-head{display:flex;justify-content:space-between;gap:12px;padding:16px 20px;background:var(--dark);color:#fff}.doh-dlg-head h3{margin:0;font-size:17px}.doh-dlg-body{padding:14px 20px 20px;max-height:70vh;overflow:auto}
+.doh-detail{width:100%;border-collapse:collapse;font-size:13px}.doh-detail td:first-child{width:36%;color:var(--muted)}.doh-dim{margin:10px 0 2px}
+.doh-chk{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;font-size:13px}.doh-chk>span{padding:3px 0;border-bottom:1px solid #f0f4f5}
+@media(max-width:1050px){.doh-grid,.doh-grid2{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:600px){.doh-bar{grid-template-columns:110px minmax(0,1fr) 54px}}
+#dohPrio,#dohWorstTbl{width:100%;border-collapse:collapse;font-size:13px}#dohPrio th,#dohPrio td,#dohWorstTbl th,#dohWorstTbl td{padding:8px 10px;border-bottom:1px solid #edf1f2;text-align:left;vertical-align:top}#dohPrio th,#dohWorstTbl th{background:#f6f9fa;color:var(--muted);font-weight:600;white-space:nowrap}#dohPrio .n,#dohWorstTbl .n{text-align:right}
+.doh-pill.b{background:#2b6cb0}.doh-flood-toggle{display:inline-flex;align-items:center;gap:6px;cursor:pointer}.doh-flood-toggle input{width:16px;height:16px;margin:0}
+#dohMobileKey .national-map-key{box-shadow:none;border-top:1px solid var(--line);border-radius:0;min-width:0;margin:0;font-size:12px}
+.doh-dim-row{margin:10px 0}.doh-dim-row b{display:block;font-size:13px}
+.doh-stack{display:flex;height:12px;background:#e7eef0;border-radius:6px;overflow:hidden;margin:3px 0}.doh-stack>span{display:block;height:100%}
+.doh-dim-legend,.doh-dim-na{display:block;font-size:12px;color:var(--muted)}
+.doh-chk small{color:var(--muted)}
+.doh-trend-card{display:flex;align-items:center;gap:12px;color:#fff;border:0}
+.doh-trend-card svg{flex:none}.doh-trend-label{font-size:18px;font-weight:700;line-height:1.2}
+.doh-trend-num{font-size:clamp(28px,3vw,40px);font-weight:800;line-height:1.1}.doh-trend-num span{font-size:.6em}
+
 </style>
