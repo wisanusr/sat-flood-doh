@@ -60,6 +60,10 @@ NEWS_TAG = '<script src="/news-view.js"></script>'
 assert html.count(NEWS_TAG) == 1
 news_js = (ROOT / 'flood_web' / 'news-view.js').read_text(encoding='utf-8').replace('</', '<\\/')
 html = html.replace(NEWS_TAG, '<script>\n' + news_js + '\n</script>')
+DOH_TAG = '<script src="/shelter-doh-view.js"></script>'
+assert html.count(DOH_TAG) == 1
+doh_js = (ROOT / 'flood_web' / 'shelter-doh-view.js').read_text(encoding='utf-8').replace('</', '<\\/')
+html = html.replace(DOH_TAG, '<script>\n' + doh_js + '\n</script>')
 html = html.replace('id="refreshData" type="button">', 'id="refreshData" type="button" title="อ่านข้อมูลสดจากชีตอีกครั้ง (ถ้าอ่านไม่ได้จะใช้ไฟล์ที่เผยแพร่)">', 1)
 assert '<?!=' not in html and 'google.script.run.with' not in html, 'Unconverted Apps Script code'
 assert 'function requestData' in html and 'requestDashboard' not in html, 'Request bridge not converted'

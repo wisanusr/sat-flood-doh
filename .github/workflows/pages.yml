@@ -34,6 +34,7 @@ jobs:
           cache-dependency-path: news/requirements.txt
       - run: pip install -r news/requirements.txt
       - run: python3 news/test_news.py
+      - run: python3 doh_shelter/test_doh_shelter.py
       # Generated Apps Script files must match the sources in flood_web/ (run `python build.py` and commit).
       - run: python3 build.py && git diff --exit-code -- . ':!docs'
 
@@ -69,6 +70,9 @@ jobs:
       - run: python3 news/news_scraper.py docs/news_data
         continue-on-error: true
       - run: python3 news/trends_scraper.py docs/news_data
+        continue-on-error: true
+      # DOH shelter sanitation tab: best effort like the news steps; the tab shows a notice if doh_shelter.json is missing.
+      - run: python3 doh_shelter/build_doh_shelter.py
         continue-on-error: true
       - run: python3 build_pages.py
       - uses: actions/upload-pages-artifact@v3
