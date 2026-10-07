@@ -261,5 +261,14 @@ body,button,input,select,textarea,table,.leaflet-container,.leaflet-tooltip,.lea
 .layer-chip:has(input:checked) .chip-check{opacity:1}
 .layer-bar-extra{display:inline-flex;align-items:center;gap:10px;margin-left:auto}
 @media(max-width:720px){.layer-bar{padding:0 16px 12px}.layer-bar-title{flex-basis:100%}.layer-bar-extra{margin-left:0;flex-basis:100%}.layer-chip{flex:1 1 auto}}
+/* The health-region number toggle is a button chip: its state comes from aria-pressed instead of a checkbox */
+.chip-button{font:inherit;text-align:left;margin:0}
+.layer-chip[aria-pressed="true"]{border-color:var(--teal);background:#e6f4f3;color:var(--ink);font-weight:600}
+.layer-chip[aria-pressed="true"] .chip-icon{opacity:1;filter:none}
+.layer-chip[aria-pressed="true"] .chip-check{opacity:1}
+.chip-button:focus-visible{outline:3px solid #7cc4c0;outline-offset:2px}
+.ic-numbers{position:relative;width:18px;height:18px;margin:-2px 3px;border:1.5px solid #334155;border-radius:50%;background:#fff;box-shadow:0 1px 3px #0003}
+.ic-numbers::after{content:"13";position:absolute;inset:0;display:grid;place-items:center;font:700 9px/1 var(--dashboard-font,inherit);color:#111827}
+.layer-bar-extra{margin-left:auto}
 
 </style>

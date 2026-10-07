@@ -607,7 +607,7 @@ if($('showStationPins')?.checked){
 $('nationalHeatNote').textContent=!L.heatLayer?'โหลด Heatmap ไม่สำเร็จ กรุณารีเฟรช':heatData.length?'Heatmap คำนวณจากสถานะและการกระจุกตัวของสถานีที่ข้อมูลผ่านเกณฑ์ 24 ชั่วโมง ณ เวลาอ่านข้อมูล ไม่ใช่ปริมาณมวลน้ำหรือขอบเขตน้ำท่วมจริง':'ไม่มีสถานีเฝ้าระวังขึ้นไปที่ข้อมูลผ่านเกณฑ์ 24 ชั่วโมงในพื้นที่เลือก จึงไม่แสดง Heatmap';
 }
 
-$('showHealthRegionNumbers').addEventListener('click',()=>{const button=$('showHealthRegionNumbers'),show=button.getAttribute('aria-pressed')!=='true';button.setAttribute('aria-pressed',String(show));button.textContent=show?'ซ่อนเลขเขตสุขภาพ':'แสดงเลขเขตสุขภาพ';renderHealthRegionNumbers()});
+$('showHealthRegionNumbers').addEventListener('click',()=>{const button=$('showHealthRegionNumbers'),show=button.getAttribute('aria-pressed')!=='true';button.setAttribute('aria-pressed',String(show));renderHealthRegionNumbers()});
 $('showHealthRegions').addEventListener('change',renderHealthRegions);$('showStationPins').addEventListener('change',()=>renderMap());$('showWaterHeat').addEventListener('change',()=>renderMap());$('showTrendFill').addEventListener('change',()=>renderMap());$('showHouseholds').addEventListener('change',()=>renderMap());
 $('showShelterPins').addEventListener('change',()=>renderMap());
 document.querySelectorAll('.shelter-filter,.shelter-status-filter').forEach(cb=>cb.addEventListener('change',()=>{document.querySelectorAll('.shelter-filter,.shelter-status-filter').forEach(other=>{if(other.value===cb.value)other.checked=cb.checked});render()}));
