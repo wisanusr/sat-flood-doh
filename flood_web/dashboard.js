@@ -669,6 +669,30 @@ document.querySelectorAll('.tab:not([data-tab="news"]):not([data-tab="risk"]):no
 $('region').addEventListener('change',e=>{state.region=e.target.value;state.province='';opts('province',DATA.vulnerable.filter(r=>!state.region||r.region===state.region).map(r=>r.province).sort((a,b)=>a.localeCompare(b,'th')),'ทุกจังหวัด');render()});$('province').addEventListener('change',e=>{state.province=e.target.value;render()});$('district').addEventListener('change',e=>{state.district=e.target.value;render()});
 document.addEventListener('click',e=>{const p=e.target.closest('[data-province]'),d=e.target.closest('[data-district]');if(p){state.province=p.dataset.province;$('province').value=state.province;render();window.scrollTo({top:0,behavior:'smooth'})}if(d){state.district=d.dataset.district;$('district').value=state.district;render();window.scrollTo({top:0,behavior:'smooth'})}});
 $('reset').addEventListener('click',()=>{tableFilters.clear();document.querySelectorAll('[data-table-filters]').forEach(el=>el.remove());state.region='';state.province='';state.district='';$('region').value='';$('district').value='';opts('province',provinceNames(),'ทุกจังหวัด');render()});
+// Save the page being looked at (national or BKK) as a PNG: heading, data-age line, cards, map and table.
+// modern-screenshot (loaded on first use) lets the browser itself draw the page, so the Leaflet layers come out as they look on screen.
+let screenshotLib=null;
+function loadScreenshotLib(){
+ if(window.modernScreenshot)return Promise.resolve(window.modernScreenshot);
+ return screenshotLib||(screenshotLib=new Promise((ok,fail)=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/modern-screenshot@4.6.0/dist/index.js';s.onload=()=>ok(window.modernScreenshot);s.onerror=()=>{screenshotLib=null;fail(new Error('load'))};document.head.appendChild(s)}));
+}
+async function saveScreenshot(){
+ const btn=$('shotBtn'),label=btn.textContent;btn.disabled=true;btn.textContent='กำลังสร้างภาพ…';
+ try{
+  const ms=await loadScreenshotLib(),ws=$('workspace'),grid=ws.querySelector(':scope > .grid'),shown='.heading,#dataAge,#cards,#alert,.grid';
+  // Only the blocks in `shown` are drawn; the filter rows etc. above the grid are left out, so the image is that much shorter.
+  const gap=parseFloat(getComputedStyle(ws).rowGap)||0;let height=grid.getBoundingClientRect().bottom-ws.getBoundingClientRect().top;
+  for(const el of ws.children){if(el===grid)break;if(!el.matches(shown)&&getComputedStyle(el).display!=='none')height-=el.getBoundingClientRect().height+gap}
+  const canvas=await ms.domToCanvas(ws,{scale:2,height:Math.ceil(height)+8,backgroundColor:getComputedStyle(document.body).backgroundColor,
+   filter:n=>n.nodeType!==1||!((n.parentElement===ws&&!n.matches(shown))||n.classList.contains('leaflet-control-zoom')||n.classList.contains('expand-map'))});
+  const blob=await new Promise(r=>canvas.toBlob(r,'image/png'));if(!blob)throw new Error('empty');
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='flood-'+(state.tab==='bkk'?'bkk':'national')+'-'+(state.date||'latest')+'.png';
+  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),10000);
+  btn.textContent='✓ บันทึกแล้ว';
+ }catch(e){console.warn('screenshot failed',e);btn.textContent='สร้างภาพไม่สำเร็จ'}
+ finally{setTimeout(()=>{btn.textContent=label;btn.disabled=false},1800)}
+}
+$('shotBtn').addEventListener('click',saveScreenshot);
 $('methodBtn').addEventListener('click',()=>$('methods').showModal());$('closeMethods').addEventListener('click',()=>$('methods').close());$('methods').addEventListener('click',e=>{if(e.target===$('methods')){let r=$('methods').getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)$('methods').close()}});
 $('export').addEventListener('click',()=>{const csv='\uFEFF'+filteredExportRows().map(row=>row.map(v=>'"'+String(v??'').replace(/^[=+@-]/,"'$&").replace(/"/g,'""')+'"').join(',')).join('\r\n');const u=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=u;a.download=`flood-${state.tab}-${state.date}.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)});
 function provinceNames(){const names=window.PROVINCES_GEOJSON?.features.map(f=>f.properties.pro_th)||[...DATA.disasters.map(r=>r.Province),...DATA.vulnerable.map(r=>r.province)];return uniq(names.filter(Boolean)).sort((a,b)=>a.localeCompare(b,'th'))}

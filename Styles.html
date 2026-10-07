@@ -294,6 +294,12 @@ body,button,input,select,textarea,table,.leaflet-container,.leaflet-tooltip,.lea
 .data-age.age-ok{border-left-color:#16a34a;background:#f0fdf4;color:#14532d}
 .data-age.age-warn{border-left-color:#f59e0b;background:#fffbeb;color:#78350f}
 .data-age.age-bad{border-left-color:#dc2626;background:#fef2f2;color:#7f1d1d}
+/* Screenshot button next to the definitions button; not shown on the news tab */
+.subnav-actions{display:flex;gap:8px;align-items:center}
+.subnav-actions .lightbtn:disabled{opacity:.6;cursor:progress}
+.news-mode #shotBtn{display:none}
+@media(max-width:767px){.subnav-actions{margin-bottom:8px}}
+.layer-chip .chip-text{white-space:nowrap}
 
 /* Flood-prep tab ("เตรียมรับน้ำท่วม", risk-view.js): body.risk-mode hides the dashboard sections and shows #riskPane. */
 #riskPane{display:none}
