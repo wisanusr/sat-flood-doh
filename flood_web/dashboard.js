@@ -516,7 +516,7 @@ function updateBkkMapKey(target, showPins){
 }
 function nationalMapKey(){
  const control=L.control({position:'bottomright'});
- control.onAdd=()=>{const el=L.DomUtil.create('div','national-map-key');el.innerHTML='<strong style="color:#3156c5">ความเข้มสถานะระดับน้ำ</strong><div class="heat-scale"></div><div class="heat-scale-label"><span>ปกติ (ใส)</span><span>รุนแรง / กระจุกตัว</span></div><hr><strong style="color:#991b1b">เส้นขอบ: ครัวเรือนประสบภัย</strong>'+[[100000,'100,000+'],[10000,'10,000–99,999'],[1000,'1,000–9,999'],[1,'1–999'],[null,'ไม่มีข้อมูล'],[0,'0 ครัวเรือน']].map(([n,label])=>`<div class="border-key"><i style="border-color:${householdBorderColor(n)};border-top-width:${n>0?5:1.2}px"></i>${label}</div>`).join('')+'<hr><strong style="color:#082f6b">แรเงาขีด: แนวโน้มระดับน้ำ (ปภ.)</strong>'+[['hatchRising','เพิ่มขึ้น'],['hatchSteady','ทรงตัว'],['hatchFalling','ลดลง']].map(([id,label])=>`<div class="border-key"><svg class="hatch-swatch" width="28" height="14" aria-hidden="true"><rect width="28" height="14" fill="url(#${id})" stroke="#94a3b8" stroke-width=".8"/></svg>${label}</div>`).join('');L.DomEvent.disableClickPropagation(el);L.DomEvent.disableScrollPropagation(el);return el};return control;
+ control.onAdd=()=>{const el=L.DomUtil.create('div','national-map-key');el.innerHTML='<strong style="color:#3156c5">ความเข้มสถานะระดับน้ำ</strong><div class="heat-scale"></div><div class="heat-scale-label"><span>ปกติ (ใส)</span><span>รุนแรง / กระจุกตัว</span></div><div class="key-households"><hr><strong style="color:#991b1b">เส้นขอบ: ครัวเรือนประสบภัย</strong>'+[[100000,'100,000+'],[10000,'10,000–99,999'],[1000,'1,000–9,999'],[1,'1–999'],[null,'ไม่มีข้อมูล'],[0,'0 ครัวเรือน']].map(([n,label])=>`<div class="border-key"><i style="border-color:${householdBorderColor(n)};border-top-width:${n>0?5:1.2}px"></i>${label}</div>`).join('')+'</div><div class="key-hatch"><hr><strong style="color:#082f6b">แรเงาขีด: แนวโน้มระดับน้ำ (ปภ.)</strong>'+[['hatchRising','เพิ่มขึ้น'],['hatchSteady','ทรงตัว'],['hatchFalling','ลดลง']].map(([id,label])=>`<div class="border-key"><svg class="hatch-swatch" width="28" height="14" aria-hidden="true"><rect width="28" height="14" fill="url(#${id})" stroke="#94a3b8" stroke-width=".8"/></svg>${label}</div>`).join('')+'</div>';L.DomEvent.disableClickPropagation(el);L.DomEvent.disableScrollPropagation(el);return el};return control;
 }
 // Leaflet.heat may redraw in an animation frame after its tab is hidden.
 function safeHeatLayer(points,options){const layer=L.heatLayer(points,options),redraw=layer._redraw;layer._redraw=function(){if(!this._map||!this._map.getContainer().clientWidth||!this._map.getContainer().clientHeight||!this._heat?._width||!this._heat?._height){this._frame=null;return this}return redraw.call(this)};return layer}
@@ -564,9 +564,11 @@ if (window.PROVINCES_GEOJSON) {
     }
     const trends=new Map(),TREND_LABEL={up:'เพิ่มขึ้น',steady:'ทรงตัว',down:'ลดลง'},HATCH={up:'hatchRising',steady:'hatchSteady',down:'hatchFalling'};
     for (const r of getReports()) { if (!allowed.has(r.Province)) continue; const k=DashboardModel.trendKind(r.Water_Level_Trend); if (k) trends.set(r.Province,k); }
+    const showHouseholds=$('showHouseholds')?.checked!==false;
     const provinceOutline=L.geoJSON(window.PROVINCES_GEOJSON, {
         pane:'nationalBoundaries',
         style(feature) {
+            if(!showHouseholds)return {className:'national-province',color:'#94a3b8',weight:1,opacity:.6,fill:false};
             const n=totals.get(feature.properties.pro_th);
             return {className:'national-province',color:householdBorderColor(n),weight:n>0?5:1.2,opacity:n>0?1:.5,fill:n>0,fillColor:householdBorderColor(n),fillOpacity:0.12};
         },
@@ -580,6 +582,9 @@ if (window.PROVINCES_GEOJSON) {
     // Hatching by water-level trend (rising / steady / falling), drawn under the outlines; not interactive.
     if ($('showTrendHatch')?.checked && trends.size) L.geoJSON(window.PROVINCES_GEOJSON, {pane:'trendHatch',interactive:false,filter:f=>trends.has(f.properties.pro_th),style:f=>({stroke:false,fill:true,fillColor:'url(#'+HATCH[trends.get(f.properties.pro_th)]+')',fillOpacity:1})}).addTo(layers);
 }
+// Legend sections follow their layers.
+document.querySelectorAll('.national-map-key .key-households').forEach(e=>e.style.display=$('showHouseholds').checked?'':'none');
+document.querySelectorAll('.national-map-key .key-hatch').forEach(e=>e.style.display=$('showTrendHatch').checked?'':'none');
 map.stop();map.invalidateSize({animate:false});
 map._dashboardBounds=selectedBounds;if(fit){if(selectedBounds?.isValid())map.fitBounds(selectedBounds,{padding:[20,20],maxZoom:11,animate:false});else map.setView([13,101],5);}
 const heatData=currentStations.filter(r=>typeof r.latitude==='number'&&typeof r.longitude==='number'&&quality(r)==='ภายใน 24 ชั่วโมง').map(r=>{
@@ -600,7 +605,7 @@ $('nationalHeatNote').textContent=!L.heatLayer?'โหลด Heatmap ไม่�
 }
 
 $('showHealthRegionNumbers').addEventListener('click',()=>{const button=$('showHealthRegionNumbers'),show=button.getAttribute('aria-pressed')!=='true';button.setAttribute('aria-pressed',String(show));button.textContent=show?'ซ่อนเลขเขตสุขภาพ':'แสดงเลขเขตสุขภาพ';renderHealthRegionNumbers()});
-$('showHealthRegions').addEventListener('change',renderHealthRegions);$('showStationPins').addEventListener('change',()=>renderMap());$('showTrendHatch').addEventListener('change',()=>renderMap());
+$('showHealthRegions').addEventListener('change',renderHealthRegions);$('showStationPins').addEventListener('change',()=>renderMap());$('showTrendHatch').addEventListener('change',()=>renderMap());$('showHouseholds').addEventListener('change',()=>renderMap());
 $('showShelterPins').addEventListener('change',()=>renderMap());
 document.querySelectorAll('.shelter-filter,.shelter-status-filter').forEach(cb=>cb.addEventListener('change',()=>{document.querySelectorAll('.shelter-filter,.shelter-status-filter').forEach(other=>{if(other.value===cb.value)other.checked=cb.checked});render()}));
 $('fitDistrictMap').addEventListener('click',()=>{mapScope='';renderMap()});$('fitShelterMap').addEventListener('click',()=>fitShelters(currentShelters.filter(validCoordinates).map(r=>[r.latitude,r.longitude])));
