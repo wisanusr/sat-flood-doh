@@ -54,6 +54,25 @@ assert.equal(m.validCoordinates({latitude:91,longitude:100}),false);
   assert.deepEqual(lc.phases.map(p=>[p.key,p.index,p.level]),[['p1',25,'ต่ำ'],['p2',0,'ต่ำ'],['p3',null,null]]);
   assert.equal(lc.leading,'p1');assert.deepEqual(lc.phases[0].terms.map(t=>t.term),['a','b']);
   assert.equal(m.lifecycle({timeline:null,phases:[{key:'p',terms:['a']}]}),null);assert.equal(m.lifecycle(null),null);assert.equal(m.lifecycle({timeline:tl,phases:[]}),null);
+  // Several snapshots in one day: newest per key wins
+  {
+    const ts=m.timestamp,pick=(rows,k,t)=>m.latestPerKey(rows,k,t).map(r=>r.id);
+    const rows=[{id:'a-early',k:'a',t:'2026-10-07T06:00:00+07:00'},{id:'b',k:'b',t:'2026-10-07T07:00:00+07:00'},{id:'a-late',k:'a',t:'2026-10-07T09:55:00+07:00'},{id:'a-mid',k:'a',t:'2026-10-07T08:00:00+07:00'}];
+    assert.deepEqual(pick(rows,r=>r.k,r=>ts(r.t)),['a-late','b']);
+    assert.deepEqual(pick([{id:1,k:'x',t:'2026-10-07T09:00:00+07:00'},{id:2,k:'x',t:'2026-10-07T02:00:00Z'}],r=>r.k,r=>ts(r.t)),[2]);   // 09:00 +07:00 is 02:00Z: equal, the later row wins
+    assert.deepEqual(pick([{id:1,k:'x',t:'2026-10-07T09:00:00+07:00'},{id:2,k:'x',t:'2026-10-07T01:00:00Z'}],r=>r.k,r=>ts(r.t)),[1]);   // offsets are compared as real instants
+    assert.deepEqual(pick([{id:1,k:'x',t:'2026-10-07T09:00:00+07:00'},{id:2,k:'x',t:null}],r=>r.k,r=>ts(r.t)),[1]);                      // a row without time never beats one with a time
+    assert.deepEqual(pick([{id:1,k:'x',t:null},{id:2,k:'x',t:null}],r=>r.k,r=>ts(r.t)),[2]);
+    assert.deepEqual(pick([{id:1,k:''},{id:2,k:null},{id:3,k:'y'}],r=>r.k,()=>NaN),[3,1,2]);
+    assert.deepEqual(m.latestPerKey(null,r=>r,()=>0),[]);
+    assert.equal(m.disasterTime({Update_Time:'2026-10-07T10:00:00+07:00',Ingested_At:'2026-10-07T09:55:00+07:00'}),ts('2026-10-07T10:00:00+07:00'));
+    assert.equal(m.disasterTime({Update_Time:null,Ingested_At:'2026-10-07T09:55:00+07:00'}),ts('2026-10-07T09:55:00+07:00'));
+    assert.ok(Number.isNaN(m.disasterTime({})));
+    const st=[{o:'2026-10-07T11:00:00+07:00'},{o:'2026-10-07T11:50:00+07:00'},{o:'2026-10-07T13:00:00+07:00'},{o:'bad'}];
+    assert.equal(m.latestTime(st.map(x=>({observed_at_th:x.o})),'observed_at_th',ts('2026-10-07T12:00:00+07:00')),ts('2026-10-07T11:50:00+07:00'));
+    assert.equal(m.latestTime(st.map(x=>({observed_at_th:x.o})),'observed_at_th'),ts('2026-10-07T13:00:00+07:00'));
+    assert.ok(Number.isNaN(m.latestTime([],'observed_at_th')));
+  }
   // Data age banner
   const T0=Date.parse('2026-10-07T00:00:00Z');
   assert.deepEqual(m.dataAge('2026-10-07T00:00:00Z',T0+5*60000),{minutes:5,level:'ok',text:'5 นาที'});

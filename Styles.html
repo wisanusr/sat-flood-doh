@@ -294,12 +294,6 @@ body,button,input,select,textarea,table,.leaflet-container,.leaflet-tooltip,.lea
 .data-age.age-ok{border-left-color:#16a34a;background:#f0fdf4;color:#14532d}
 .data-age.age-warn{border-left-color:#f59e0b;background:#fffbeb;color:#78350f}
 .data-age.age-bad{border-left-color:#dc2626;background:#fef2f2;color:#7f1d1d}
-/* Screenshot button next to the definitions button; not shown on the news tab */
-.subnav-actions{display:flex;gap:8px;align-items:center}
-.subnav-actions .lightbtn:disabled{opacity:.6;cursor:progress}
-.news-mode #shotBtn{display:none}
-@media(max-width:767px){.subnav-actions{margin-bottom:8px}}
-.layer-chip .chip-text{white-space:nowrap}
 
 /* Flood-prep tab ("เตรียมรับน้ำท่วม", risk-view.js): body.risk-mode hides the dashboard sections and shows #riskPane. */
 #riskPane{display:none}
@@ -396,5 +390,12 @@ details.risk-all[open]>summary::before{content:"▾"}
 .doh-trend-card{display:flex;align-items:center;gap:12px;color:#fff;border:0}
 .doh-trend-card svg{flex:none}.doh-trend-label{font-size:18px;font-weight:700;line-height:1.2}
 .doh-trend-num{font-size:clamp(28px,3vw,40px);font-weight:800;line-height:1.1}.doh-trend-num span{font-size:.6em}
+/* Screenshot button next to the definitions button; not shown on the news, flood-prep and DOH tabs */
+.subnav-actions{display:flex;gap:8px;align-items:center}
+.subnav-actions .lightbtn:disabled{opacity:.6;cursor:progress}
+.news-mode #shotBtn,.risk-mode #shotBtn,.doh-mode #shotBtn{display:none}
+@media(max-width:767px){.subnav-actions{margin-bottom:8px}}
+.layer-chip .chip-text{white-space:nowrap}
+.data-age .age-basis{margin-top:3px;font-size:12.5px;opacity:.9}
 
 </style>

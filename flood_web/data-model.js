@@ -80,6 +80,21 @@
     const all=tot(rows||[]),aff=tot(hit);
     return {all,affected:aff,share:Object.fromEntries(keys.map(k=>[k,all[k]>0&&aff[k]!=null?aff[k]/all[k]*100:null])),provinces:new Set((rows||[]).map(r=>r.province)).size,affectedProvinces:new Set(hit.map(r=>r.province)).size};
   }
+  // A day can hold several snapshots of the same record (the importers append). Keep the newest row per key by `timeOf` (ms or NaN);
+  // a later row wins a tie or a missing time, and rows without a key are kept as they are. Order = first appearance of each key.
+  function latestPerKey(rows,keyOf,timeOf){
+    const best=new Map(),keyless=[];
+    for(const row of rows||[]){
+      const key=keyOf(row);if(key==null||key===''){keyless.push(row);continue}
+      const t=timeOf(row),at=Number.isFinite(t)?t:-Infinity,cur=best.get(key);
+      if(!cur||at>=cur.at)best.set(key,{row,at});
+    }
+    return Array.from(best.values(),x=>x.row).concat(keyless);
+  }
+  // When a Disaster_DB row was written: Update_Time if the sheet has it, else Ingested_At.
+  function disasterTime(r){const u=timestamp(r&&r.Update_Time);return Number.isFinite(u)?u:timestamp(r&&r.Ingested_At)}
+  // Newest time (ms) of `field` over rows, ignoring times after `cutoff` (ms) when one is given; NaN when none.
+  function latestTime(rows,field,cutoff){let best=NaN;for(const r of rows||[]){const t=timestamp(r&&r[field]);if(Number.isFinite(t)&&(!Number.isFinite(cutoff)||t<=cutoff)&&!(t<=best))best=t}return best}
   // Age of the data the page is showing (ISO load time vs `now` in ms): ok <= 60 min, warn <= 180 min, bad beyond.
   function dataAge(loadedAt,now){
     const t=timestamp(loadedAt);if(!Number.isFinite(t)||!Number.isFinite(now))return null;
@@ -174,6 +189,6 @@
     return out;
   }
   const reasonList=s=>String(s??'').split(';').map(x=>x.trim()).filter(Boolean);
-  const model={parseSeries,RAIN_CLASSES,rainClass,seriesDates,exposure,reasonList,RISK_SOURCES,RISK_LEVELS,riskRank,parseBool,riskRows,riskSummary,waterTrend,overbankM,riskFreshness,dataAge,vulnerableTotals,trendKind,provinceLevel,situationGroups,regionNumber,timelineDaily,termWindows,lifecycle,trendLevel,newsRising,newsTopRegions,newsTopByCount,sourceInitial,growthValue,newsArticles,newsProvinces,newsUrgencyCounts,newsWords,ageLabel,safeUrl,URGENCY,NEWS_CATEGORIES,latestStationDay,SOURCES,WATER_STATUS,canonicalWaterStatus,timestamp,sum,quality,householdBorderColor,validCoordinates,districtSummary};
+  const model={latestPerKey,disasterTime,latestTime,parseSeries,RAIN_CLASSES,rainClass,seriesDates,exposure,reasonList,RISK_SOURCES,RISK_LEVELS,riskRank,parseBool,riskRows,riskSummary,waterTrend,overbankM,riskFreshness,dataAge,vulnerableTotals,trendKind,provinceLevel,situationGroups,regionNumber,timelineDaily,termWindows,lifecycle,trendLevel,newsRising,newsTopRegions,newsTopByCount,sourceInitial,growthValue,newsArticles,newsProvinces,newsUrgencyCounts,newsWords,ageLabel,safeUrl,URGENCY,NEWS_CATEGORIES,latestStationDay,SOURCES,WATER_STATUS,canonicalWaterStatus,timestamp,sum,quality,householdBorderColor,validCoordinates,districtSummary};
   if(typeof module!=='undefined')module.exports=model;else root.DashboardModel=model;
 })(typeof window!=='undefined'?window:globalThis);
