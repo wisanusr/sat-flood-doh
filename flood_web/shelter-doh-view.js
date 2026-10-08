@@ -226,7 +226,7 @@
     const occ=sum(rows,'occupants'),cap=sum(rows,'capacity'),vul=sum(rows,'vulnerable');
     const lc={3:0,2:0,1:0,0:0};rows.forEach(r=>{lc[r.level||0]++});
     const dates=D.records.map(r=>r.assess_date).filter(Boolean).sort();
-    $('dohSub').textContent='ข้อมูล doh_shelter · '+D.records.length+' รายการประเมิน จาก '+latest.length+' ศูนย์ · ช่วงวันที่ประเมิน '+thDate(dates[0])+' – '+thDate(dates[dates.length-1]);
+    $('dohSub').textContent='ข้อมูลจากชีต doh_shelter · '+D.records.length+' รายการประเมิน จาก '+latest.length+' ศูนย์ · ช่วงวันที่ประเมิน '+thDate(dates[0])+' – '+thDate(dates[dates.length-1]);
     $('dohCards').innerHTML=[
       ['ศูนย์พักพิง',fmt(rows.length),'เปิดให้บริการ '+fmt(open.length)+' · ปิด '+fmt(rows.length-open.length)],
       ['ผู้รับบริการปัจจุบัน',fmt(occ),'ความจุรวม '+fmt(cap)+' คน ('+(pct(occ,cap)??'-')+'%)'],
@@ -287,7 +287,7 @@
     const pri=rows.filter(r=>r.status==='เปิดให้บริการ'&&(r.poor.length||r.fair.length||r.stale)).sort((a,b)=>b.priority-a.priority).slice(0,10);
     $('dohPrioSub').textContent='ศูนย์ที่เปิดอยู่ เรียงตามคะแนนความเร่งด่วน (40 ต่อข้อที่ต้องปรับปรุง + 10 ต่อข้อพอใช้ + 10 ถ้าไม่ได้ประเมินเกิน '+D.stale_days+' วัน) · แสดง '+pri.length+' อันดับแรก';
     $('dohPrio').tBodies[0].innerHTML=pri.map(r=>'<tr class="doh-row" data-id="'+esc(r.shelter_id)+'"><td>'+esc(r.name)+(r.flood?' <span class="doh-pill b">จังหวัดมีผู้ประสบภัย</span>':'')+'</td><td>'+esc(r.province)+'</td><td>'+lvPill(r.level)+'</td><td>'+(r.poor.map(esc).join(', ')||'-')+'</td><td>'+thDate(r.assess_date)+(r.stale?' <span class="doh-pill a">เกิน '+D.stale_days+' วัน</span>':'')+'</td></tr>').join('')||'<tr><td colspan="5" class="empty">ไม่มีศูนย์ที่ต้องติดตามตามเกณฑ์นี้</td></tr>';
-    $('dohFoot').textContent='ดึงข้อมูลเมื่อ '+new Date(D.fetched_at).toLocaleString('th-TH')+' · ผลรวมใช้การประเมินล่าสุดของแต่ละศูนย์ · ระดับตาม แนวทางจัดระดับศพพ. (ข้อแย่สุดเป็นตัวกำหนดมิติและศูนย์ ไม่นับข้อที่ไม่ได้ตอบ) · แปลงวันที่ พ.ศ./ค.ศ. ในข้อมูลเป็นรูปแบบเดียวกันแล้ว';
+    $('dohFoot').textContent='ดึงข้อมูลเมื่อ '+new Date(D.fetched_at).toLocaleString('th-TH')+' · ผลรวมใช้การประเมินล่าสุดของแต่ละศูนย์ · ระดับตาม แนวทางจัดระดับศพพ. (ข้อแย่สุดเป็นตัวกำหนดมิติและศูนย์ ไม่นับข้อที่ไม่ได้ตอบ) · แปลงวันที่ พ.ศ./ค.ศ. ในชีตเป็นรูปแบบเดียวกันแล้ว';
     drawMap(rows);drawTable(rows);
   }
 
