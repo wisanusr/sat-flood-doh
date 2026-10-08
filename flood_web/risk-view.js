@@ -63,7 +63,7 @@
   // ---------- 2. rain outlook: provinces x days ----------
   function heatHtml(rows){
     const first=rows.find(r=>r.forecast_start&&M.parseSeries(r.forecast_daily_mm).length);
-    if(!first)return '<section class="panel"><div class="panel-body"><div class="alert">ยังไม่มีฝนพยากรณ์รายวันในข้อมูล (รอ pipeline รอบถัดไป)</div></div></section>';
+    if(!first)return '<section class="panel"><div class="panel-body"><div class="alert">ยังไม่มีฝนพยากรณ์รายวันในชีต (รอ pipeline รอบถัดไป)</div></div></section>';
     const n=Math.max(...rows.map(r=>M.parseSeries(r.forecast_daily_mm).length));
     const dates=M.seriesDates(first.forecast_start,n);
     const head=dates.map((d,i)=>'<th class="num heat-day" scope="col">'+(+d.slice(8))+(i===0||d.endsWith('-01')?'<small>'+dayLabel(d).replace(/^\d+\s*/,'')+'</small>':'<small>&nbsp;</small>')+'</th>').join('');
@@ -135,7 +135,6 @@
   }
   function drawMap(rows,critical){
     const el=$('riskMap');if(!el||!window.L)return;
-    window.MapChrome?.setup(el.closest('section'),el,null);
     destroyMap();
     const m=map=L.map(el,{scrollWheelZoom:false,zoomSnap:0.5}).setView([13.2,100.9],5.5);
     const layer=L.layerGroup().addTo(m),byName=new Map(rows.map(r=>[r.province,r])),bounds=[];
@@ -222,10 +221,10 @@
     const rows=M.riskRows(d.floodRisk);
     let html='<div class="heading"><div><h1>เตรียมรับน้ำท่วม</h1><p class="sub">หลักฐานประกอบการเฝ้าระวังรายจังหวัด: ฝนพยากรณ์ ฝนจริง ระดับน้ำ ประกาศเตือน และประชากรกลุ่มเปราะบาง</p></div></div>';
     if(!riskSt||riskSt.status==='error'){
-      pane.innerHTML=html+notice('ยังอ่านข้อมูลความเสี่ยงไม่ได้ (ข้อมูล flood_riskไม่พบ ว่าง หรือรูปแบบไม่ตรง) แท็บอื่นของแดชบอร์ดยังใช้งานได้ตามปกติ',true);
+      pane.innerHTML=html+notice('ยังอ่านข้อมูลความเสี่ยงไม่ได้ (แท็บ flood_risk ในชีตไม่พบ ว่าง หรือรูปแบบไม่ตรง) แท็บอื่นของแดชบอร์ดยังใช้งานได้ตามปกติ',true);
       bind();return;
     }
-    if(!rows.length){pane.innerHTML=html+notice('ยังไม่มีข้อมูลความเสี่ยงในข้อมูล รอรอบอัปเดตถัดไปของ pipeline',true);bind();return}
+    if(!rows.length){pane.innerHTML=html+notice('ยังไม่มีข้อมูลความเสี่ยงในชีต รอรอบอัปเดตถัดไปของ pipeline',true);bind();return}
     if(!rowOf(rows,state.sel))state.sel=rows[0].province;
     const s=M.riskSummary(rows),high=rows.filter(r=>r.risk_level==='สูง').map(r=>r.province),exp=M.exposure(d.vulnerable,high);
     html+=freshnessHtml(rows)+warningHtml(rows,s)
