@@ -9,7 +9,7 @@ return{setup,ICON}})();
 if(window.Chart)Chart.defaults.font.family="'Google Sans', Tahoma, sans-serif";
 /*@bridge-begin*/function requestData(source,refresh){return new Promise((resolve,reject)=>google.script.run.withSuccessHandler(resolve).withFailureHandler(reject).getDashboardData(source||null,!!refresh));}/*@bridge-end*/
 (async()=>{try{
-document.getElementById('pageTitle').textContent='กำลังโหลดข้อมูล…';
+document.getElementById('pageTitle').textContent='กำลังอ่านข้อมูลจาก Google Sheets…';
 const DATA=await requestData();
 if(!DATA.sourceStatus)throw new Error(DATA.error||'รูปแบบข้อมูลจากเซิร์ฟเวอร์ไม่ถูกต้อง');
 const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),fmt=v=>typeof v==='number'&&Number.isFinite(v)?v.toLocaleString('th-TH'):'ไม่มีข้อมูล',sum=DashboardModel.sum,uniq=a=>[...new Set(a)],date=v=>!v||String(v).startsWith('undefined')?'ไม่มีวันรายงาน':new Date(v).toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'numeric',timeZone:'Asia/Bangkok'}),time=v=>v?new Date(Number.isFinite(DashboardModel.timestamp(v))?DashboardModel.timestamp(v):v).toLocaleString('th-TH',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Bangkok'}):'ไม่ทราบเวลาข้อมูล';
@@ -63,7 +63,7 @@ function render(){const bkk=state.tab==='bkk';$('workspace').classList.toggle('n
 $('shelterCards').classList.toggle('hidden',!bkk);
 $('allSheltersPanel').classList.toggle('hidden',!bkk);
 $('nationalVulPanel').classList.toggle('hidden', bkk);$('vulSummary').classList.toggle('hidden', bkk);
-$('bkkVulPanel').classList.toggle('hidden', !bkk);$('areaNote').classList.toggle('hidden',!bkk);$('pageTitle').textContent=bkk?'กรุงเทพมหานคร':'สถานการณ์น้ำและพื้นที่ได้รับผลกระทบ';$('pageSub').textContent=bkk?'ติดตามระดับน้ำ ความพร้อมศูนย์พักพิง และข้อมูลรายเขต':'ภาพรวมประเทศไทย รวมกรุงเทพมหานคร · เลือกพื้นที่เพื่อดูรายละเอียด';$('dateLabel').textContent='รายงาน ปภ. '+date(state.date+'T00:00:00+07:00');$('filterNote').textContent=bkk?'รายเขต: ใช้กับสถานีและศูนย์พักพิง':'วันรายงาน: ใช้กับข้อมูล ปภ. เท่านั้น';$('sourceName').textContent=DATA.source;
+$('bkkVulPanel').classList.toggle('hidden', !bkk);$('areaNote').classList.toggle('hidden',!bkk);$('pageTitle').textContent=bkk?'กรุงเทพมหานคร':'สถานการณ์น้ำและพื้นที่ได้รับผลกระทบ';$('pageSub').textContent=bkk?'ติดตามระดับน้ำ ความพร้อมศูนย์พักพิง และข้อมูลรายเขต':'ภาพรวมประเทศไทย รวมกรุงเทพมหานคร · เลือกพื้นที่เพื่อดูรายละเอียด';$('dateLabel').textContent='รายงาน ปภ. '+date(state.date+'T00:00:00+07:00');$('filterNote').textContent=bkk?'รายเขต: ใช้กับสถานีและศูนย์พักพิง':'วันรายงาน: ใช้กับข้อมูล ปภ. เท่านั้น';if($('sourceName'))$('sourceName').innerHTML=link(DATA.sourceUrl,DATA.source);
  const all=getReports(),allowed=allowedProvinces(),reports=all.filter(r=>bkk?r.Province==='กรุงเทพมหานคร':allowed.includes(r.Province));
  currentStations=bkk?DATA.bkkStations.filter(r=>r.province==='กรุงเทพมหานคร'&&(!state.district||r.district_or_area===state.district)):nationalStations().filter(r=>allowed.includes(r.province));const activeShelterFilters=new Set(Array.from(document.querySelectorAll('.shelter-status-filter:checked')).map(el=>el.value)); currentShelters=bkk?DATA.shelters.filter(r=>(!state.district||r.district===state.district)&&activeShelterFilters.has(shelterStatusKey(r))):[];
  const fresh=currentStations.filter(r=>quality(r)==='ภายใน 24 ชั่วโมง'),stale=currentStations.filter(r=>quality(r)==='ข้อมูลเก่าเกิน 24 ชั่วโมง'),future=currentStations.filter(r=>quality(r)==='เวลาอนาคต'),severe=fresh.filter(r=>(WATER_STATUS[canonicalWaterStatus(r.flood_status_source)]?.rank||0)>=4),affected=uniq(reports.map(r=>r.Province)),households=reports.length?sum(reports,'Affected_Households'):null;
@@ -682,6 +682,7 @@ async function saveScreenshot(){
  finally{setTimeout(()=>{btn.textContent=label;btn.disabled=false},1800)}
 }
 $('shotBtn').addEventListener('click',saveScreenshot);
+$('methodBtn').addEventListener('click',()=>$('methods').showModal());$('closeMethods').addEventListener('click',()=>$('methods').close());$('methods').addEventListener('click',e=>{if(e.target===$('methods')){let r=$('methods').getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)$('methods').close()}});
 $('export').addEventListener('click',()=>{const csv='\uFEFF'+filteredExportRows().map(row=>row.map(v=>'"'+String(v??'').replace(/^[=+@-]/,"'$&").replace(/"/g,'""')+'"').join(',')).join('\r\n');const u=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=u;a.download=`flood-${state.tab}-${state.date}.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)});
 function provinceNames(){const names=window.PROVINCES_GEOJSON?.features.map(f=>f.properties.pro_th)||[...DATA.disasters.map(r=>r.Province),...DATA.vulnerable.map(r=>r.province)];return uniq(names.filter(Boolean)).sort((a,b)=>a.localeCompare(b,'th'))}
 function allowedProvinces(){return provinceNames().filter(p=>(!state.province||p===state.province)&&(!state.region||DATA.vulnerable.some(r=>r.province===p&&r.region===state.region)))}
@@ -800,6 +801,11 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelect
 matchMedia('(max-width:767px)').addEventListener('change',syncMapKey);
 window.addEventListener('error',()=>{const el=document.getElementById('alert');if(el)el.textContent='เกิดข้อผิดพลาดในการแสดงผลหน้าเว็บ กรุณาลองโหลดใหม่'});
 
+const methodItems=document.querySelectorAll('#methods > ol:first-of-type > li');
+methodItems[2].textContent='ความสด: ใช้เวลาตรวจวัดสถานีหรือเวลาปรับปรุงศูนย์เทียบเวลาอ่านชีตนั้น อายุ 0–24 ชั่วโมงถือว่าล่าสุด ไม่ใช้เวลานำเข้าแทนเวลาตรวจวัด';
+methodItems[3].textContent='กทม.: แสดงสถานีที่จังหวัดในข้อมูลต้นทางเป็นกรุงเทพมหานคร ไม่รวมจังหวัดรอบข้าง';
+methodItems[4].textContent='ศูนย์พักพิง: จำนวนศูนย์ เขต พิกัด และผู้พักเกินความจุคำนวณจาก Google Sheets ทุกครั้งที่โหลดหน้า';
+document.querySelector('#methods p.sub').textContent='อ่าน Google Sheets ผ่านเซิร์ฟเวอร์ทุกครั้งที่เปิดหรือรีเฟรชหน้า รอ Google Sheets บันทึกสำเร็จแล้วรีเฟรช เวลาข้อมูลต้นทางอาจเก่ากว่าเวลาที่อ่านไฟล์';
 render();
 window.dispatchEvent(new Event('dashboard:data'));
 // GitHub Pages build: the first paint used the published snapshot; now read the sheet itself and swap in what could be read.
@@ -872,11 +878,11 @@ function renderDataAge(){
  const snapshot=window.DATA_IS_SNAPSHOT===true,when=time(loaded);
  el.style.display='';el.className='data-age age-'+a.level;
  el.innerHTML=snapshot
-  ?(a.level==='ok'?'ข้อมูลอายุ <b>'+esc(a.text)+'</b> · ไฟล์สร้างเมื่อ '+esc(when)+' (หน้านี้แสดงไฟล์ที่สร้างตามรอบ ไม่ได้อ่านข้อมูลสด)'
-   :'<b>ข้อมูลอายุ '+esc(a.text)+'</b> (ไฟล์สร้างเมื่อ '+esc(when)+') — หน้านี้แสดงไฟล์ที่สร้างตามรอบ ไม่ได้อ่านข้อมูลสด จึงอาจต่างจากข้อมูลตอนนี้')
-  :'ข้อมูลอ่านเมื่อ '+esc(when)+' (อายุ '+esc(a.text)+')';
- if(window.DATA_LIVE_PENDING===true)el.innerHTML+=' · <b>กำลังอ่านข้อมูลสด…</b>';
- else if(window.DATA_LIVE_ERROR===true&&snapshot)el.innerHTML+=' · อ่านข้อมูลสดไม่สำเร็จ จึงใช้ไฟล์ที่เผยแพร่';
+  ?(a.level==='ok'?'ข้อมูลอายุ <b>'+esc(a.text)+'</b> · ไฟล์สร้างเมื่อ '+esc(when)+' (หน้านี้แสดงไฟล์ที่สร้างตามรอบ ไม่ได้อ่านชีตสด)'
+   :'<b>ข้อมูลอายุ '+esc(a.text)+'</b> (ไฟล์สร้างเมื่อ '+esc(when)+') — หน้านี้แสดงไฟล์ที่สร้างตามรอบ ไม่ได้อ่านชีตสด จึงอาจต่างจากชีตตอนนี้')
+  :'ข้อมูลอ่านจากชีตเมื่อ '+esc(when)+' (อายุ '+esc(a.text)+')';
+ if(window.DATA_LIVE_PENDING===true)el.innerHTML+=' · <b>กำลังอ่านข้อมูลสดจากชีต…</b>';
+ else if(window.DATA_LIVE_ERROR===true&&snapshot)el.innerHTML+=' · อ่านชีตสดไม่สำเร็จ จึงใช้ไฟล์ที่เผยแพร่';
  const basis=timeBasis();if(basis)el.innerHTML+='<div class="age-basis">'+basis+'</div>';
 }
 // The data on one page comes from sources with different clocks: the report day is a ปภ. day, the stations are read 'now' and
