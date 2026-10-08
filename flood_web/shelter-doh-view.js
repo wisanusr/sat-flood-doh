@@ -17,7 +17,7 @@
   const COL={g:'#2f8a4a',a:'#b87a14',r:'#b34540',x:'#8a9aa0'};
   const safeUrl=u=>/^https:\/\//i.test(u||'')?u:'';
   const st={prov:'',region:'',status:'',q:'',sort:'name',dir:1,flood:true,date:'',pins:true,regions:true,nums:false,bands:new Set(['g','a','r','x'])};
-  let P=null,PG=null,HR=null,regionLayer=null,regionNums=null,keyCtl=null,mapScope='',provLayer=null,ddpm=new Map(),trend=new Map(),D=null,latest=[],byShelter=new Map(),loaded=false,loading=null,failed='',map=null,layer=null,built=false;
+  let P=null,PG=null,HR=null,regionLayer=null,regionNums=null,keyCtl=null,mapScope='',provLayer=null,provFill=null,ddpm=new Map(),trend=new Map(),D=null,latest=[],byShelter=new Map(),loaded=false,loading=null,failed='',map=null,layer=null,built=false;
 
   async function load(){
     if(loading)return loading;
@@ -77,10 +77,14 @@
 
   const uniq=k=>[...new Set(latest.map(r=>r[k]).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'th'));
   const opts=(all,vals)=>'<option value="">'+all+'</option>'+vals.map(v=>'<option>'+esc(v)+'</option>').join('');
+  // layer chip, same markup as the first-page map (id for a layer toggle, band for the shelter-level filters)
+  const chip=(id,icon,text,checked,disabled,band)=>'<label class="layer-chip"><input type="checkbox"'+(id?' id="'+id+'"':' class="doh-band" value="'+band+'"')+(checked?' checked':'')+(disabled?' disabled':'')+'>'
+    +(band?'<span class="chip-icon" aria-hidden="true" style="width:12px;height:12px;margin:1px 6px;border-radius:50%;background:'+(band==='x'?'#fff;border:2px solid #475569;box-sizing:border-box':COL[band])+'"></span>':'<span class="chip-icon '+icon+'" aria-hidden="true"></span>')
+    +'<span class="chip-text">'+text+'</span><span class="chip-check" aria-hidden="true">✓</span></label>';
   function build(){
-    built=true;map=null;layer=null;provLayer=null;regionLayer=null;regionNums=null;keyCtl=null;mapScope='';
+    built=true;map=null;layer=null;provLayer=null;provFill=null;regionLayer=null;regionNums=null;keyCtl=null;mapScope='';
     if(!st.date)st.date=ddpmDates().pop()||'';
-    pane.innerHTML='<div class="heading"><div><h1>ศูนย์พักพิงชั่วคราว · สุขาภิบาลสิ่งแวดล้อม</h1><p class="sub" id="dohSub"></p></div></div>'
+    pane.innerHTML='<div class="heading"><div><h1>ศูนย์พักพิงชั่วคราว · สุขาภิบาลสิ่งแวดล้อม</h1></div></div>'
      +'<div class="filters doh-filters">'+(P?'<div class="field"><label for="dohDate">วันรายงาน ปภ.</label><select id="dohDate">'+ddpmDates().slice().reverse().map(d=>'<option value="'+d+'">'+thDate(d)+'</option>').join('')+'</select></div>':'')
      +'<div class="field"><label for="dohRegion">เขตสุขภาพ</label><select id="dohRegion">'+opts('ทุกเขตสุขภาพ',uniq('region'))+'</select></div>'
      +'<div class="field"><label for="dohProv">จังหวัด</label><select id="dohProv">'+opts('ทุกจังหวัด',uniq('province'))+'</select></div>'
@@ -88,16 +92,18 @@
      +'<div class="field"><label for="dohQ">ค้นหาชื่อศูนย์/อำเภอ</label><input id="dohQ" type="search"></div>'
      +'<button class="lightbtn" id="dohReset" type="button">ล้างตัวกรอง</button></div>'
      +'<div class="cards" id="dohCards"></div>'
-     +'<div class="grid doh-grid"><section class="panel"><div class="panel-head"><div><h2>แผนที่ศูนย์พักพิงและแนวโน้มระดับน้ำรายจังหวัด</h2><p class="sub" id="dohMapSub"></p></div><span class="badge" id="dohMapCount"></span></div>'
-     +'<div class="map-tools"><label><input type="checkbox" id="dohPins" checked>1. หมุดศูนย์พักพิง</label>'
-     +'<label style="margin-left:16px"><input type="checkbox" id="dohRegions" checked>2. เส้นเขตสุขภาพ <span style="display:inline-block;width:36px;height:1px;background:#475569" aria-hidden="true"></span></label>'
-     +'<button type="button" class="lightbtn" id="dohRegionNums" aria-pressed="false">แสดงเลขเขตสุขภาพ</button><span id="dohRegionStatus" class="sub" style="margin-left:8px"></span>'
-     +'<label style="margin-left:16px"><input type="checkbox" id="dohFlood" checked'+(P&&PG?'':' disabled')+'>3. แนวโน้มระดับน้ำ (ปภ.)</label>'
-     +'<div style="display:flex;gap:6px;flex-wrap:wrap;border-left:1px solid #ddd;padding-left:10px">'
-     +[['g','ดี'],['a','พอใช้'],['r','ต้องปรับปรุง'],['x','ไม่มีข้อมูล']].map(([k,l])=>'<label class="filter-pill"><input type="checkbox" class="doh-band" value="'+k+'" checked> <span>'+l+'</span></label>').join('')+'</div>'
-     +'<button type="button" class="lightbtn" id="dohFit">จัดแผนที่ให้พอดี</button></div>'
-     +'<div id="dohMap" class="map national-view"></div><div id="dohMobileKey"></div><p class="mini-note" id="dohMapNote" style="padding:10px 20px 14px"></p></section>'
-     +'<section class="panel"><div class="panel-head"><div><h2>ระดับรายมิติ</h2><p class="sub">จำนวนศูนย์ตามระดับ · ระดับของมิติ = ข้อที่แย่ที่สุดที่ตอบ (ไม่นับข้อ 3.2, 4, 12, 19.1, 19.2, 21 ตามแดชบอร์ดต้นทาง)</p></div></div><div class="panel-body" id="dohDims"></div>'
+     +'<div class="grid doh-maprow"><section class="panel" id="dohMapPanel"><div class="panel-head"><div><h2>แผนที่ศูนย์พักพิงและแนวโน้มระดับน้ำรายจังหวัด</h2></div><span class="badge" id="dohMapCount"></span></div>'
+     +'<div id="dohTrendCards" class="doh-trend-cards" aria-label="สรุปแนวโน้มระดับน้ำรายจังหวัด"></div>'
+     +'<div id="dohMap" class="map national-view"><div class="map-fallback">กำลังโหลดแผนที่… ตารางข้อมูลด้านล่างใช้งานได้โดยไม่ต้องเชื่อมต่อแผนที่</div></div><div id="dohMobileKey"></div>'
+     +'<div class="map-tools layer-bar" id="dohMapTools" role="group" aria-label="ชั้นข้อมูลแผนที่">'
+     +chip('dohPins','ic-pins','หมุดศูนย์พักพิง',true)
+     +chip('dohRegions','ic-regions','เส้นเขตสุขภาพ',true)
+     +'<button type="button" class="layer-chip chip-button" id="dohRegionNums" aria-pressed="false"><span class="chip-icon ic-numbers" aria-hidden="true"></span><span class="chip-text">เลขเขตสุขภาพ</span><span class="chip-check" aria-hidden="true">✓</span></button>'
+     +chip('dohFlood','ic-trend','สีแนวโน้มระดับน้ำ (ปภ.)',true,!(P&&PG))
+     +[['g','ระดับ ดี'],['a','ระดับ พอใช้'],['r','ระดับ ต้องปรับปรุง'],['x','ระดับ ไม่มีข้อมูล']].map(([k,l])=>chip(null,null,l,true,false,k)).join('')
+     +'<span id="dohRegionStatus" class="sub"></span></div>'
+     +'<p class="mini-note" id="dohMapSource" style="padding:10px 20px 14px">ที่มา : ระบบปฏิบัติการ SEhRT และเฝ้าระวังศูนย์พักพิงชั่วคราว กรมอนามัย</p></section>'
+     +'<section class="panel" id="dohDimsPanel"><div class="panel-head"><div><h2>ระดับรายมิติ</h2></div></div><div class="panel-body" id="dohDims"></div>'
      +'</section></div>'
      +'<section class="panel"><div class="panel-head"><div><h2>ข้อที่ยังไม่ได้ระดับดีมากที่สุด</h2><p class="sub" id="dohWorstSub"></p></div></div><div class="doh-tablewrap"><table id="dohWorstTbl"><thead><tr><th class="n">#</th><th>มิติ</th><th>ข้อ</th><th class="n">ต้องปรับปรุง</th><th class="n">พอใช้</th><th class="n">ดี</th><th class="n">ไม่ได้ตอบ</th><th>สัดส่วนที่ยังไม่ได้ระดับดี</th></tr></thead><tbody></tbody></table></div></section>'
      +'<section class="panel"><div class="panel-head"><div><h2>ศูนย์ที่ควรติดตามก่อน</h2><p class="sub" id="dohPrioSub"></p></div></div><div class="doh-tablewrap"><table id="dohPrio"><thead><tr><th>ศูนย์พักพิง</th><th>จังหวัด</th><th>ระดับ</th><th>ข้อที่ต้องปรับปรุง</th><th>การประเมินล่าสุด</th></tr></thead><tbody></tbody></table></div></section>'
@@ -119,9 +125,8 @@
     });
     $('dohRegions').addEventListener('change',e=>{st.regions=e.target.checked;drawRegions()});
     $('dohPins').addEventListener('change',e=>{st.pins=e.target.checked;update()});
-    $('dohRegionNums').addEventListener('click',()=>{st.nums=!st.nums;$('dohRegionNums').setAttribute('aria-pressed',String(st.nums));$('dohRegionNums').textContent=st.nums?'ซ่อนเลขเขตสุขภาพ':'แสดงเลขเขตสุขภาพ';drawRegions()});
+    $('dohRegionNums').addEventListener('click',()=>{st.nums=!st.nums;$('dohRegionNums').setAttribute('aria-pressed',String(st.nums));drawRegions()});
     document.querySelectorAll('.doh-band').forEach(cb=>cb.addEventListener('change',()=>{st.bands=new Set([...document.querySelectorAll('.doh-band')].filter(x=>x.checked).map(x=>x.value));update()}));
-    $('dohFit').addEventListener('click',()=>{mapScope='';update()});
     window.addEventListener('resize',syncKey);
     if($('dohDate')){$('dohDate').value=st.date;$('dohDate').addEventListener('change',e=>{st.date=e.target.value;update()})}
     if($('dohFlood'))$('dohFlood').addEventListener('change',e=>{st.flood=e.target.checked;update()});
@@ -136,7 +141,12 @@
   const filtered=()=>latest.filter(r=>(!st.prov||r.province===st.prov)&&(!st.region||r.region===st.region)&&(!st.status||r.status===st.status)&&(!st.q||(r.name+' '+r.district+' '+r.subdistrict).includes(st.q))&&st.bands.has(lk(r.level)));
   const bars=(rows,small)=>rows.map(r=>'<div class="doh-bar'+(small?' sm':'')+'"><span>'+esc(r.l)+'</span><span class="doh-track"><span class="doh-fill" style="width:'+Math.max(0,Math.min(100,r.w))+'%;background:'+r.c+'"></span></span><span class="doh-val">'+esc(r.v)+'</span></div>').join('');
   const allQ=()=>D.dims.flatMap(d=>d.qs);
-  const stack=(c,total)=>'<span class="doh-stack" role="img" aria-label="ดี '+c[3]+' พอใช้ '+c[2]+' ต้องปรับปรุง '+c[1]+'">'+[[3,'g'],[2,'a'],[1,'r']].map(([k,x])=>c[k]?'<span style="width:'+(c[k]/total*100)+'%;background:'+COL[x]+'"></span>':'').join('')+'</span>';
+  const qName=q=>(q.no?q.no+(String(q.no).includes('.')?' ':'. '):'')+q.label;
+  // stacked level bar; with showPct each segment carries its share (hidden when the segment is too narrow to read)
+  const stack=(c,total,showPct)=>'<span class="doh-stack'+(showPct?' big':'')+'" role="img" aria-label="ดี '+c[3]+' พอใช้ '+c[2]+' ต้องปรับปรุง '+c[1]+'">'+[[3,'g'],[2,'a'],[1,'r']].map(([k,x])=>{
+    if(!c[k])return '';const w=c[k]/total*100;
+    return '<span style="width:'+w+'%;background:'+COL[x]+'" title="'+LV_LABEL[k]+' '+c[k]+' ศูนย์ ('+Math.round(w)+'%)">'+(showPct&&w>=7?Math.round(w)+'%':'')+'</span>';
+  }).join('')+'</span>';
 
   // Same look as the national water-station map: white canvas without tiles, province borders coloured by ปภ.
   // affected households, black health-region lines, a bottom-right key (moved under the map on phones).
@@ -150,12 +160,11 @@
       +'<hr><strong>2. เส้นเขตสุขภาพ</strong><div class="border-key"><i style="border-color:#000;border-top-width:1px"></i>เส้นแบ่งเขต</div>'
       +(P&&PG?'<hr><strong style="color:#082f6b">3. แนวโน้มระดับน้ำ (ปภ.)</strong>'
         +Object.keys(TREND).map(t=>'<div class="border-key">'+swatch(TREND[t].color,TREND_FILL)+t+'</div>').join('')
-        +'<div class="border-key">'+swatch('#cbd5e1',0)+'ไม่อยู่ในรายงาน</div>':'')
-      +'<small style="display:block;margin-top:6px">หมุดทุกศูนย์ขนาดเท่ากัน · สีจังหวัดไม่ใช่ขอบเขตน้ำท่วมจริง</small>';
+        +'<div class="border-key">'+swatch('#cbd5e1',0)+'ไม่อยู่ในรายงาน</div>':'');
   }
   function syncKey(){
     const el=keyCtl&&keyCtl.getContainer();if(!el)return;
-    const target=matchMedia('(max-width:767px)').matches?$('dohMobileKey'):$('dohMap').querySelector('.leaflet-bottom.leaflet-right');
+    const target=matchMedia('(max-width:767px)').matches?$('dohMobileKey'):$('dohMap').querySelector('.leaflet-bottom.leaflet-left');
     if(target&&el.parentElement!==target)target.append(el);
   }
   function drawRegions(){
@@ -177,19 +186,25 @@
   }
   function drawMap(rows){
     const el=$('dohMap');
-    window.MapChrome?.setup(el.closest('section'),el,el.closest('section').querySelector('.map-tools'),[$('dohFit'),$('dohRegionStatus')]);
+    window.MapChrome?.setup(el.closest('section'),el,el.closest('section').querySelector('.map-tools'),[$('dohRegionStatus')]);
     if(!window.L){el.innerHTML='<p class="empty">โหลดแผนที่ไม่สำเร็จ ใช้ตารางด้านล่างแทนได้</p>';return}
     if(!map){
-      el.innerHTML='';map=L.map(el,{scrollWheelZoom:false}).setView([13.7,100.5],6);el.style.background='#ffffff';
+      el.innerHTML='';map=L.map(el,{scrollWheelZoom:false,zoomSnap:0.5,zoomDelta:0.5,maxZoom:11}).setView([13.7,100.5],6);el.style.background='#ffffff';
+      const fp=map.createPane('dohTrendFill');fp.style.zIndex=390;fp.style.pointerEvents='none';  // trend colour under the borders
       map.createPane('dohProvinces').style.zIndex=450;
       map.createPane('dohShelters').style.zIndex=670;
       const lp=map.createPane('dohRegionLines');lp.style.zIndex=650;lp.style.pointerEvents='none';
       const np=map.createPane('dohRegionLabels');np.style.zIndex=660;np.style.pointerEvents='none';
+      if(PG)provFill=L.geoJSON(PG,{pane:'dohTrendFill',interactive:false,style:()=>({stroke:false,fill:false})}).addTo(map);
       if(PG)provLayer=L.geoJSON(PG,{pane:'dohProvinces',style:()=>({className:'national-province',color:'#94a3b8',weight:1.2,opacity:.5,fill:false}),onEachFeature:(f,l)=>l.bindTooltip('')}).addTo(map);
       layer=L.layerGroup().addTo(map);
-      keyCtl=L.control({position:'bottomright'});
+      keyCtl=L.control({position:'bottomleft'});
       keyCtl.onAdd=()=>{const c=L.DomUtil.create('div','national-map-key');c.innerHTML=keyHtml();L.DomEvent.disableClickPropagation(c);L.DomEvent.disableScrollPropagation(c);return c};
       keyCtl.addTo(map);
+      if(window.ResizeObserver){
+        let last=el.clientWidth;
+        new ResizeObserver(()=>{const wd=el.clientWidth;if(map&&wd){map.invalidateSize({animate:false});if(!last){mapScope='';update()}}last=wd}).observe(el);
+      }
       drawRegions();
     }
     syncKey();
@@ -197,9 +212,10 @@
     const provs=new Set(rows.map(r=>r.province));
     if(provLayer)provLayer.eachLayer(l=>{
       const name=l.feature.properties.pro_th,t=trend.get(name),n=ddpm.get(name),on=st.flood&&P;
-      l.setStyle(on&&t?{color:trendColor(t),weight:1.5,opacity:1,fill:true,fillColor:trendColor(t),fillOpacity:TREND_FILL}:{color:'#94a3b8',weight:1.2,opacity:.5,fill:false});
+      l.setStyle(on&&t?{color:trendColor(t),weight:1.5,opacity:1,fill:false}:{color:'#94a3b8',weight:1.2,opacity:.5,fill:false});
       l.setTooltipContent('<b>'+esc(name)+'</b><br>'+(!P?'ไม่มีข้อมูล ปภ.':t?'ระดับน้ำ'+esc(t)+(n!==undefined?' · '+fmt(n)+' ครัวเรือนประสบภัย':''):'ไม่อยู่ในรายงาน ปภ. วันที่เลือก')+(provs.has(name)?'<br>ศูนย์พักพิงที่แสดง '+rows.filter(r=>r.province===name).length+' แห่ง':'')+'<br>'+thDate(st.date));
     });
+    if(provFill)provFill.eachLayer(l=>{const t=trend.get(l.feature.properties.pro_th);l.setStyle(st.flood&&P&&t?{stroke:false,fill:true,fillColor:trendColor(t),fillOpacity:TREND_FILL}:{stroke:false,fill:false})});
     const pins=st.pins?rows.filter(r=>r.lat!=null):[];
     pins.forEach(r=>{
       const t=trend.get(r.province);
@@ -207,34 +223,37 @@
       m.bindTooltip(esc(r.name)+' · '+esc(r.province)+' · ระดับ'+lvLabel(r.level)+(t?' · ระดับน้ำ'+esc(t):''));m.on('click',()=>openDetail(r.shelter_id));m.addTo(layer);
     });
     $('dohMapCount').textContent=fmt(pins.length)+' ศูนย์บนแผนที่';
-    $('dohMapSub').textContent=(P?'สีจังหวัดตามแนวโน้มระดับน้ำ ปภ. วันที่ '+thDate(st.date)+' · ':'')+'หมุดตามผลประเมินล่าสุดของแต่ละศูนย์';
-    $('dohMapNote').textContent='สีจังหวัดมาจากแนวโน้มระดับน้ำในรายงาน ปภ. (ไม่ใช่ขอบเขตน้ำท่วมจริง จังหวัดที่ไม่อยู่ในรายงานไม่ได้แปลว่าไม่ท่วม) · หมุดที่ไม่มีพิกัดที่ใช้ได้จะไม่แสดงบนแผนที่แต่ยังอยู่ในตาราง';
     map.stop();map.invalidateSize({animate:false});
-    const scope=[st.region,st.prov].join('|');
+    // default view: zoom to the health regions (เขตสุขภาพ) that have shelters; a province filter zooms to that province
+    const regNo=t=>{const m=String(t||'').match(/ที่\s*(\d+)/);return m?m[1]:(/กรุงเทพ/.test(String(t||''))?'13':'')};
+    const regs=new Set(rows.map(r=>regNo(r.region)).filter(Boolean));
+    const scope=[st.region,st.prov,[...regs].sort().join(',')].join('|');
     if(scope!==mapScope){
       mapScope=scope;
-      let b=null;
-      if(PG)provLayer.eachLayer(l=>{if((!st.prov&&!st.region)||provs.has(l.feature.properties.pro_th)){b=b||L.latLngBounds([]);b.extend(l.getBounds())}});
+      let b=null;const grow=l=>{b=b||L.latLngBounds([]);b.extend(l.getBounds())};
+      if(st.prov&&provLayer)provLayer.eachLayer(l=>{if(provs.has(l.feature.properties.pro_th))grow(l)});
+      else if(HR&&regs.size)L.geoJSON(HR).eachLayer(l=>{if(regs.has(regNo(l.feature.properties.region)))grow(l)});
+      else if(provLayer)provLayer.eachLayer(l=>{if(provs.has(l.feature.properties.pro_th))grow(l)});
       if(!b&&pins.length)b=L.latLngBounds(pins.map(r=>[r.lat,r.lon]));
-      if(b&&b.isValid())map.fitBounds(b,{padding:[20,20],maxZoom:11,animate:false});
+      if(b&&b.isValid())map.fitBounds(b,{padding:[44,44],maxZoom:11,animate:false});else map.setView([13,101],5);
     }
   }
 
   function update(){
     computeDdpm();
     const rows=filtered(),open=rows.filter(r=>r.status==='เปิดให้บริการ');
+    try{drawMap(rows)}catch(e){console.error('DOH map',e)}
+    try{drawTable(rows)}catch(e){console.error('DOH table',e)}
     const occ=sum(rows,'occupants'),cap=sum(rows,'capacity'),vul=sum(rows,'vulnerable');
     const lc={3:0,2:0,1:0,0:0};rows.forEach(r=>{lc[r.level||0]++});
     const dates=D.records.map(r=>r.assess_date).filter(Boolean).sort();
-    $('dohSub').textContent='ข้อมูล doh_shelter · '+D.records.length+' รายการประเมิน จาก '+latest.length+' ศูนย์ · ช่วงวันที่ประเมิน '+thDate(dates[0])+' – '+thDate(dates[dates.length-1]);
     $('dohCards').innerHTML=[
       ['ศูนย์พักพิง',fmt(rows.length),'เปิดให้บริการ '+fmt(open.length)+' · ปิด '+fmt(rows.length-open.length)],
       ['ผู้รับบริการปัจจุบัน',fmt(occ),'ความจุรวม '+fmt(cap)+' คน ('+(pct(occ,cap)??'-')+'%)'],
       ['กลุ่มเปราะบาง',fmt(vul),(pct(vul,occ)??'-')+'% ของผู้รับบริการ'],
       ['ศูนย์ที่ได้ระดับ “ดี”',fmt(lc[3]),'พอใช้ '+fmt(lc[2])+' · ต้องปรับปรุง '+fmt(lc[1])+' · ไม่มีข้อมูล '+fmt(lc[0])],
-      P?['ศูนย์ในจังหวัดที่ ปภ. รายงานผู้ประสบภัย',fmt(rows.filter(r=>r.flood).length),'จาก '+fmt(rows.length)+' ศูนย์ · ปภ. '+thDate(st.date)+' (ไม่อยู่ในรายงาน ≠ ไม่ท่วม)']:
-      ['จังหวัดที่มีศูนย์',fmt(new Set(rows.map(r=>r.province)).size),'ครอบคลุม '+fmt(new Set(rows.map(r=>r.region)).size)+' เขตสุขภาพ']
     ].map(c=>'<div class="card"><div class="eyebrow">'+c[0]+'</div><div class="number">'+c[1]+'</div><div class="card-note">'+c[2]+'</div></div>').join('');
+    $('dohTrendCards').innerHTML='';
     if(P){
       // provinces in the selected ปภ. report by water-level trend (national, not narrowed by the shelter filters)
       const tc={'เพิ่มขึ้น':0,'ทรงตัว':0,'ลดลง':0};trend.forEach(t=>{tc[t]++});
@@ -245,7 +264,7 @@
         'ลดลง':'<path d="M21 11v15M14 20l7 7 7-7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>'};
       // same colours as the province fill on the map and the trend badges of the main dashboard; the light blue needs dark text
       const FG={'เพิ่มขึ้น':'#fff','ทรงตัว':'#fff','ลดลง':'#082f6b'};
-      $('dohCards').insertAdjacentHTML('beforeend',Object.keys(tc).map(t=>'<div class="card doh-trend-card" style="background:'+TREND[t].color+';color:'+FG[t]+'" title="จังหวัดในรายงาน ปภ. วันที่ '+thDate(st.date)+' ที่ระดับน้ำ'+t+'">'
+      $('dohTrendCards').innerHTML=(Object.keys(tc).map(t=>'<div class="card doh-trend-card" style="background:'+TREND[t].color+';color:'+FG[t]+'" title="จังหวัดในรายงาน ปภ. วันที่ '+thDate(st.date)+' ที่ระดับน้ำ'+t+'">'
         +'<svg viewBox="0 0 44 44" width="44" height="44" aria-hidden="true"><circle cx="22" cy="22" r="21" fill="none" stroke="currentColor" stroke-width="2"/>'+ICON[t]+wave.replace(/M6 36/,'M6 33')+'</svg>'
         +'<div><div class="doh-trend-label">น้ำ'+t+'</div><div class="doh-trend-num">'+fmt(tc[t])+' <span>จ.</span></div></div></div>').join(''));
     }
@@ -254,10 +273,10 @@
     $('dohDims').innerHTML=D.dims.map(d=>{
       const c=cnt(rows,r=>r.dim_levels[d.id]),n=c[3]+c[2]+c[1];
       if(!d.qs.length||!n)return '<div class="doh-dim-row"><b>มิติที่ '+d.id+' '+esc(d.name)+'</b><span class="doh-dim-na">ข้อมูลไม่ครบ</span></div>';
-      return '<div class="doh-dim-row"><b>มิติที่ '+d.id+' '+esc(d.name)+'</b>'+stack(c,n)+'<span class="doh-dim-legend">ดี '+c[3]+' · พอใช้ '+c[2]+' · ต้องปรับปรุง '+c[1]+'</span></div>';
+      return '<div class="doh-dim-row"><b>มิติที่ '+d.id+' '+esc(d.name)+'</b>'+stack(c,n,true)+'<span class="doh-dim-legend">ดี '+c[3]+' · พอใช้ '+c[2]+' · ต้องปรับปรุง '+c[1]+'</span></div>';
     }).join('')||'<p class="empty">ไม่มีข้อมูล</p>';
     const dimOf=new Map(D.dims.flatMap(d=>d.qs.map(q=>[q.key,'มิติ '+d.id])));
-    const items=allQ().map(q=>({l:q.no+(q.no.includes('.')?' ':'. ')+q.label,dim:dimOf.get(q.key),c:cnt(rows,r=>r.levels[q.key])})).filter(o=>o.c[1]+o.c[2]>0).sort((a,b)=>b.c[1]-a.c[1]||b.c[2]-a.c[2]);
+    const items=allQ().map(q=>({l:qName(q),dim:dimOf.get(q.key),c:cnt(rows,r=>r.levels[q.key])})).filter(o=>o.c[1]+o.c[2]>0).sort((a,b)=>b.c[1]-a.c[1]||b.c[2]-a.c[2]);
     $('dohWorstSub').textContent='เรียงตามจำนวนศูนย์ที่ต้องปรับปรุง แล้วตามพอใช้ · '+fmt(items.length)+' จาก '+fmt(allQ().length)+' ข้อ มีอย่างน้อย 1 ศูนย์ที่ยังไม่ได้ระดับดี (รวม '+fmt(rows.length)+' ศูนย์)';
     $('dohWorstTbl').tBodies[0].innerHTML=items.map((o,i)=>'<tr><td class="n">'+(i+1)+'</td><td>'+esc(o.dim)+'</td><td>'+esc(o.l)+'</td><td class="n">'+(o.c[1]?'<span class="doh-pill r">'+o.c[1]+'</span>':'-')+'</td><td class="n">'+(o.c[2]?'<span class="doh-pill a">'+o.c[2]+'</span>':'-')+'</td><td class="n">'+o.c[3]+'</td><td class="n">'+o.c[0]+'</td><td style="min-width:160px">'+stack({3:0,2:o.c[2],1:o.c[1]},Math.max(1,rows.length))+'</td></tr>').join('')||'<tr><td colspan="8" class="empty">ไม่มีข้อที่ต่ำกว่าระดับดี</td></tr>';
 
@@ -288,7 +307,6 @@
     $('dohPrioSub').textContent='ศูนย์ที่เปิดอยู่ เรียงตามคะแนนความเร่งด่วน (40 ต่อข้อที่ต้องปรับปรุง + 10 ต่อข้อพอใช้ + 10 ถ้าไม่ได้ประเมินเกิน '+D.stale_days+' วัน) · แสดง '+pri.length+' อันดับแรก';
     $('dohPrio').tBodies[0].innerHTML=pri.map(r=>'<tr class="doh-row" data-id="'+esc(r.shelter_id)+'"><td>'+esc(r.name)+(r.flood?' <span class="doh-pill b">จังหวัดมีผู้ประสบภัย</span>':'')+'</td><td>'+esc(r.province)+'</td><td>'+lvPill(r.level)+'</td><td>'+(r.poor.map(esc).join(', ')||'-')+'</td><td>'+thDate(r.assess_date)+(r.stale?' <span class="doh-pill a">เกิน '+D.stale_days+' วัน</span>':'')+'</td></tr>').join('')||'<tr><td colspan="5" class="empty">ไม่มีศูนย์ที่ต้องติดตามตามเกณฑ์นี้</td></tr>';
     $('dohFoot').textContent='ดึงข้อมูลเมื่อ '+new Date(D.fetched_at).toLocaleString('th-TH')+' · ผลรวมใช้การประเมินล่าสุดของแต่ละศูนย์ · ระดับตาม แนวทางจัดระดับศพพ. (ข้อแย่สุดเป็นตัวกำหนดมิติและศูนย์ ไม่นับข้อที่ไม่ได้ตอบ) · แปลงวันที่ พ.ศ./ค.ศ. ในข้อมูลเป็นรูปแบบเดียวกันแล้ว';
-    drawMap(rows);drawTable(rows);
   }
 
   const COLS=[['name','ศูนย์พักพิง'],['province','จังหวัด'],['district','อำเภอ'],['status','สถานะ'],['occupants','ผู้รับบริการ','n'],['capacity','รองรับ','n'],['vulnerable','เปราะบาง','n'],['lv','ระดับ'],['assess_date','ประเมินล่าสุด']];
@@ -308,7 +326,7 @@
     h+='<h4>ผลการประเมินล่าสุด ('+thDate(r.assess_date)+') · ระดับ '+lvLabel(r.level)+'</h4>';
     D.dims.forEach(d=>{
       h+='<p class="doh-dim"><b>มิติที่ '+d.id+' '+esc(d.name)+'</b> '+(d.qs.length?lvPill(r.dim_levels[d.id]):'<span class="doh-pill x">ข้อมูลไม่ครบ</span>')+'</p>';
-      if(d.qs.length)h+='<div class="doh-chk">'+d.qs.map(q=>'<span>'+esc(q.no+(q.no.includes('.')?' ':'. ')+q.label)+' <small>('+esc(r.answers[q.key]||'ไม่ตอบ')+')'+(q.in_level?'':' · ไม่นับในระดับมิติ')+'</small></span><span>'+lvPill(r.levels[q.key])+'</span>').join('')+'</div>';
+      if(d.qs.length)h+='<div class="doh-chk">'+d.qs.map(q=>'<span>'+esc(qName(q))+' <small>('+esc(r.answers[q.key]||'ไม่ตอบ')+')'+(q.in_level?'':' · ไม่นับในระดับมิติ')+'</small></span><span>'+lvPill(r.levels[q.key])+'</span>').join('')+'</div>';
     });
     const ex=D.extras.filter(x=>((r.extra||{})[x.key]||'').trim());
     if(ex.length)h+='<h4>ข้อมูลประกอบ (ไม่นำมาคำนวณระดับ)</h4><table class="doh-detail">'+ex.map(x=>'<tr><td>'+esc(x.label)+'</td><td>'+esc(r.extra[x.key])+'</td></tr>').join('')+'</table>';

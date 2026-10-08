@@ -71,51 +71,68 @@ class CleanTests(unittest.TestCase):
 
 
 class GradeTests(unittest.TestCase):
-    def lv(self, **answers):
+    def g(self, **answers):
         return B.grade(answers)
 
-    def test_two_level_item(self):  # ส้วมเพียงพอ: ใช่=ดี ไม่ใช่=พอใช้
-        self.assertEqual(self.lv(Q01_Result='ใช่')['levels']['Q01_Result'], B.GOOD)
-        self.assertEqual(self.lv(Q01_Result='ไม่ใช่')['levels']['Q01_Result'], B.FAIR)
+    def lv(self, key, answer):
+        return B.grade({key: answer})['levels'][key]
 
-    def test_item_whose_no_is_poor(self):  # ส้วมสะอาด: ไม่ใช่=ต้องปรับปรุง
-        self.assertEqual(self.lv(Q01_Cleanliness='ไม่ใช่')['levels']['Q01_Cleanliness'], B.POOR)
+    def test_two_level_items(self):
+        self.assertEqual(self.lv('Q01_Result', 'ใช่'), B.GOOD)
+        self.assertEqual(self.lv('Q01_Result', 'ไม่ใช่'), B.FAIR)
+        self.assertEqual(self.lv('Q01_Cleanliness', 'ไม่ใช่'), B.POOR)
 
-    def test_inverted_item(self):  # ไม่พบน้ำเสีย: ถามเป็น "พบปัญหา" ใช่=ต้องปรับปรุง
-        self.assertEqual(self.lv(Q08_Result='ไม่ใช่')['levels']['Q08_Result'], B.GOOD)
-        self.assertEqual(self.lv(Q08_Result='ใช่')['levels']['Q08_Result'], B.POOR)
+    def test_inverted_item(self):  # พบปัญหาน้ำเสีย: ใช่ = ต้องปรับปรุง
+        self.assertEqual(self.lv('Q08_Result', 'ไม่ใช่'), B.GOOD)
+        self.assertEqual(self.lv('Q08_Result', 'ใช่'), B.POOR)
+
+    def test_follows_source_dashboard_for_q16_q18(self):  # the docx says พอใช้, the source dashboard shows ต้องปรับปรุง
+        self.assertEqual(self.lv('Q16_Result', 'ไม่ใช่'), B.POOR)
+        self.assertEqual(self.lv('Q18_Result', 'ไม่ใช่'), B.POOR)
 
     def test_garbage_accumulation_levels(self):
-        f = lambda v: self.lv(Q09_Level=v)['levels']['Q09_Level']
-        self.assertEqual(f('ไม่มีมูลฝอยสะสม'), B.GOOD)
-        self.assertEqual(f('ปริมาณเล็กน้อย (ยังไม่ส่งผลกระทบ)'), B.FAIR)
-        self.assertEqual(f('สะสมมาก'), B.POOR)
-        self.assertIsNone(f(''))
+        self.assertEqual(self.lv('Q09_Level', 'ไม่มีมูลฝอยสะสม'), B.GOOD)
+        self.assertEqual(self.lv('Q09_Level', 'ปริมาณเล็กน้อย (ยังไม่ส่งผลกระทบ)'), B.FAIR)
+        self.assertEqual(self.lv('Q09_Level', 'สะสมมาก'), B.POOR)
+        self.assertIsNone(self.lv('Q09_Level', ''))
+
+    def test_chlorine_reading_levels(self):
+        self.assertEqual(self.lv('Q19_PPM', '0.2–0.5 PPM (มาตรฐาน)'), B.GOOD)
+        self.assertEqual(self.lv('Q19_PPM', '< 0.2 PPM'), B.FAIR)
+        self.assertIsNone(self.lv('Q19_PPM', ''))
 
     def test_blank_and_unknown_answers_have_no_level(self):
-        g = self.lv(Q01_Result='', Q12_Result='ไม่แน่ใจ')
+        g = self.g(Q01_Result='', Q12_Result='ไม่แน่ใจ')
         self.assertIsNone(g['levels']['Q01_Result'])
         self.assertIsNone(g['levels']['Q12_Result'])
 
-    def test_dimension_is_worst_answered_item(self):
-        g = self.lv(Q01_Result='ใช่', Q01_Cleanliness='ไม่ใช่', Q03_Soap_Result='ไม่ใช่')
-        self.assertEqual(g['dim_levels'][1], B.POOR)
-        g = self.lv(Q01_Result='ใช่', Q03_Soap_Result='ไม่ใช่')
-        self.assertEqual(g['dim_levels'][1], B.FAIR)
+    def test_dimension_is_worst_counted_item(self):
+        self.assertEqual(self.g(Q01_Result='ใช่', Q01_Cleanliness='ไม่ใช่')['dim_levels'][1], B.POOR)
+        self.assertEqual(self.g(Q01_Result='ไม่ใช่', Q01_Cleanliness='ใช่')['dim_levels'][1], B.FAIR)
 
-    def test_shelter_is_worst_dimension_and_unmeasured_dimension_ignored(self):
-        g = self.lv(Q01_Result='ใช่', Q12_Result='ไม่ใช่')
-        self.assertIsNone(g['dim_levels'][6])  # no sheet columns for มิติ 6
-        self.assertEqual(g['level'], B.FAIR)
-        self.assertEqual(self.lv(Q01_Result='ใช่', Q12_Result='ใช่')['level'], B.GOOD)
+    def test_items_not_counted_in_dimension_level_are_still_graded(self):
+        g = self.g(Q01_Result='ใช่', Q03_Soap_Result='ไม่ใช่')  # soap: ติดตาม but not counted (matches the source totals)
+        self.assertEqual(g['levels']['Q03_Soap_Result'], B.FAIR)
+        self.assertEqual(g['dim_levels'][1], B.GOOD)
+        self.assertEqual(self.g(Q13_Result='ใช่', Q12_Result='ไม่ใช่')['dim_levels'][4], B.GOOD)
+        self.assertEqual(self.g(Q15_Result='ใช่', Q21_Result='ไม่ใช่', Q19_Chlorine_Result='ไม่ใช่')['dim_levels'][5], B.GOOD)
+
+    def test_air_quality_dimension_uses_q22_q23(self):
+        self.assertEqual(self.g(Q22_Result='ใช่', Q23_Result='ไม่ใช่')['dim_levels'][6], B.FAIR)
+        self.assertIsNone(self.g()['dim_levels'][6])
+
+    def test_shelter_is_worst_dimension(self):
+        self.assertEqual(self.g(Q01_Result='ใช่', Q13_Result='ไม่ใช่')['level'], B.FAIR)
+        self.assertEqual(self.g(Q01_Result='ใช่', Q13_Result='ใช่')['level'], B.GOOD)
+        self.assertEqual(self.g(Q22_Result='ใช่', Q15_Result='ไม่ใช่')['level'], B.POOR)
 
     def test_nothing_answered(self):
-        g = self.lv()
+        g = self.g()
         self.assertIsNone(g['level'])
         self.assertIsNone(g['score']['p'])
 
-    def test_share_of_good_items(self):
-        g = self.lv(Q01_Result='ใช่', Q03_Soap_Result='ไม่ใช่', Q01_Cleanliness='')
+    def test_share_of_good_items_counts_all_graded_items(self):
+        g = self.g(Q01_Result='ใช่', Q03_Soap_Result='ไม่ใช่', Q01_Cleanliness='')
         self.assertEqual(g['score'], {'y': 1, 'n': 2, 'p': 50})
 
     def test_record_gets_grade(self):
@@ -123,8 +140,32 @@ class GradeTests(unittest.TestCase):
         self.assertEqual(r['level'], B.POOR)
         self.assertEqual(r['score']['n'], 2)
 
-    def test_every_criteria_column_is_required(self):
-        self.assertTrue({k for _, k, _, _ in B.CRITERIA} <= set(B.required_keys()))
+    def test_all_32_items_are_required_columns_and_unique(self):
+        keys = [it[1] for it in B.ITEMS]
+        self.assertEqual(len(keys), 32)
+        self.assertEqual(len(set(keys)), 32)
+        self.assertTrue(set(keys) <= set(B.required_keys()))
+        self.assertEqual({it[0] for it in B.ITEMS}, set(B.DIM_NAMES))
+
+
+class SupplementaryTests(unittest.TestCase):
+    KEYS2 = KEYS + [k for k, _ in B.SUPPLEMENTARY if k not in KEYS]
+
+    def test_no_overlap_with_graded_items(self):
+        self.assertFalse({it[1] for it in B.ITEMS} & {k for k, _ in B.SUPPLEMENTARY})
+
+    def test_stored_but_never_graded(self):
+        base = B.clean_sheet(sheet([row(Q01_Result='ใช่')], self.KEYS2))[0]
+        more = B.clean_sheet(sheet([row(Q01_Result='ใช่', Q05_Methods='สูบเก็บ', Q18_Sources='น้ำบาดาล', Q01_Toilet_Count='10')], self.KEYS2))[0]
+        self.assertEqual(more['extra']['Q18_Sources'], 'น้ำบาดาล')
+        self.assertEqual(more['extra']['Q01_Toilet_Count'], '10')
+        for field in ('level', 'levels', 'dim_levels', 'score'):
+            self.assertEqual(base[field], more[field], field)
+
+    def test_missing_supplementary_column_is_tolerated(self):
+        r = B.clean_sheet(sheet([row(Q01_Result='ใช่')]))[0]
+        self.assertEqual(r['extra']['Q18_Sources'], '')
+        self.assertEqual(r['level'], B.GOOD)
 
 
 class LatestTests(unittest.TestCase):
@@ -151,8 +192,8 @@ class AnnotateTests(unittest.TestCase):
 
     def test_poor_fair_and_priority(self):
         r = self.one(assess_date='2026-10-07', Q01_Cleanliness='ไม่ใช่', Q08_Result='ใช่', Q03_Soap_Result='ไม่ใช่', Q01_Result='ใช่')
-        self.assertEqual(r['poor'], ['ห้องส้วมสะอาด', 'ไม่พบน้ำเสีย/น้ำเอ่อล้น'])
-        self.assertEqual(r['fair'], ['มีสบู่ล้างมือ'])
+        self.assertEqual(r['poor'], ['ห้องส้วมสะอาดและถูกสุขลักษณะ', 'พบปัญหาน้ำท่วมขังหรือน้ำเสียเอ่อล้น'])
+        self.assertEqual(r['fair'], ['มีสบู่สำหรับล้างมือ'])
         self.assertEqual(r['age_days'], 0)
         self.assertFalse(r['stale'])
         self.assertEqual(r['priority'], 40 * 2 + 10)

@@ -396,3 +396,27 @@ details.risk-all[open]>summary::before{content:"▾"}
 @media(max-width:767px){.subnav-actions{margin-bottom:8px}}
 .layer-chip .chip-text{white-space:nowrap}
 .data-age .age-basis{margin-top:3px;font-size:12.5px;opacity:.9}
+/* Operations tab: layer menu as one compact box of check boxes (colours of the icons match the map) */
+#layerPop.ops-layers:not([hidden]){display:flex;flex-direction:column;gap:0;padding:6px 4px;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 4px 16px #0002;min-width:230px}
+#layerPop.ops-layers .layer-chip{display:flex;width:100%;min-height:32px;padding:3px 10px;border:0;border-radius:6px;background:none;gap:8px;font-weight:400;color:var(--ink)}
+#layerPop.ops-layers .layer-chip:hover{background:#f1f6f7}
+#layerPop.ops-layers .layer-chip:has(input:checked),#layerPop.ops-layers .layer-chip[aria-pressed="true"]{background:none;font-weight:400}
+#layerPop.ops-layers .layer-chip .chip-check{display:none}
+#layerPop.ops-layers .layer-chip input{position:static;opacity:1;flex:none;width:16px;height:16px;min-width:0;margin:0;padding:0;accent-color:var(--teal);pointer-events:auto}
+#layerPop.ops-layers .chip-button::before{content:"";flex:none;width:16px;height:16px;box-sizing:border-box;border:1.5px solid #64748b;border-radius:3px;background:#fff}
+#layerPop.ops-layers .chip-button[aria-pressed="true"]::before{background:var(--teal) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.5l3 3 6-7' fill='none' stroke='white' stroke-width='2'/%3E%3C/svg%3E") center/12px no-repeat;border-color:var(--teal)}
+#layerPop.ops-layers .chip-button{border:0;text-align:left;font:inherit;min-height:32px}
+#layerPop.ops-layers .chip-icon{opacity:1;filter:none;order:2;margin-left:auto}
+/* icons follow the map colours on this tab */
+#layerPop.ops-layers .ic-trend{background:linear-gradient(90deg,#dc2626 0 33.3%,#facc15 33.3% 66.6%,#22c55e 66.6%)}
+#layerPop.ops-layers .ic-hh{background:linear-gradient(#93c5fd,#93c5fd) 0 0/100% 3px no-repeat,linear-gradient(#3b82f6,#3b82f6) 0 5px/100% 3px no-repeat,linear-gradient(#082f6b,#082f6b) 0 10px/100% 3px no-repeat}
+#layerPop.ops-layers .ic-pins{background:#2f8a4a}
+#layersBtn.icon-only span{display:none}
+/* Operations tab: the map panel stretches to the height of the summary table beside it, so the map itself takes the spare height */
+#workspace.ops-layout .grid>.panel:first-child{display:flex;flex-direction:column}
+#workspace.ops-layout .grid>.panel:first-child #map.map{flex:1 1 auto!important;height:auto!important;min-height:clamp(360px,65svh,680px)!important}
+/* DOH: map panel and dimension panel share one row at equal height; the dimension rows spread over the full height */
+.doh-maprow{align-items:stretch}
+#dohDimsPanel{display:flex;flex-direction:column}#dohDimsPanel .panel-body{flex:1;display:flex;flex-direction:column;justify-content:space-between;gap:10px}#dohDimsPanel .doh-dim-row{margin:0}
+.doh-stack.big{height:32px;border-radius:9px;margin:6px 0}
+.doh-stack.big>span{display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden}

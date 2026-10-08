@@ -24,38 +24,62 @@ NUMERIC = ('capacity', 'occupants', 'male', 'female', 'vulnerable', 'disabled', 
 YES, NO = 'ใช่', 'ไม่ใช่'
 GOOD, FAIR, POOR = 3, 2, 1
 LEVEL_LABELS = {GOOD: 'ดี', FAIR: 'พอใช้', POOR: 'ต้องปรับปรุง'}
-# Grading criteria from "แนวทางจัดระดับศพพ.docx" (อนามัยสิ่งแวดล้อม 7 มิติ): per item, the level each answer earns.
-# Item level = answer's level; dimension level = worst answered item; shelter level = worst answered dimension
-# (the document does not say how to combine, so "lowest wins" is our assumption; see combine()).
-# Rows: (dimension, sheet column, label, {answer: level}).  Dimension numbers follow the sheet's D1..D7 columns.
-# "ไม่พบ..." items are asked as a problem ("พบปัญหา..."), so their answers map the other way round.
-CRITERIA = [
-    (1, 'Q01_Result', 'ห้องส้วมเพียงพอ', {YES: GOOD, NO: FAIR}),
-    (1, 'Q01_Cleanliness', 'ห้องส้วมสะอาด', {YES: GOOD, NO: POOR}),
-    (1, 'Q03_Water_Result', 'มีน้ำชำระล้างเพียงพอ', {YES: GOOD, NO: POOR}),
-    (1, 'Q03_Soap_Result', 'มีสบู่ล้างมือ', {YES: GOOD, NO: FAIR}),
-    (1, 'Q05_Result', 'จัดการสิ่งปฏิกูลเหมาะสม', {YES: GOOD, NO: POOR}),
-    (1, 'Q08_Result', 'ไม่พบน้ำเสีย/น้ำเอ่อล้น', {NO: GOOD, YES: POOR}),
-    (1, 'Q06_Result', 'ระบบระบายน้ำใช้งานได้ดี', {YES: GOOD, NO: FAIR}),
-    (3, 'Q09_Level', 'มูลฝอยสะสม', {}),  # graded by wording, see level_of()
-    (3, 'Q11_Separation_Result', 'มีการคัดแยกมูลฝอย', {YES: GOOD, NO: POOR}),
-    (3, 'Q10_Closed_Result', 'ถุง/ถังขยะไม่รั่ว มีฝาปิด', {YES: GOOD, NO: FAIR}),
-    (3, 'Q11_Storage_Result', 'ที่พักรวมมูลฝอยมิดชิด', {YES: GOOD, NO: FAIR}),
-    (4, 'Q12_Result', 'ไม่พบสัตว์/แมลงพาหะ', {YES: GOOD, NO: FAIR}),
-    (4, 'Q13_Result', 'มีมาตรการกำจัดพาหะ', {YES: GOOD, NO: FAIR}),
-    (4, 'Q14_Result', 'จัดระเบียบ/ทำความสะอาดพื้นที่', {YES: GOOD, NO: FAIR}),
-    (5, 'Q20_Result', 'น้ำดื่มสะอาดเพียงพอ', {YES: GOOD, NO: POOR}),
-    (5, 'Q18_Result', 'น้ำใช้สะอาดเพียงพอ', {YES: GOOD, NO: FAIR}),
-    (5, 'Q15_Result', 'อาหารสะอาดปลอดภัย', {YES: GOOD, NO: POOR}),
-    (5, 'Q16_Result', 'ที่ปรุงอาหารถูกสุขลักษณะ', {YES: GOOD, NO: FAIR}),
-    (7, 'Q24_Result', 'สื่อสารความรู้สุขาภิบาล', {YES: GOOD, NO: FAIR}),
-    (7, 'Q25_Care_Result', 'ดูแลสุขภาพกลุ่มเปราะบาง', {YES: GOOD, NO: FAIR}),
+# Grading follows the source dashboard of the data owner ("ต้นทางข้อมูล", 7 dimensions, 32 items), whose per-item levels
+# agree with แนวทางจัดระดับศพพ.docx except where noted. Every item answers ใช่/ไม่ใช่ (or a level wording) and earns
+# ดี (GOOD) / พอใช้ (FAIR) / ต้องปรับปรุง (POOR); the source dashboard calls them ผ่าน / ติดตาม / ต้องปรับปรุง.
+# Rows: (dimension, sheet column, item no., title, {answer: level}, counts_in_dimension_level)
+# - "พบปัญหา..." (Q08) is asked as a problem, so its answers map the other way round.
+# - Q16 and Q18: the source dashboard shows "ไม่ใช่" as ต้องปรับปรุง, the docx table says พอใช้; we follow the source.
+# - counts_in_dimension_level=False: the item is graded and shown, but the source's per-dimension totals do not count
+#   it. This was inferred from the source's counts (dimension 1 shows no "ติดตาม" although 47% lack soap, dimension 4
+#   ignores Q12, dimension 5 ignores Q19/Q21); confirm with the owner of the source dashboard.
+ITEMS = [
+    (1, 'Q01_Result', '1.1', 'ห้องส้วมมีจำนวนเพียงพอ', {YES: GOOD, NO: FAIR}, True),
+    (1, 'Q01_Cleanliness', '1.2', 'ห้องส้วมสะอาดและถูกสุขลักษณะ', {YES: GOOD, NO: POOR}, True),
+    (1, 'Q02_Result', '2', 'ห้องอาบน้ำมีจำนวนเพียงพอ', {YES: GOOD, NO: FAIR}, True),
+    (1, 'Q03_Water_Result', '3.1', 'มีน้ำชำระล้างเพียงพอ', {YES: GOOD, NO: POOR}, True),
+    (1, 'Q03_Soap_Result', '3.2', 'มีสบู่สำหรับล้างมือ', {YES: GOOD, NO: FAIR}, False),
+    (1, 'Q04_Result', '4', 'มีบ่อเกรอะ/บ่อซึมรองรับสิ่งปฏิกูล ไม่แตก รั่ว ซึม', {YES: GOOD, NO: FAIR}, False),
+    (1, 'Q05_Result', '5', 'มีการจัดการสิ่งปฏิกูลเหมาะสม', {YES: GOOD, NO: POOR}, True),
+    (2, 'Q06_Result', '6', 'ทางระบายน้ำทิ้งใช้งานได้ดี', {YES: GOOD, NO: FAIR}, True),
+    (2, 'Q07_Result', '7', 'มีถังบำบัดน้ำเสีย/ถังเกรอะ', {YES: GOOD, NO: FAIR}, True),
+    (2, 'Q08_Result', '8', 'พบปัญหาน้ำท่วมขังหรือน้ำเสียเอ่อล้น', {NO: GOOD, YES: POOR}, True),
+    (3, 'Q09_Level', '9', 'ระดับปริมาณมูลฝอยสะสม', {}, True),  # graded by wording, see level_of()
+    (3, 'Q10_Sufficient_Result', '10.1', 'ภาชนะ/ถังรองรับขยะเพียงพอ', {YES: GOOD, NO: FAIR}, True),
+    (3, 'Q10_Closed_Result', '10.2', 'ภาชนะรองรับขยะมีฝาปิดมิดชิด', {YES: GOOD, NO: FAIR}, True),
+    (3, 'Q11_Separation_Result', '11.1', 'มีจุดแยกขยะเป็นสัดส่วน', {YES: GOOD, NO: POOR}, True),
+    (3, 'Q11_Storage_Result', '11.2', 'มีพื้นที่พักรวมขยะและสะอาด', {YES: GOOD, NO: FAIR}, True),
+    (4, 'Q12_Result', '12', 'ไม่พบสัตว์และแมลงพาหะนำโรค', {YES: GOOD, NO: FAIR}, False),
+    (4, 'Q13_Result', '13', 'มีกิจกรรม/มาตรการกำจัดพาหะนำโรค', {YES: GOOD, NO: FAIR}, True),
+    (4, 'Q14_Result', '14', 'จัดระเบียบและทำความสะอาดพื้นที่', {YES: GOOD, NO: FAIR}, True),
+    (5, 'Q15_Result', '15', 'มีอาหารสะอาด ปลอดภัย', {YES: GOOD, NO: POOR}, True),
+    (5, 'Q16_Result', '16', 'สถานที่ประกอบปรุงอาหารสะอาดถูกสุขลักษณะ', {YES: GOOD, NO: POOR}, True),
+    (5, 'Q17_Result', '17', 'จัดเก็บอาหารถูกสุขลักษณะและป้องกันพาหะ', {YES: GOOD, NO: FAIR}, True),
+    (5, 'Q18_Result', '18', 'มีน้ำใช้สะอาด เพียงพอ', {YES: GOOD, NO: POOR}, True),
+    (5, 'Q19_Chlorine_Result', '19.1', 'มีการเติมคลอรีนในแหล่งน้ำใช้', {YES: GOOD, NO: FAIR}, False),
+    (5, 'Q19_Test_Result', '19.2', 'มีผลตรวจคลอรีนอิสระคงเหลือ', {YES: GOOD, NO: FAIR}, False),
+    (5, 'Q19_PPM', '19.2', 'ผลคลอรีนอิสระคงเหลือ', {}, False),  # graded by wording, see level_of()
+    (5, 'Q20_Result', '20', 'น้ำดื่มสะอาดปลอดภัยและเพียงพอ', {YES: GOOD, NO: POOR}, True),
+    (5, 'Q21_Result', '21', 'มีการใช้อุปกรณ์/ชุดทดสอบความสะอาดเบื้องต้น', {YES: GOOD, NO: FAIR}, False),
+    (6, 'Q22_Result', '22', 'พื้นที่พักพิงไม่หนาแน่นแออัด', {YES: GOOD, NO: FAIR}, True),
+    (6, 'Q23_Result', '23', 'อาคาร/เต็นท์มีการระบายอากาศที่ดี', {YES: GOOD, NO: FAIR}, True),
+    (7, 'Q24_Result', '24', 'มีกิจกรรมสื่อสารความรู้ด้านสุขาภิบาลสิ่งแวดล้อมและสุขภาพ', {YES: GOOD, NO: FAIR}, True),
+    (7, 'Q25_Area_Result', '25.1', 'มีพื้นที่/บริการ/สิ่งอำนวยความสะดวกสำหรับกลุ่มเปราะบาง', {YES: GOOD, NO: FAIR}, True),
+    (7, 'Q25_Care_Result', '25.2', 'มีการดูแลสุขภาพกลุ่มเปราะบางอย่างเหมาะสม', {YES: GOOD, NO: FAIR}, True),
 ]
-DIM_NAMES = {1: '1 ส้วมและสิ่งปฏิกูล', 3: '3 มูลฝอย', 4: '4 สัตว์และแมลงพาหะ', 5: '5 อาหารและน้ำ',
-             6: '6 คุณภาพอากาศ', 7: '7 ส่งเสริมสุขภาพ'}
-# items in the document that the sheet has no column for, so they cannot be graded
-UNMEASURED = [(3, 'พบมูลฝอยอันตราย'), (6, 'พบเชื้อราในอาคารหรือที่พักอาศัย'),
-              (6, 'สื่อสารแนวทางกำจัดเชื้อรา คราบสกปรก และฆ่าเชื้อโรค'), (6, 'สื่อสารการระบายอากาศของที่พัก')]
+DIM_NAMES = {1: 'การจัดการสุขาภิบาลห้องน้ำห้องส้วม สิ่งปฏิกูล', 2: 'การจัดการน้ำเสียและสุขาภิบาลสิ่งแวดล้อม',
+             3: 'การจัดการขยะมูลฝอย', 4: 'สัตว์และแมลงพาหะนำโรค', 5: 'สุขาภิบาลอาหารและน้ำดื่มน้ำใช้',
+             6: 'การจัดการคุณภาพอากาศและที่พักอาศัย', 7: 'การส่งเสริมสุขภาพและสุขอนามัย'}
+# Free-text / numeric columns kept only as supporting information (never graded): (column, label)
+SUPPLEMENTARY = [
+    ('Q01_Toilet_Count', 'จำนวนห้องส้วม'), ('Q02_Shower_Count', 'จำนวนห้องอาบน้ำ'),
+    ('Q05_Methods', 'วิธีจัดการสิ่งปฏิกูล'), ('Q05_Other', 'วิธีจัดการสิ่งปฏิกูล (อื่น ๆ)'),
+    ('Q12_Vectors', 'ชนิดพาหะที่พบ'), ('Q12_Other', 'ชนิดพาหะ (อื่น ๆ)'),
+    ('Q13_Methods', 'มาตรการกำจัดพาหะที่ดำเนินการ'), ('Q13_Other', 'มาตรการกำจัดพาหะ (อื่น ๆ)'),
+    ('Q15_Sources', 'แหล่งอาหาร'), ('Q15_Other', 'แหล่งอาหาร (อื่น ๆ)'),
+    ('Q18_Sources', 'แหล่งน้ำใช้'), ('Q18_Other', 'แหล่งน้ำใช้ (อื่น ๆ)'),
+    ('Q24_Activity', 'รายละเอียดกิจกรรมสื่อสารความรู้'),
+]
 STALE_DAYS = 3  # an open shelter not assessed for this many days needs follow-up
 PROBLEM_KEYS = ['D%d_Problem' % i for i in range(1, 8)]
 
@@ -87,12 +111,16 @@ def num(s):
 
 
 def required_keys():
-    return [k for _, k, _, _ in CRITERIA] + PROBLEM_KEYS + ['Q19_PPM', 'Recommendation', 'Support_Request']
+    return [it[1] for it in ITEMS] + PROBLEM_KEYS + ['Recommendation', 'Support_Request']
 
 
 def level_of(key, answer, mapping):
     """Level (GOOD/FAIR/POOR) one answer earns, or None when blank/unrecognised."""
     answer = (answer or '').strip()
+    if key == 'Q19_PPM':  # "0.2–0.5 PPM (มาตรฐาน)" passes, "< 0.2 PPM" needs follow-up
+        if 'มาตรฐาน' in answer:
+            return GOOD
+        return FAIR if answer.startswith('<') else None
     if key == 'Q09_Level':  # "ไม่มีมูลฝอยสะสม" / "ปริมาณเล็กน้อย (...)" / accumulating a lot
         if answer.startswith('ไม่มี'):
             return GOOD
@@ -109,9 +137,10 @@ def combine(levels):
 
 
 def grade(answers):
-    """answers: {column: raw answer}. Returns item levels, dimension levels, shelter level and the share of items rated GOOD."""
-    items = {k: level_of(k, answers.get(k), m) for _, k, _, m in CRITERIA}
-    dims = {d: combine([items[k] for dd, k, _, _ in CRITERIA if dd == d]) for d in DIM_NAMES}
+    """answers: {column: raw answer}. Returns item levels, dimension levels, shelter level and the share of items rated GOOD.
+    A dimension is graded by its worst answered item among those that count (see ITEMS); the shelter by its worst dimension."""
+    items = {it[1]: level_of(it[1], answers.get(it[1]), it[4]) for it in ITEMS}
+    dims = {d: combine([items[it[1]] for it in ITEMS if it[0] == d and it[5]]) for d in DIM_NAMES}
     n = sum(1 for v in items.values() if v is not None)
     y = sum(1 for v in items.values() if v == GOOD)
     return {'levels': items, 'dim_levels': dims, 'level': combine(dims.values()),
@@ -120,7 +149,7 @@ def grade(answers):
 
 def annotate(recs, today):
     """Follow-up fields: items to fix, days since assessment, and a priority score (higher = look first)."""
-    labels = {k: l for _, k, l, _ in CRITERIA}
+    labels = {it[1]: it[3] for it in ITEMS}
     for r in recs:
         r['poor'] = [labels[k] for k, v in r['levels'].items() if v == POOR]
         r['fair'] = [labels[k] for k, v in r['levels'].items() if v == FAIR]
@@ -169,12 +198,13 @@ def clean_sheet(text):
         except ValueError:
             rec['lat'] = rec['lon'] = None
         q = {k: v.strip() for k, v in zip(keys, r) if k}
-        rec['answers'] = {k: q.get(k, '') for _, k, _, _ in CRITERIA}
+        rec['answers'] = {it[1]: q.get(it[1], '') for it in ITEMS}
         rec['problems'] = [q[k] for k in PROBLEM_KEYS if q.get(k)]
         for out_key, src in (('ppm', 'Q19_PPM'), ('garbage', 'Q09_Level'), ('vectors', 'Q12_Vectors'),
                              ('recommend', 'Recommendation'), ('support', 'Support_Request')):
             rec[out_key] = q.get(src, '')
         rec.update(grade(rec['answers']))
+        rec['extra'] = {k: q.get(k, '') for k, _ in SUPPLEMENTARY}  # supporting info, never graded
         rec['images'] = [q['Image_Link_%d' % i] for i in range(1, 5) if q.get('Image_Link_%d' % i)]
         out.append(rec)
     mark_latest(out)
@@ -192,8 +222,9 @@ def main():
     annotate(recs, now.astimezone(timezone(timedelta(hours=7))).date())  # Thailand date
     payload = {'fetched_at': now.isoformat(timespec='seconds'), 'stale_days': STALE_DAYS,
                'level_labels': {str(k): v for k, v in LEVEL_LABELS.items()},
-               'dims': [{'id': d, 'name': n, 'qs': [{'key': k, 'label': l} for dd, k, l, _ in CRITERIA if dd == d],
-                         'missing': [l for dd, l in UNMEASURED if dd == d]} for d, n in DIM_NAMES.items()],
+               'dims': [{'id': d, 'name': n, 'qs': [{'key': it[1], 'no': it[2], 'label': it[3], 'in_level': it[5]}
+                                                    for it in ITEMS if it[0] == d]} for d, n in DIM_NAMES.items()],
+               'extras': [{'key': k, 'label': l} for k, l in SUPPLEMENTARY],
                'records': recs}
     out = ROOT / 'docs'
     out.mkdir(exist_ok=True)
