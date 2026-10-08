@@ -396,3 +396,22 @@ details.risk-all[open]>summary::before{content:"▾"}
 @media(max-width:767px){.subnav-actions{margin-bottom:8px}}
 .layer-chip .chip-text{white-space:nowrap}
 .data-age .age-basis{margin-top:3px;font-size:12.5px;opacity:.9}
+/* DOH map: same structure as the first-page map (trend boxes above the map, layer bar under it, side panel) */
+.doh-trend-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:0 20px 14px}.doh-trend-cards:empty{display:none}
+.doh-trend-cards .card{padding:12px 14px}.doh-trend-cards .doh-trend-card{box-shadow:none}
+@media(max-width:767px){.doh-trend-cards{padding:0 16px 12px;gap:8px}.doh-trend-cards .doh-trend-label{font-size:14px}.doh-trend-cards svg{display:none}}
+#workspace .map-expanded #dohMap{height:65svh!important}
+
+/* Water-level trend boxes above the national / operations map (colours are set inline from the trend palette) */
+.trend-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:0 20px 14px}.trend-cards:empty{display:none}
+.trend-card{display:flex;align-items:center;gap:6px;padding:10px 12px;min-width:0;border-radius:10px;font-weight:700;line-height:1.2}
+.trend-card .tc-icon{font-size:18px;flex:none}.trend-card .tc-label{font-size:14px;flex:1;white-space:nowrap}.trend-card .tc-num{font-size:18px;font-variant-numeric:tabular-nums;white-space:nowrap}.trend-card .tc-num small{font-size:13px;font-weight:600}
+@media(max-width:767px){.trend-cards{padding:0 16px 12px;gap:8px}.trend-card{padding:8px 10px;gap:6px}.trend-card .tc-label{font-size:12px}.trend-card .tc-num{font-size:16px}.trend-card .tc-icon{font-size:16px}}
+.province-chip{display:inline-block;min-height:0;min-width:9.5em;text-align:left;padding:4px 8px;margin:0;border-radius:6px;font:inherit;font-weight:700;line-height:inherit;white-space:nowrap}
+/* Operations summary table: fixed column shares so the figures sit close to the province instead of spreading across the panel */
+#sideBody.ops-summary table{table-layout:fixed;width:100%}
+#sideBody.ops-summary th:nth-child(1){width:30%}#sideBody.ops-summary th:nth-child(2){width:20%}#sideBody.ops-summary th:nth-child(3),#sideBody.ops-summary th:nth-child(4){width:10%}#sideBody.ops-summary th:nth-child(5){width:12%}#sideBody.ops-summary th:nth-child(6){width:18%}
+#sideBody.ops-summary th:nth-child(n+2),#sideBody.ops-summary td:nth-child(n+2){text-align:left!important}
+/* Operations summary table: the filter button sits at the top right of the panel, level with the title */
+.panel:has(#sideBody.ops-summary){position:relative}
+.panel:has(#sideBody.ops-summary) [data-table-filters="sideBody"] [data-filter-toggle]{position:absolute;top:16px;right:20px;z-index:2}
