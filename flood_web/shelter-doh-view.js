@@ -86,7 +86,7 @@
      +'<div class="field"><label for="dohProv">จังหวัด</label><select id="dohProv">'+opts('ทุกจังหวัด',uniq('province'))+'</select></div>'
      +'<div class="field"><label for="dohStatus">สถานะ</label><select id="dohStatus">'+opts('ทุกสถานะ',uniq('status'))+'</select></div>'
      +'<div class="field"><label for="dohQ">ค้นหาชื่อศูนย์/อำเภอ</label><input id="dohQ" type="search"></div>'
-     +'<button class="lightbtn" id="dohReset" type="button">ล้างตัวกรอง</button><button class="lightbtn" id="dohCsv" type="button">ส่งออก CSV</button></div>'
+     +'<button class="lightbtn" id="dohReset" type="button">ล้างตัวกรอง</button></div>'
      +'<div class="cards" id="dohCards"></div>'
      +'<div class="grid doh-grid"><section class="panel"><div class="panel-head"><div><h2>แผนที่ศูนย์พักพิงและแนวโน้มระดับน้ำรายจังหวัด</h2><p class="sub" id="dohMapSub"></p></div><span class="badge" id="dohMapCount"></span></div>'
      +'<div class="map-tools"><label><input type="checkbox" id="dohPins" checked>1. หมุดศูนย์พักพิง</label>'
@@ -97,7 +97,7 @@
      +[['g','ดี'],['a','พอใช้'],['r','ต้องปรับปรุง'],['x','ไม่มีข้อมูล']].map(([k,l])=>'<label class="filter-pill"><input type="checkbox" class="doh-band" value="'+k+'" checked> <span>'+l+'</span></label>').join('')+'</div>'
      +'<button type="button" class="lightbtn" id="dohFit">จัดแผนที่ให้พอดี</button></div>'
      +'<div id="dohMap" class="map national-view"></div><div id="dohMobileKey"></div><p class="mini-note" id="dohMapNote" style="padding:10px 20px 14px"></p></section>'
-     +'<section class="panel"><div class="panel-head"><div><h2>ระดับรายมิติ</h2><p class="sub">จำนวนศูนย์ตามระดับ · ระดับของมิติ = ข้อที่แย่ที่สุดที่ตอบ</p></div></div><div class="panel-body" id="dohDims"></div>'
+     +'<section class="panel"><div class="panel-head"><div><h2>ระดับรายมิติ</h2><p class="sub">จำนวนศูนย์ตามระดับ · ระดับของมิติ = ข้อที่แย่ที่สุดที่ตอบ (ไม่นับข้อ 3.2, 4, 12, 19.1, 19.2, 21 ตามแดชบอร์ดต้นทาง)</p></div></div><div class="panel-body" id="dohDims"></div>'
      +'</section></div>'
      +'<section class="panel"><div class="panel-head"><div><h2>ข้อที่ยังไม่ได้ระดับดีมากที่สุด</h2><p class="sub" id="dohWorstSub"></p></div></div><div class="doh-tablewrap"><table id="dohWorstTbl"><thead><tr><th class="n">#</th><th>มิติ</th><th>ข้อ</th><th class="n">ต้องปรับปรุง</th><th class="n">พอใช้</th><th class="n">ดี</th><th class="n">ไม่ได้ตอบ</th><th>สัดส่วนที่ยังไม่ได้ระดับดี</th></tr></thead><tbody></tbody></table></div></section>'
      +'<section class="panel"><div class="panel-head"><div><h2>ศูนย์ที่ควรติดตามก่อน</h2><p class="sub" id="dohPrioSub"></p></div></div><div class="doh-tablewrap"><table id="dohPrio"><thead><tr><th>ศูนย์พักพิง</th><th>จังหวัด</th><th>ระดับ</th><th>ข้อที่ต้องปรับปรุง</th><th>การประเมินล่าสุด</th></tr></thead><tbody></tbody></table></div></section>'
@@ -123,7 +123,6 @@
     document.querySelectorAll('.doh-band').forEach(cb=>cb.addEventListener('change',()=>{st.bands=new Set([...document.querySelectorAll('.doh-band')].filter(x=>x.checked).map(x=>x.value));update()}));
     $('dohFit').addEventListener('click',()=>{mapScope='';update()});
     window.addEventListener('resize',syncKey);
-    $('dohCsv').addEventListener('click',exportCsv);
     if($('dohDate')){$('dohDate').value=st.date;$('dohDate').addEventListener('change',e=>{st.date=e.target.value;update()})}
     if($('dohFlood'))$('dohFlood').addEventListener('change',e=>{st.flood=e.target.checked;update()});
     $('dohQ').addEventListener('input',e=>{st.q=e.target.value.trim();update()});
@@ -178,6 +177,7 @@
   }
   function drawMap(rows){
     const el=$('dohMap');
+    window.MapChrome?.setup(el.closest('section'),el,el.closest('section').querySelector('.map-tools'),[$('dohFit'),$('dohRegionStatus')]);
     if(!window.L){el.innerHTML='<p class="empty">โหลดแผนที่ไม่สำเร็จ ใช้ตารางด้านล่างแทนได้</p>';return}
     if(!map){
       el.innerHTML='';map=L.map(el,{scrollWheelZoom:false}).setView([13.7,100.5],6);el.style.background='#ffffff';
@@ -226,7 +226,7 @@
     const occ=sum(rows,'occupants'),cap=sum(rows,'capacity'),vul=sum(rows,'vulnerable');
     const lc={3:0,2:0,1:0,0:0};rows.forEach(r=>{lc[r.level||0]++});
     const dates=D.records.map(r=>r.assess_date).filter(Boolean).sort();
-    $('dohSub').textContent='ข้อมูลจากชีต doh_shelter · '+D.records.length+' รายการประเมิน จาก '+latest.length+' ศูนย์ · ช่วงวันที่ประเมิน '+thDate(dates[0])+' – '+thDate(dates[dates.length-1]);
+    $('dohSub').textContent='ข้อมูล doh_shelter · '+D.records.length+' รายการประเมิน จาก '+latest.length+' ศูนย์ · ช่วงวันที่ประเมิน '+thDate(dates[0])+' – '+thDate(dates[dates.length-1]);
     $('dohCards').innerHTML=[
       ['ศูนย์พักพิง',fmt(rows.length),'เปิดให้บริการ '+fmt(open.length)+' · ปิด '+fmt(rows.length-open.length)],
       ['ผู้รับบริการปัจจุบัน',fmt(occ),'ความจุรวม '+fmt(cap)+' คน ('+(pct(occ,cap)??'-')+'%)'],
@@ -253,11 +253,11 @@
     const cnt=(rs,f)=>{const c={3:0,2:0,1:0,0:0};rs.forEach(r=>{c[f(r)||0]++});return c};
     $('dohDims').innerHTML=D.dims.map(d=>{
       const c=cnt(rows,r=>r.dim_levels[d.id]),n=c[3]+c[2]+c[1];
-      if(!d.qs.length||!n)return '<div class="doh-dim-row"><b>'+esc(d.name)+'</b><span class="doh-dim-na">ข้อมูลไม่ครบ'+(d.missing.length?' · ชีตไม่มีคอลัมน์: '+d.missing.map(esc).join(', '):'')+'</span></div>';
-      return '<div class="doh-dim-row"><b>'+esc(d.name)+'</b>'+stack(c,n)+'<span class="doh-dim-legend">ดี '+c[3]+' · พอใช้ '+c[2]+' · ต้องปรับปรุง '+c[1]+(d.missing.length?' · ไม่มีคอลัมน์: '+d.missing.map(esc).join(', '):'')+'</span></div>';
+      if(!d.qs.length||!n)return '<div class="doh-dim-row"><b>มิติที่ '+d.id+' '+esc(d.name)+'</b><span class="doh-dim-na">ข้อมูลไม่ครบ</span></div>';
+      return '<div class="doh-dim-row"><b>มิติที่ '+d.id+' '+esc(d.name)+'</b>'+stack(c,n)+'<span class="doh-dim-legend">ดี '+c[3]+' · พอใช้ '+c[2]+' · ต้องปรับปรุง '+c[1]+'</span></div>';
     }).join('')||'<p class="empty">ไม่มีข้อมูล</p>';
-    const dimOf=new Map(D.dims.flatMap(d=>d.qs.map(q=>[q.key,d.name])));
-    const items=allQ().map(q=>({l:q.label,dim:dimOf.get(q.key),c:cnt(rows,r=>r.levels[q.key])})).filter(o=>o.c[1]+o.c[2]>0).sort((a,b)=>b.c[1]-a.c[1]||b.c[2]-a.c[2]);
+    const dimOf=new Map(D.dims.flatMap(d=>d.qs.map(q=>[q.key,'มิติ '+d.id])));
+    const items=allQ().map(q=>({l:q.no+(q.no.includes('.')?' ':'. ')+q.label,dim:dimOf.get(q.key),c:cnt(rows,r=>r.levels[q.key])})).filter(o=>o.c[1]+o.c[2]>0).sort((a,b)=>b.c[1]-a.c[1]||b.c[2]-a.c[2]);
     $('dohWorstSub').textContent='เรียงตามจำนวนศูนย์ที่ต้องปรับปรุง แล้วตามพอใช้ · '+fmt(items.length)+' จาก '+fmt(allQ().length)+' ข้อ มีอย่างน้อย 1 ศูนย์ที่ยังไม่ได้ระดับดี (รวม '+fmt(rows.length)+' ศูนย์)';
     $('dohWorstTbl').tBodies[0].innerHTML=items.map((o,i)=>'<tr><td class="n">'+(i+1)+'</td><td>'+esc(o.dim)+'</td><td>'+esc(o.l)+'</td><td class="n">'+(o.c[1]?'<span class="doh-pill r">'+o.c[1]+'</span>':'-')+'</td><td class="n">'+(o.c[2]?'<span class="doh-pill a">'+o.c[2]+'</span>':'-')+'</td><td class="n">'+o.c[3]+'</td><td class="n">'+o.c[0]+'</td><td style="min-width:160px">'+stack({3:0,2:o.c[2],1:o.c[1]},Math.max(1,rows.length))+'</td></tr>').join('')||'<tr><td colspan="8" class="empty">ไม่มีข้อที่ต่ำกว่าระดับดี</td></tr>';
 
@@ -287,7 +287,7 @@
     const pri=rows.filter(r=>r.status==='เปิดให้บริการ'&&(r.poor.length||r.fair.length||r.stale)).sort((a,b)=>b.priority-a.priority).slice(0,10);
     $('dohPrioSub').textContent='ศูนย์ที่เปิดอยู่ เรียงตามคะแนนความเร่งด่วน (40 ต่อข้อที่ต้องปรับปรุง + 10 ต่อข้อพอใช้ + 10 ถ้าไม่ได้ประเมินเกิน '+D.stale_days+' วัน) · แสดง '+pri.length+' อันดับแรก';
     $('dohPrio').tBodies[0].innerHTML=pri.map(r=>'<tr class="doh-row" data-id="'+esc(r.shelter_id)+'"><td>'+esc(r.name)+(r.flood?' <span class="doh-pill b">จังหวัดมีผู้ประสบภัย</span>':'')+'</td><td>'+esc(r.province)+'</td><td>'+lvPill(r.level)+'</td><td>'+(r.poor.map(esc).join(', ')||'-')+'</td><td>'+thDate(r.assess_date)+(r.stale?' <span class="doh-pill a">เกิน '+D.stale_days+' วัน</span>':'')+'</td></tr>').join('')||'<tr><td colspan="5" class="empty">ไม่มีศูนย์ที่ต้องติดตามตามเกณฑ์นี้</td></tr>';
-    $('dohFoot').textContent='ดึงข้อมูลเมื่อ '+new Date(D.fetched_at).toLocaleString('th-TH')+' · ผลรวมใช้การประเมินล่าสุดของแต่ละศูนย์ · ระดับตาม แนวทางจัดระดับศพพ. (ข้อแย่สุดเป็นตัวกำหนดมิติและศูนย์ ไม่นับข้อที่ไม่ได้ตอบ) · แปลงวันที่ พ.ศ./ค.ศ. ในชีตเป็นรูปแบบเดียวกันแล้ว';
+    $('dohFoot').textContent='ดึงข้อมูลเมื่อ '+new Date(D.fetched_at).toLocaleString('th-TH')+' · ผลรวมใช้การประเมินล่าสุดของแต่ละศูนย์ · ระดับตาม แนวทางจัดระดับศพพ. (ข้อแย่สุดเป็นตัวกำหนดมิติและศูนย์ ไม่นับข้อที่ไม่ได้ตอบ) · แปลงวันที่ พ.ศ./ค.ศ. ในข้อมูลเป็นรูปแบบเดียวกันแล้ว';
     drawMap(rows);drawTable(rows);
   }
 
@@ -299,13 +299,6 @@
     $('dohTbl').tBodies[0].innerHTML=s.map(r=>'<tr class="doh-row" data-id="'+esc(r.shelter_id)+'"><td>'+esc(r.name)+'</td><td>'+esc(r.province)+'</td><td>'+esc(r.district)+'</td><td>'+esc(r.status)+'</td><td class="n">'+fmt(r.occupants)+'</td><td class="n">'+fmt(r.capacity)+'</td><td class="n">'+fmt(r.vulnerable)+'</td><td>'+lvPill(r.level)+'</td><td>'+thDate(r.assess_date)+'</td></tr>').join('')||'<tr><td colspan="9" class="empty">ไม่มีศูนย์ที่ตรงกับตัวกรอง</td></tr>';
   }
 
-  function exportCsv(){
-    const cell=v=>{v=v==null?'':String(v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
-    const head=['รหัสศูนย์','ชื่อศูนย์','จังหวัด','อำเภอ','เขตสุขภาพ','สถานะ','ผู้รับบริการ','รองรับสูงสุด','กลุ่มเปราะบาง','ระดับ','ข้อที่ต้องปรับปรุง','ข้อที่พอใช้','ข้อที่ได้ดี (%)','ประเมินล่าสุด','ละติจูด','ลองจิจูด'].concat(P?['วันรายงาน ปภ.','ครัวเรือนประสบภัยในจังหวัด (ปภ.)']:[]);
-    const lines=[head].concat(filtered().map(r=>[r.shelter_id,r.name,r.province,r.district,r.region,r.status,r.occupants,r.capacity,r.vulnerable,lvLabel(r.level),r.poor.join(' | '),r.fair.join(' | '),r.score.p,r.assess_date,r.lat,r.lon].concat(P?[st.date,r.flood||'']:[])));
-    const blob=new Blob(['\ufeff'+lines.map(l=>l.map(cell).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'});
-    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='doh_shelter_'+D.fetched_at.slice(0,10)+'.csv';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
-  }
   function openDetail(id){
     const hist=byShelter.get(id);if(!hist)return;const r=hist[hist.length-1];
     $('dohDlgT').textContent=r.name;
@@ -314,10 +307,11 @@
     let h='<table class="doh-detail">'+kv.map(([k,v])=>'<tr><td>'+k+'</td><td>'+esc(v)+'</td></tr>').join('')+'</table>';
     h+='<h4>ผลการประเมินล่าสุด ('+thDate(r.assess_date)+') · ระดับ '+lvLabel(r.level)+'</h4>';
     D.dims.forEach(d=>{
-      h+='<p class="doh-dim"><b>'+esc(d.name)+'</b> '+(d.qs.length?lvPill(r.dim_levels[d.id]):'<span class="doh-pill x">ข้อมูลไม่ครบ</span>')+'</p>';
-      if(d.qs.length)h+='<div class="doh-chk">'+d.qs.map(q=>'<span>'+esc(q.label)+' <small>('+esc(r.answers[q.key]||'ไม่ตอบ')+')</small></span><span>'+lvPill(r.levels[q.key])+'</span>').join('')+'</div>';
-      if(d.missing.length)h+='<p class="doh-dim-na">ชีตไม่มีคอลัมน์สำหรับ: '+d.missing.map(esc).join(', ')+'</p>';
+      h+='<p class="doh-dim"><b>มิติที่ '+d.id+' '+esc(d.name)+'</b> '+(d.qs.length?lvPill(r.dim_levels[d.id]):'<span class="doh-pill x">ข้อมูลไม่ครบ</span>')+'</p>';
+      if(d.qs.length)h+='<div class="doh-chk">'+d.qs.map(q=>'<span>'+esc(q.no+(q.no.includes('.')?' ':'. ')+q.label)+' <small>('+esc(r.answers[q.key]||'ไม่ตอบ')+')'+(q.in_level?'':' · ไม่นับในระดับมิติ')+'</small></span><span>'+lvPill(r.levels[q.key])+'</span>').join('')+'</div>';
     });
+    const ex=D.extras.filter(x=>((r.extra||{})[x.key]||'').trim());
+    if(ex.length)h+='<h4>ข้อมูลประกอบ (ไม่นำมาคำนวณระดับ)</h4><table class="doh-detail">'+ex.map(x=>'<tr><td>'+esc(x.label)+'</td><td>'+esc(r.extra[x.key])+'</td></tr>').join('')+'</table>';
     if(r.problems.length)h+='<h4>ปัญหา/อุปสรรค</h4>'+r.problems.map(p=>'<div class="doh-prob">'+esc(p).replace(/\n/g,'<br>')+'</div>').join('');
     if(hist.length>1)h+='<h4>ประวัติการประเมิน ('+hist.length+' ครั้ง)</h4><table class="doh-detail">'+hist.map(x=>'<tr><td>'+thDate(x.assess_date)+'</td><td class="n">'+fmt(x.occupants)+' คน</td><td>'+lvPill(x.level)+'</td></tr>').join('')+'</table>';
     const imgs=(r.images||[]).map(safeUrl).filter(Boolean);
