@@ -117,15 +117,14 @@ button{min-height:44px}button:disabled{opacity:.5;cursor:default}.field{min-widt
 #districtWaterLegend,#districtShelterLegend,#districtWaterNote,#shelterMapLegend2,#shelterStatusLegend,#shelterMapNote{display:none!important}
 @media(max-width:767px){.bkk-map-key{width:180px;padding:7px 9px;font-size:11px}.bkk-key-content{max-height:240px}.bkk-map-key summary{min-height:36px;display:list-item}.bkk-map-key .heat-scale-label{font-size:9px}}
 
-/* Reserve a separate legend rail: it never overlays map geometry or pins. */
+/* Legend floats over the map on wide screens with a translucent background so the map shows through; it stacks under the map on narrow ones. */
 .bkk-map-layout{min-width:0}
-.bkk-map-layout.has-bkk-key{display:grid;grid-template-columns:minmax(0,1fr) 190px;align-items:stretch;gap:0;background:#fff}
+.bkk-map-layout.has-bkk-key{position:relative;background:#fff}
 .bkk-map-layout>.map{min-width:0;width:100%}
-.bkk-map-layout>.bkk-map-key{position:static;float:none;clear:none;align-self:end;width:auto;max-width:none;margin:10px 10px 24px 0;padding:9px;box-shadow:0 2px 10px #0002}
+.bkk-map-layout>.bkk-map-key{position:absolute;right:10px;bottom:24px;z-index:800;float:none;clear:none;width:190px;max-width:none;margin:0;padding:9px;background:#ffffffa6;box-shadow:0 2px 10px #0002}
 .bkk-map-layout .bkk-key-content{max-height:none;overflow:visible}
 @media(max-width:1100px){
- .bkk-map-layout.has-bkk-key{grid-template-columns:minmax(0,1fr)}
- .bkk-map-layout>.bkk-map-key{margin:10px 14px 14px;width:auto;align-self:auto}
+ .bkk-map-layout>.bkk-map-key{position:static;margin:10px 14px 14px;width:auto;background:#fffffff2}
  .bkk-map-layout .bkk-key-content{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 12px}
  .bkk-map-layout .bkk-key-content>strong,.bkk-map-layout .bkk-key-content>hr,.bkk-map-layout .bkk-key-content>small,.bkk-map-layout .bkk-key-shelters{grid-column:1/-1}
  .bkk-map-layout .bkk-key-content>hr{width:100%;margin:3px 0}
@@ -440,5 +439,20 @@ details.risk-all[open]>summary::before{content:"▾"}
 #dohDimsPanel{display:flex;flex-direction:column}#dohDimsPanel .panel-body{flex:1;display:flex;flex-direction:column;justify-content:space-between;gap:10px}#dohDimsPanel .doh-dim-row{margin:0}
 .doh-stack.big{height:32px;border-radius:9px;margin:6px 0}
 .doh-stack.big>span{display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden}
+
+/* National summary table: same look as the operations table (province chip coloured by water trend, household badge, fixed column shares, filter button at the panel's top right) */
+#sideBody.nat-summary table{table-layout:fixed;width:100%}
+#sideBody.nat-summary th:nth-child(1){width:30%}#sideBody.nat-summary th:nth-child(2){width:22%}#sideBody.nat-summary th:nth-child(3),#sideBody.nat-summary th:nth-child(4),#sideBody.nat-summary th:nth-child(5){width:16%}
+#sideBody.nat-summary th:nth-child(n+2),#sideBody.nat-summary td:nth-child(n+2){text-align:left!important}
+.panel:has(#sideBody.nat-summary){position:relative}
+.panel:has(#sideBody.nat-summary) [data-table-filters="sideBody"] [data-filter-toggle]{position:absolute;top:16px;right:20px;z-index:2}
+
+.card-note:empty,#sideSub:empty,#stationSub:empty,#filterNote:empty,#selectedFilters:empty,#pageSub:empty{display:none}
+
+.situation-toggle{display:flex;align-items:center;gap:8px;background:none;border:0;padding:0;text-align:left;cursor:pointer;color:inherit;font:inherit;flex:1;min-width:0}.situation-toggle h2{margin:0}.sit-chev{display:inline-block;transition:transform .15s;color:var(--muted)}.situation-toggle[aria-expanded=true] .sit-chev{transform:rotate(90deg)}#situationBody[hidden]{display:none}#situationBody{margin-top:8px}
+/* every table filter button sits at its panel's top right, level with the title */
+.panel:has([data-table-filters]){position:relative}
+.panel:has([data-table-filters]) [data-table-filters]>.table-control-top [data-filter-toggle]{position:absolute;top:16px;right:20px;z-index:2}
+.panel:has([data-table-filters]) .panel-head{padding-right:130px}
 
 </style>
