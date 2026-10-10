@@ -18,7 +18,8 @@ def diagnostic_html(html, mode, recorder):
     assert '<head>' in html and '<body>' in html
     config = json.dumps({'mode': mode, 'label': MODES[mode], 'version': '2026-10-10-1'}, ensure_ascii=False)
     bootstrap = '<base href="../"><script>window.MOBILE_TEST_CONFIG=' + config + ';\n' + recorder.replace('</', '<\\/') + '\n</script>'
-    result = html.replace('<head>', '<head>' + bootstrap, 1)
+    # Keep charset metadata before the diagnostic script.
+    result = html.replace('</title>', '</title>' + bootstrap, 1)
     if mode == 'snapshot':
         marker = "if(typeof upgradeLive==='function'){"
         assert result.count(marker) == 1, 'automatic live-read marker changed'
