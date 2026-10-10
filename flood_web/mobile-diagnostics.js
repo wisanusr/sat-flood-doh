@@ -22,7 +22,7 @@
   window.addEventListener('error',e=>mark('javascript-error',String(e.message||'unknown').slice(0,200)));
   window.addEventListener('unhandledrejection',e=>mark('promise-error',String(e.reason?.message||e.reason||'unknown').slice(0,200)));
   window.addEventListener('pagehide',()=>mark('page-hidden'));
-  document.addEventListener('dashboard:data',()=>mark('dashboard-data-ready'));
+  window.addEventListener('dashboard:data',()=>mark('dashboard-data-ready'));
   const originalFetch=window.fetch.bind(window);
   window.fetch=async function(input,options){
     let label='asset';

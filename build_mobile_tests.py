@@ -29,6 +29,11 @@ def diagnostic_html(html, mode, recorder):
         end = 'document.head.appendChild(mapScript);'
         assert result.count(start) == result.count(end) == 1, 'map loader changed'
         result = result.replace(start, 'if(false){' + start, 1).replace(end, end + '}', 1)
+    parse_start = '  function parseCsv(text){'
+    parse_end = '    return rows;\n  }\n  const sleep'
+    assert result.count(parse_start) == result.count(parse_end) == 1, 'CSV parser changed'
+    result = result.replace(parse_start, parse_start + "window.MobileDiagnostics.mark('csv-parse-start',text.length);", 1)
+    result = result.replace(parse_end, "    window.MobileDiagnostics.mark('csv-parse-ready',rows.length);\n" + parse_end, 1)
     marker = 'function renderMap(){'
     assert result.count(marker) == 1, 'map render marker changed'
     return result.replace(marker, "function renderMap(){window.MobileDiagnostics.mark('map-render');", 1)
