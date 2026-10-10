@@ -72,3 +72,7 @@ out.mkdir(exist_ok=True)
 (out / 'index.html').write_text(html, encoding='utf-8')
 (out / '.nojekyll').write_text('', encoding='utf-8')
 print('Built', out / 'index.html', round(len(html) / 1e6, 2), 'MB')
+
+# Separate Safari diagnostic URLs; the normal dashboard above is unchanged.
+from build_mobile_tests import build as build_mobile_tests
+build_mobile_tests(html, out)

@@ -37,6 +37,8 @@ jobs:
       - run: python3 doh_shelter/test_doh_shelter.py
       # Generated Apps Script files must match the sources in flood_web/ (run `python build.py` and commit).
       - run: python3 build.py && git diff --exit-code -- . ':!docs'
+      - run: python3 build_pages.py && python3 test_mobile_pages.py
+      - run: node --check flood_web/mobile-diagnostics.js
 
   deploy:
     needs: test
