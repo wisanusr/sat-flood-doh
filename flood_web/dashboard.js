@@ -835,7 +835,7 @@ function filteredExportRows(){const indices=tablePages.get('areaTable')?.rowIndi
 const sourceLabels={Disaster_DB:'รายงานภัย ปภ.',Vulnerable_group:'ฐานประชากรกลุ่มเปราะบาง',thai_water_DB:'สถานีน้ำทั่วประเทศ',BKK_water_DB:'สถานีน้ำ กทม.',shelter_DB:'ศูนย์พักพิง'};
 function renderSourceStatus(){const failed=Object.entries(DATA.sourceStatus).filter(([name,s])=>s.status==='error'&&sourceLabels[name]&&(state.tab!=='ops'||name==='Disaster_DB'));$('sourceStatus').innerHTML=failed.map(([name,s])=>`<div class="alert source-error"><span><b>${sourceLabels[name]}</b> — ${esc(s.message)}</span><button class="lightbtn" data-retry-source="${name}">ลองใหม่</button></div>`).join('');$('sourceStatus').classList.toggle('hidden',!failed.length)}
 function unavailable(id,name){if(DATA.sourceStatus[name]?.status!=='error')return;const el=$(id);if(el)el.innerHTML=`<div class="empty">โหลด${sourceLabels[name]}ไม่สำเร็จ — กดลองใหม่ด้านบน</div>`}
-function updateTableHints(){for(const el of document.querySelectorAll('.table-wrap,#sideBody,#shelterSideBody,#allSheltersBody')){const hint=el.previousElementSibling?.classList.contains('table-scroll-hint')?el.previousElementSibling:null;const overflow=state.tab!=='ops'&&el.clientWidth>0&&el.scrollWidth>el.clientWidth+2;if(overflow){if(!hint){const p=document.createElement('p');p.className='table-scroll-hint';p.textContent='เลื่อนตารางซ้าย–ขวาเพื่อดูข้อมูลครบทุกคอลัมน์';el.before(p)}el.setAttribute('tabindex','0');el.setAttribute('aria-label','ตารางข้อมูล เลื่อนซ้ายและขวาได้')}else{hint?.remove();el.removeAttribute('tabindex')}}}
+function updateTableHints(){document.querySelectorAll('.table-scroll-hint').forEach(hint=>hint.remove());for(const el of document.querySelectorAll('.table-wrap,#sideBody,#shelterSideBody,#allSheltersBody')){const hint=el.previousElementSibling?.classList.contains('table-scroll-hint')?el.previousElementSibling:null;const overflow=el.clientWidth>0&&el.scrollWidth>el.clientWidth+2;if(overflow){if(!hint){const p=document.createElement('p');p.className='table-scroll-hint';p.textContent='เลื่อนตารางซ้าย–ขวาเพื่อดูข้อมูลครบทุกคอลัมน์';el.before(p)}el.setAttribute('tabindex','0');el.setAttribute('aria-label','ตารางข้อมูล เลื่อนซ้ายและขวาได้')}else{hint?.remove();el.removeAttribute('tabindex');el.removeAttribute('aria-label')}}}
 window.addEventListener('resize',()=>requestAnimationFrame(updateTableHints));
 function failed(name) { return DATA.sourceStatus[name]?.status==='error'; }
 // Warnings are rebuilt for the current tab on every render so they never carry over from another tab.
@@ -1031,3 +1031,23 @@ function renderVulnerable() {
 }catch(error){document.getElementById('pageTitle').textContent='แสดง Dashboard ไม่สำเร็จ';document.getElementById('cards').innerHTML='';document.getElementById('alert').style.display='block';document.getElementById('alert').textContent=error.message+' — รีเฟรชเพื่อลองใหม่';const retry=document.createElement('button');retry.className='lightbtn';retry.textContent='ลองโหลดใหม่';retry.onclick=()=>location.reload();document.getElementById('alert').append(' ',retry);console.error(error)}})();
 
 
+
+// Keep navigation discoverable without moving the page vertically.
+(()=>{
+ const tabs=document.querySelector('.tabs');if(!tabs)return;
+ const hint=document.createElement('p');hint.className='tabs-scroll-hint';hint.hidden=true;tabs.after(hint);
+ function update(){
+  const max=tabs.scrollWidth-tabs.clientWidth;
+  hint.hidden=max<2;
+  hint.textContent=tabs.scrollLeft<2?'เลื่อนเมนูไปทางขวาเพื่อดูหน้าที่เหลือ →':tabs.scrollLeft>max-2?'← เลื่อนเมนูกลับไปดูหน้าก่อนหน้า':'← เลื่อนเมนูซ้าย–ขวาเพื่อดูหน้าอื่น →';
+ }
+ function reveal(){
+  const selected=tabs.querySelector('[aria-selected="true"]');if(!selected)return;
+  const box=tabs.getBoundingClientRect(),item=selected.getBoundingClientRect();
+  const delta=item.left<box.left?item.left-box.left:item.right>box.right?item.right-box.right:0;
+  if(delta)tabs.scrollBy({left:delta,behavior:'auto'});update();
+ }
+ tabs.addEventListener('scroll',update,{passive:true});
+ new MutationObserver(reveal).observe(tabs,{subtree:true,attributes:true,attributeFilter:['aria-selected']});
+ new ResizeObserver(reveal).observe(tabs);reveal();
+})();

@@ -455,4 +455,29 @@ details.risk-all[open]>summary::before{content:"▾"}
 .panel:has([data-table-filters]) [data-table-filters]>.table-control-top [data-filter-toggle]{position:absolute;top:16px;right:20px;z-index:2}
 .panel:has([data-table-filters]) .panel-head{padding-right:130px}
 
+/* Summary columns must fit their contents before the table starts scrolling. */
+#sideBody:is(.ops-summary,.nat-summary) table{table-layout:auto;min-width:600px}
+#sideBody:is(.ops-summary,.nat-summary) th:nth-child(n){width:auto}
+#sideBody:is(.ops-summary,.nat-summary) th:first-child,
+#sideBody:is(.ops-summary,.nat-summary) td:first-child{position:sticky;left:0;background:#fff;z-index:1}
+#sideBody:is(.ops-summary,.nat-summary) th:first-child{background:#f3f7f8;z-index:2}
+.tabs-scroll-hint{display:none}
+@media(max-width:767px){
+ .tabs{min-width:0;max-width:100%;flex:1 1 100%;scroll-padding-inline:12px}
+ .tabs-scroll-hint:not([hidden]){display:block;flex-basis:100%;margin:0;font-size:12px;color:var(--muted)}
+ .trend-card{display:grid;grid-template-columns:auto minmax(0,1fr);align-content:start}
+ .trend-card .tc-label{white-space:normal;overflow-wrap:anywhere}
+ .trend-card .tc-num{grid-column:1/-1;text-align:center;font-size:20px}
+ .doh-trend-cards .card{padding:10px 8px;min-width:0}
+ .doh-trend-label{overflow-wrap:anywhere}
+ .doh-trend-num{font-size:28px}
+ .field select,.field input,.table-tools input,.table-tools select,.local-table-filters input,.local-table-filters select{min-height:44px;font-size:16px}
+ .province-chip,.heat-name,#layerPop.ops-layers .layer-chip,#layerPop.ops-layers .chip-button{min-height:44px}
+ #workspace:not(.national-layout) #map,#workspace #map.map,#workspace #shelterMap,
+ #workspace.ops-layout .grid>.panel:first-child #map.map,#workspace .doh-map,#workspace .risk-map{height:clamp(300px,50svh,440px)!important;min-height:300px!important;flex:none!important}
+ #workspace .map-expanded #map.map,#workspace .map-expanded #shelterMap,
+ #workspace .map-expanded #dohMap,#workspace .map-expanded .risk-map{height:65svh!important;min-height:0!important}
+ .map-expanded{padding-bottom:env(safe-area-inset-bottom)}
+}
+
 </style>
