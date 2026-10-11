@@ -760,6 +760,8 @@ function loadScreenshotLib(){
 async function saveScreenshot(){
  const btn=$('shotBtn'),label=btn.textContent;btn.disabled=true;btn.textContent='กำลังสร้างภาพ…';
  try{
+  // Let Google Sans finish loading before modern-screenshot clones and embeds the computed styles.
+  if(document.fonts?.ready)await document.fonts.ready;
   const ms=await loadScreenshotLib(),ws=$('workspace'),grid=ws.querySelector(':scope > .grid'),shown='.heading,#dataAge,#cards,#alert,.grid';
   // Only the blocks in `shown` are drawn; the filter rows etc. above the grid are left out, so the image is that much shorter.
   const gap=parseFloat(getComputedStyle(ws).rowGap)||0;let height=grid.getBoundingClientRect().bottom-ws.getBoundingClientRect().top;
