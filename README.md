@@ -31,6 +31,21 @@ python -m http.server 8000 --directory docs
 - ทดสอบ: `python news/test_news.py` · รันในเครื่อง: `pip install -r news/requirements.txt && python news/news_scraper.py && python news/trends_scraper.py` ก่อน `python build_pages.py`
 - ข้อมูลข่าวเป็นการจัดกลุ่มด้วยกฎคำสำคัญ ไม่ใช่การยืนยันข้อเท็จจริง; ลิงก์ข่าวเป็นของเจ้าของเนื้อหาต้นทาง
 
+## แท็บ "น้ำขัง" (ทั้ง GitHub Pages และ Apps Script)
+แสดงตำบลที่ pipeline น้ำขัง (repo `geeks_project_google`) ประเมินว่าพบน้ำจากภาพดาวเทียมร่วมกับรายงานระดับอำเภอของ ปภ. อ่านอย่างเดียว ไม่เขียนกลับ Sheet
+- ชีต: `flood_waterlogged` (1 แถว/ตำบล 21 คอลัมน์) และ `flood_waterlogged_district` (สรุปรายอำเภอ 16 คอลัมน์ รวม `basis`) หัวคอลัมน์ต้องครบ ไม่ครบ = ชีตนั้นเป็น error. ทุกค่าในชีตเป็นข้อความ ค่าว่างเป็น `null` (ไม่ใช่ 0) เวลาเป็นเวลาไทย
+- **เป็นชีต optional** (อยู่ใน `OPTIONAL`): `fetch_data.cjs` อ่านซ้ำ 1 ครั้งแล้วข้าม ไม่ทำให้ deploy ล้ม ชีตที่อ่านไม่ได้/ว่างทำให้แท็บแสดง "ยังไม่มีข้อมูลรอบนี้" แท็บอื่นทำงานปกติ
+- `server.py` อ่านสองชีตนี้ด้วยชื่อแท็บ (gviz) เพราะไม่มี gid (`SHEETS[...] = None`); `Code.gs` (`transform_`) และ `fetch_data.cjs` ให้ผลเหมือนกัน
+- `flood_web/waterlogged-view.js` อ่าน `window.dashboardData` และวาดใหม่เมื่อมี event `dashboard:data`; ตรรกะบริสุทธิ์ (จัดกลุ่มสถานะ นับ เรียง กรอง ความสด) อยู่ใน `data-model.js` (`waterRows`, `waterSummary`, `waterFilter`, `waterFreshness` ...) มีเทสต์ใน `test_model.cjs`. ตารางใช้ `window.DashboardTables` (`table()`/`paginateTables` ของ `dashboard.js`)
+- แหล่งข้อมูลอยู่ใน `DashboardModel.WATERLOGGED_SOURCES` ไม่ใส่ใน `SOURCES` (เหมือน `RISK_SOURCES`)
+- คอลัมน์ `basis` (แท็บอำเภอ): `ภาพดาวเทียม + ปภ.` หรือ `ปภ. (ไม่มีภาพดาวเทียม)` (จังหวัดที่ไม่มีภาพดาวเทียมพบน้ำ แต่ ปภ. รายงานอำเภอต่อเนื่อง ≥ 3 วัน) แถวกลุ่มหลังไม่มีตำบลในแท็บตำบล คอลัมน์จำนวนตำบล/พื้นที่/`max_run_days` เป็นค่าว่าง (`null`) หน้าเว็บแสดง "–" ไม่แสดง 0 เรียงไว้ท้ายตาราง มีป้ายเด่น ตัวกรองที่มา การ์ดแยก และคลิกแล้วแจ้งว่าไม่มีรายการตำบล
+- เกณฑ์ (พื้นที่น้ำ ≥ 1.0 ตร.กม., ภาพไม่เกิน 240 ชม., ปภ. ≥ 3 วัน) อยู่ที่ pipeline ไม่ฮาร์ดโค้ดในหน้าเว็บ แสดงตาม `status` และ `reasons`
+- `status` มี 5 ค่า (`น้ำขัง`, `เฝ้าระวัง`, `พบน้ำใหม่`, `ข้อมูลไม่พอ`, `พบน้ำล่าสุด (ไม่มีภาพใหม่)`) ไม่มีสถานะ "รอยืนยัน" แยก: `น้ำขัง` เป็นป้ายเดียวกันทุกตำบล ระดับหลักฐานอยู่ที่ `confidence` (สูง = "ยืนยันด้วยภาพ", กลาง = "ตาม ปภ.") หน้าเว็บแสดงป้ายเล็กในตาราง/รายละเอียด การ์ดน้ำขังแสดงยอดแยกใต้ตัวเลข ตารางเรียง confidence สูงก่อนกลาง และแผนที่ใช้ขอบประสำหรับระดับกลาง (สีเดียวกัน)
+- **สีจังหวัด 2P2R** จากชีต `flood_2p2r_province` (14 คอลัมน์ 1 แถว/จังหวัด, optional เหมือนอีก 2 ชีต) → `DATA.flood2p2r`: เทพื้นจังหวัดบนแผนที่ (ชั้นเปิด/ปิดได้ อยู่ใต้จุดตำบล ผูกด้วย `province_code` = `pro_code` ใน `thai_provinces.json`) แดง `#E24B4A` / ส้ม `#EF9F27` / เหลือง `#F2D43D` / เขียว `#4CAF50` / ปกติ ไม่เติมสี ใช้ `level_code` จากชีตตรง ๆ ไม่คำนวณใหม่ คลิกจังหวัดแล้วแสดง `level`, `phase`, `plan`, จำนวนอำเภอแต่ละระดับ, ตำบลน้ำขัง, `reasons` และกรองตารางตำบล/อำเภอตามจังหวัดนั้น แดง = น้ำขังนาน เสี่ยงน้ำเน่าเสีย (ไม่ใช่การยืนยันคุณภาพน้ำ) เขียว = ประมาณว่าน้ำลดจาก ปภ. (ไม่ใช่การยืนยัน) มีคำเตือนใน tooltip/รายละเอียด ถ้าแท็บว่าง/อ่านไม่ได้ ชั้นสีถูกซ่อนและขึ้น "ยังไม่มีข้อมูลสีจังหวัดรอบนี้" จุดตำบลยังใช้ได้ จังหวัดที่ไม่พบใน GeoJSON จะแจ้งใต้คำอธิบายสี
+- หน้าเว็บไม่คำนวณสถานะใหม่ แสดง `status`, `confidence`, `reasons` ตามที่ pipeline เขียน. ไม่ใช่ประกาศทางการ; "ไม่เห็นน้ำ ≠ น้ำลด"; ปภ. ระบุแค่ระดับอำเภอ; `พบน้ำล่าสุด (ไม่มีภาพใหม่)` ไม่ใช่น้ำขัง
+- แท็บภายนอก (ข่าว, เตรียมรับน้ำท่วม, น้ำขัง, DOH) ใส่ `data-external` ที่ปุ่มแท็บใน `template.html` เพื่อไม่ให้ตัวจับคลิกแท็บของ `dashboard.js` เปลี่ยน `state.tab`
+- Apps Script: ต้องเพิ่มไฟล์ HTML `WaterloggedView` ด้วย (สร้างโดย `build.py`)
+
 ## แท็บ "เตรียมรับน้ำท่วม" (ทั้ง GitHub Pages และ Apps Script)
 สรุปความเสี่ยงรายจังหวัดที่เฝ้าระวัง จากข้อมูลที่ pipeline `flood_prep_pipeline` (repo `geeks_project_google`, วันละ 2 รอบ 09:00 และ 13:00 น.) เขียนลง Google Sheet เดียวกับแดชบอร์ด
 - ชีต: `flood_risk` (รายจังหวัด: ระดับความเสี่ยง ฝนจริง/ฝนพยากรณ์ สถานีน้ำระดับ 5/4 ประกาศเตือน เหตุผล) และ `flood_wl_critical` (สถานีน้ำระดับ 4-5 พร้อมพิกัดและแนวโน้ม)
@@ -58,7 +73,7 @@ python -m http.server 8000 --directory docs
 
 ## โครงสร้างและวิธีแก้ไข
 - **ต้นทางที่แก้ไข:** `flood_web/` (`template.html`, `dashboard.js`, `data-model.js`, `dashboard.css`, GeoJSON, `server.py` สำหรับทดสอบในเครื่อง)
-- **ไฟล์ที่สร้างอัตโนมัติ (อย่าแก้ตรงๆ):** `Index.html`, `Dashboard.html`, `DataModel.html`, `RiskView.html`, `Styles.html`, `*GeoJSON.html`, `Config.gs`, `schema.json`, `appsscript.json` สร้างด้วย `python build.py` แล้ว commit
+- **ไฟล์ที่สร้างอัตโนมัติ (อย่าแก้ตรงๆ):** `Index.html`, `Dashboard.html`, `DataModel.html`, `RiskView.html`, `WaterloggedView.html`, `Styles.html`, `*GeoJSON.html`, `Config.gs`, `schema.json`, `appsscript.json` สร้างด้วย `python build.py` แล้ว commit
 - **เขียนมือ:** `Code.gs` (อ่านชีต แปลงข้อมูล แคช 5 นาทีเมื่อรันบน Apps Script), `fetch_data.cjs`, `build_pages.py`, `test.cjs`
 
 ลำดับหลังแก้หน้าเว็บ:

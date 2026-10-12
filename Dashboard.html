@@ -735,7 +735,7 @@ mapResizeObserver.observe($('map'));mapResizeObserver.observe($('shelterMap'));
 
 // The household-outline layer is remembered per tab: on by default, but off by default on the operations tab.
 const householdPref={ops:false};
-document.querySelectorAll('.tab:not([data-tab="news"]):not([data-tab="risk"]):not([data-tab="doh"])').forEach(x=>x.addEventListener('click',()=>{const hh=$('showHouseholds');if(hh&&state.tab!==x.dataset.tab){householdPref[state.tab]=hh.checked;hh.checked=householdPref[x.dataset.tab]??true}state.tab=x.dataset.tab;render();requestAnimationFrame(()=>window.dispatchEvent(new Event('resize')))}));$('reportDate').addEventListener('change',e=>{state.date=e.target.value;render()});
+document.querySelectorAll('.tab:not([data-external])').forEach(x=>x.addEventListener('click',()=>{const hh=$('showHouseholds');if(hh&&state.tab!==x.dataset.tab){householdPref[state.tab]=hh.checked;hh.checked=householdPref[x.dataset.tab]??true}state.tab=x.dataset.tab;render();requestAnimationFrame(()=>window.dispatchEvent(new Event('resize')))}));$('reportDate').addEventListener('change',e=>{state.date=e.target.value;render()});
 $('region').addEventListener('change',e=>{state.region=e.target.value;state.province='';opts('province',DATA.vulnerable.filter(r=>!state.region||r.region===state.region).map(r=>r.province).sort((a,b)=>a.localeCompare(b,'th')),'ทุกจังหวัด');render()});$('province').addEventListener('change',e=>{state.province=e.target.value;render()});$('district').addEventListener('change',e=>{state.district=e.target.value;render()});$('trend').addEventListener('change',e=>{state.trend=e.target.value;render()});
 document.addEventListener('click',e=>{const p=e.target.closest('[data-province]'),d=e.target.closest('[data-district]');if(p){state.province=p.dataset.province;$('province').value=state.province;render();window.scrollTo({top:0,behavior:'smooth'})}if(d){state.district=d.dataset.district;$('district').value=state.district;render();window.scrollTo({top:0,behavior:'smooth'})}});
 $('reset').addEventListener('click',()=>{tableFilters.clear();document.querySelectorAll('[data-table-filters]').forEach(el=>el.remove());state.region='';state.province='';state.district='';state.trend='';$('trend').value='';$('region').value='';$('district').value='';opts('province',provinceNames(),'ทุกจังหวัด');render()});
@@ -771,7 +771,7 @@ function fitShelters(pts){if(!shelterMap)return;shelterMap._dashboardBounds=pts.
 function syncMapKey(){const el=nationalLegend?.getContainer();if(!el)return;const target=matchMedia('(max-width:767px)').matches?$('mobileMapKey'):$('map').querySelector('.leaflet-bottom.leaflet-left');if(target&&el.parentElement!==target)target.append(el)}
 const tablePages=new Map(),tableFilters=new Map(),originalTableRows=new WeakMap();
 function paginateTables(){
- for(const id of ['areaTable','stationTable','vulTable','allSheltersBody','shelterSideBody','sideBody']){
+ for(const id of ['areaTable','stationTable','vulTable','allSheltersBody','shelterSideBody','sideBody','waterTable','waterDistrictTable']){
   const host=$(id),table=host?.querySelector('table');
   const remove=kind=>host?.parentElement.querySelector(':scope > [data-'+kind+'="'+id+'"]')?.remove();
   if(!table){remove('pager');remove('table-filters');tablePages.delete(id);continue}
@@ -820,6 +820,8 @@ function paginateTables(){
   nav.insertBefore(count,nav.lastChild);host.after(nav);
  }
 }
+// Table helpers for the external tab panes (waterlogged-view.js): same table(), paging and column filters as the built-in tabs.
+window.DashboardTables={table,paginate:paginateTables,hints:()=>requestAnimationFrame(updateTableHints),visibleIndices:id=>tablePages.get(id)?.rowIndices};
 function filteredExportRows(){const indices=tablePages.get('areaTable')?.rowIndices;return indices?[csvRows[0],...indices.map(i=>csvRows[i+1]).filter(Boolean)]:csvRows}
 const sourceLabels={Disaster_DB:'รายงานภัย ปภ.',Vulnerable_group:'ฐานประชากรกลุ่มเปราะบาง',thai_water_DB:'สถานีน้ำทั่วประเทศ',BKK_water_DB:'สถานีน้ำ กทม.',shelter_DB:'ศูนย์พักพิง'};
 function renderSourceStatus(){const failed=Object.entries(DATA.sourceStatus).filter(([name,s])=>s.status==='error'&&sourceLabels[name]&&(state.tab!=='ops'||name==='Disaster_DB'));$('sourceStatus').innerHTML=failed.map(([name,s])=>`<div class="alert source-error"><span><b>${sourceLabels[name]}</b> — ${esc(s.message)}</span><button class="lightbtn" data-retry-source="${name}">ลองใหม่</button></div>`).join('');$('sourceStatus').classList.toggle('hidden',!failed.length)}
@@ -861,7 +863,7 @@ function finishRender(){
 function applyReload(next,names){
  const prevDates=uniq(DATA.disasters.map(r=>r.Report_Date.slice(0,10))).sort();
  for(const name of names){DATA[SOURCES[name]]=next[SOURCES[name]];DATA.sourceStatus[name]=next.sourceStatus[name]}
- for(const [name,key] of Object.entries(DashboardModel.RISK_SOURCES))if(next.sourceStatus?.[name]?.status==='ok'){DATA[key]=next[key];DATA.sourceStatus[name]=next.sourceStatus[name]}
+ for(const [name,key] of Object.entries({...DashboardModel.RISK_SOURCES,...DashboardModel.WATERLOGGED_SOURCES}))if(next.sourceStatus?.[name]?.status==='ok'){DATA[key]=next[key];DATA.sourceStatus[name]=next.sourceStatus[name]}
  DATA.loadedAt=next.loadedAt;indexSources();
  if(names.includes('Disaster_DB')){const dates=uniq(DATA.disasters.map(r=>r.Report_Date.slice(0,10))).sort();if(!dates.includes(state.date)||state.date===prevDates.at(-1))state.date=dates.at(-1);opts('reportDate',dates);$('reportDate').value=state.date||''}
  if(names.includes('Vulnerable_group')){opts('region',uniq(DATA.vulnerable.map(r=>r.region).filter(Boolean)),'ทุกเขตสุขภาพ');if(!Array.from($('region').options).some(o=>o.value===state.region))state.region='';$('region').value=state.region}
