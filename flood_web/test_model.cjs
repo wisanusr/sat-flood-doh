@@ -151,4 +151,72 @@ assert.equal(m.validCoordinates({latitude:91,longitude:100}),false);
   assert.deepEqual(m.exposure(null,['ก']),{children:0,pregnant:0,elderly:0,total:0,matched:0,missing:['ก']});
   assert.deepEqual(m.reasonList('ก; ข ;; ค'),['ก','ข','ค']);assert.deepEqual(m.reasonList(null),[]);
 }
-console.log('PASS: household boundaries, freshness, missing/zero totals, district severity, coordinates, news filters, flood-prep rules, rain series/classes, exposure');
+// Waterlogging tab: status groups, counts, ordering, filters, freshness, coordinates, null handling
+{
+  const T='น้ำขัง',W='เฝ้าระวัง',N='พบน้ำใหม่',D='ข้อมูลไม่พอ',S='พบน้ำล่าสุด (ไม่มีภาพใหม่)';
+  assert.deepEqual(Object.keys(m.WATER_LOG_STATUS),[T,W,N,D,S]);   // exactly the pipeline's 5 labels; no separate "pending" status
+  assert(!('น้ำขัง (รอยืนยัน)' in m.WATER_LOG_STATUS));
+  assert(!('flood_waterlogged' in m.SOURCES),'waterlogging tabs must stay out of SOURCES (core retry/footer/refresh loops)');
+  const row=(st,sub,area,extra={})=>({province:'ก',district:'ข',district_code:'1001',subdistrict:sub,status:st,latest_area_km2:area,...extra});
+  const rows=[row(S,'s1',9),row(D,'s2',null),row(N,'s3',2),row(W,'s4',1),row(T,'s5',50,{confidence:'กลาง'}),row(T,'s6',1,{confidence:'สูง'}),row(T,'s7',3,{confidence:'สูง'}),row(T,'s8',null,{confidence:'สูง'}),row(T,'s10',4,{confidence:'กลาง'}),row(T,'s11',7),row('???','s9',5),{province:'',status:T},{province:'ก',status:''}];
+  // order: status; within 'น้ำขัง' confidence สูง before กลาง before missing, then area large to small (unknown last); unknown status last
+  assert.deepEqual(m.waterRows(rows).map(r=>r.subdistrict),['s7','s6','s8','s5','s10','s11','s4','s3','s2','s1','s9']);
+  assert.deepEqual(m.waterSummary(rows),{total:11,logged:6,image:3,ddpm:2,unknownConf:1,stale:1,fresh:1,watch:2,other:1});
+  assert.deepEqual(m.waterSummary(null),{total:0,logged:0,image:0,ddpm:0,unknownConf:0,stale:0,fresh:0,watch:0,other:0});
+  // confidence labels and the dashed (medium confidence) map style
+  assert.equal(m.waterConfidence({confidence:'สูง'}).label,'ยืนยันด้วยภาพ');assert.equal(m.waterConfidence({confidence:' กลาง '}).label,'ตาม ปภ.');
+  assert.equal(m.waterConfidence({confidence:null}),null);assert.equal(m.waterConfidence({confidence:'ต่ำ'}),null);assert.equal(m.waterConfidence(null),null);
+  assert.equal(m.waterIsDashed({status:T,confidence:'กลาง'}),true);assert.equal(m.waterIsDashed({status:T,confidence:'สูง'}),false);
+  assert.equal(m.waterIsDashed({status:T}),false);assert.equal(m.waterIsDashed({status:N,confidence:'กลาง'}),false);   // only 'น้ำขัง' is dashed
+  // filters: status set, province, district code, search text (tambon / district / province)
+  const all=m.waterRows(rows);
+  assert.deepEqual(m.waterFilter(all,{statuses:new Set([T])}).map(r=>r.subdistrict),['s7','s6','s8','s5','s10','s11']);
+  assert.equal(m.waterFilter(all,{statuses:new Set()}).length,0);
+  assert.equal(m.waterFilter(all,{}).length,all.length);
+  assert.equal(m.waterFilter(all,{province:'ข'}).length,0);
+  assert.deepEqual(m.waterFilter(all,{districtCode:1001,query:' S3 '}).map(r=>r.subdistrict),['s3']);
+  assert.equal(m.waterFilter(all,{districtCode:'9999'}).length,0);
+  // DDPM district count: >= 3 consecutive days; an empty ddpm_days is not 0 and not counted
+  const dd=[{district_code:'1',ddpm_days:3},{district_code:'2',ddpm_days:2},{district_code:'3',ddpm_days:null},{district_code:'4',ddpm_days:10},{district_code:'4',ddpm_days:10}];
+  assert.equal(m.waterDdpmDistricts(dd),2);assert.equal(m.waterDdpmDistricts(dd,2),3);assert.equal(m.waterDdpmDistricts(null),0);
+  // coordinates: both present and real; empty stays empty (no 0,0 point)
+  assert.equal(m.waterHasPoint({latitude:15.2,longitude:100.1}),true);
+  assert.equal(m.waterHasPoint({latitude:null,longitude:100.1}),false);assert.equal(m.waterHasPoint({latitude:15.2,longitude:null}),false);
+  assert.equal(m.waterHasPoint({latitude:0,longitude:0}),false);assert.equal(m.waterHasPoint({latitude:95,longitude:100}),false);assert.equal(m.waterHasPoint({latitude:'15.2',longitude:'100'}),false);
+  // freshness: run level 6 h / 12 h, image age from non-stale rows (falls back to stale rows), unknown without a run time
+  const run='2026-10-09T07:00:00+07:00',at=h=>Date.parse(run)+h*3600000;
+  const fr=[{status:T,run_at:run,image_age_hours:30},{status:N,run_at:run,image_age_hours:26.5},{status:S,run_at:run,image_age_hours:200},{status:D,run_at:run,image_age_hours:null}];
+  assert.equal(m.waterFreshness(fr,at(1)).imageHours,26.5);
+  assert.equal(m.waterFreshness([fr[2]],at(1)).imageHours,200);
+  assert.equal(m.waterFreshness([{status:T,run_at:run}],at(1)).imageHours,null);
+  assert.deepEqual([0,6,6.1,12,12.1].map(h=>m.waterFreshness(fr,at(h)).runLevel),['ok','ok','warn','warn','bad']);
+  assert.equal(m.waterFreshness(fr,at(-2)).runLevel,'unknown');assert.equal(m.waterFreshness([],at(1)).runLevel,'unknown');
+  assert.equal(m.waterFreshness(fr,at(1)).runAt,new Date(Date.parse(run)).toISOString());
+  // 2P2R province colours: level lookup, ordering, counts, code matching (leading zeros / numeric cells), unmatched provinces
+  assert.deepEqual(Object.keys(m.WATER_2P2R),['red','orange','yellow','green','normal']);
+  assert.deepEqual(['red','orange','yellow','green'].map(k=>m.WATER_2P2R[k].color),['#E24B4A','#EF9F27','#F2D43D','#4CAF50']);
+  assert.equal(m.WATER_2P2R.normal.color,null);                                 // normal = no fill
+  assert(m.WATER_2P2R.red.note.includes('ไม่ใช่การยืนยัน')&&m.WATER_2P2R.green.note.includes('ไม่ใช่การยืนยัน'));
+  assert.equal(m.WATER_2P2R.orange.note,null);
+  assert.equal(m.water2p2rLevel({level_code:' red '}).label,'แดง');assert.equal(m.water2p2rLevel({level_code:'purple'}),null);assert.equal(m.water2p2rLevel({level_code:null}),null);assert.equal(m.water2p2rLevel(null),null);
+  assert.deepEqual([10,'7','14',' 22 ','',null].map(m.waterProvCode),['10','07','14','22','','']);
+  const pv=[{province:'ข',province_code:'31',level_code:'yellow'},{province:'ก',province_code:'14',level_code:'red'},{province:'ค',province_code:'22',level_code:'green'},{province:'ง',province_code:30,level_code:'normal'},{province:'จ',province_code:'32',level_code:'orange'},{province:'ฉ',province_code:'',level_code:'red'},{province:'ช',province_code:'40',level_code:'??'},{province:'',province_code:'41',level_code:'red'},{province:'ซ',province_code:'14',level_code:'orange'}];
+  assert.deepEqual(m.waterProvinceRows(pv).map(r=>r.province),['ก','จ','ซ','ข','ค','ง']);   // highest level first, then name; invalid rows dropped
+  assert.deepEqual(m.waterProvinceSummary(pv),{total:6,red:1,orange:2,yellow:1,green:1,normal:1,invalid:3});
+  assert.deepEqual(m.waterProvinceSummary(null),{total:0,red:0,orange:0,yellow:0,green:0,normal:0,invalid:0});
+  const idx=m.waterProvinceIndex(pv);assert.equal(idx.get('14').level_code,'red');assert.equal(idx.get('30').level_code,'normal');assert.equal(idx.size,5);   // duplicate code: first (highest) wins
+  assert.deepEqual(m.waterProvinceUnmatched(pv,['14','22','30','31']).map(r=>r.province),['จ']);   // 32 is not in the map
+  assert.deepEqual(m.waterProvinceUnmatched([],['14']),[]);
+  assert.deepEqual(m.WATERLOGGED_SOURCES,{flood_waterlogged:'floodWaterlogged',flood_waterlogged_district:'floodWaterloggedDistrict',flood_2p2r_province:'flood2p2r'});
+  // district list: most waterlogged tambons first; DDPM-only rows (null counts) last, longest DDPM run first
+  assert.deepEqual(m.waterDistricts([{province:'ก',district:'a',waterlogged_tambons:1},{province:'ก',district:'b',waterlogged_tambons:5},{province:'ก',district:'c',waterlogged_tambons:null},{province:'',district:'x'}]).map(r=>r.district),['b','a','c']);
+  const O=m.WATER_BASIS_DDPM_ONLY,S2='ภาพดาวเทียม + ปภ.';
+  assert.equal(O,'ปภ. (ไม่มีภาพดาวเทียม)');
+  const mix=[{province:'ก',district:'o1',district_code:'1',ddpm_days:5,basis:O},{province:'ก',district:'s1',district_code:'2',waterlogged_tambons:0,basis:S2},{province:'ข',district:'o2',district_code:'3',ddpm_days:12,basis:O},{province:'ก',district:'s2',district_code:'4',waterlogged_tambons:3,basis:S2},{province:'ก',district:'o3',district_code:'1',ddpm_days:5,basis:O}];
+  assert.deepEqual(m.waterDistricts(mix).map(r=>r.district),['s2','s1','o2','o1','o3']);
+  assert.equal(m.waterDdpmOnlyCount(mix),2);                                   // distinct district codes
+  assert.equal(m.waterDdpmOnlyCount(null),0);assert.equal(m.waterDdpmOnlyCount([{basis:S2}]),0);
+  assert.equal(m.waterIsDdpmOnly({basis:' '+O+' '}),true);assert.equal(m.waterIsDdpmOnly({basis:null}),false);assert.equal(m.waterIsDdpmOnly(null),false);
+  assert.equal(m.waterDdpmDistricts(mix,3),2);                                  // DDPM-only rows count as reported >= 3 days
+}
+console.log('PASS: household boundaries, freshness, missing/zero totals, district severity, coordinates, news filters, flood-prep rules, rain series/classes, exposure, waterlogging tab');

@@ -22,13 +22,15 @@ bridge = '/*@bridge-begin*/function requestData(source,refresh){return new Promi
 js, swapped = re.subn(r'//@local-request-begin.*?//@local-request-end', lambda m: bridge, js, flags=re.S)
 assert swapped == 1, 'local request block not found'
 assert "fetch('/" not in js, 'Unconverted local request'
-for name, text, tag in [('Dashboard',js,'script'),('DataModel',(WEB/'data-model.js').read_text(encoding='utf-8'),'script'),('RiskView',(WEB/'risk-view.js').read_text(encoding='utf-8'),'script'),('Styles',(WEB/'dashboard.css').read_text(encoding='utf-8'),'style')]:
+for name, text, tag in [('Dashboard',js,'script'),('DataModel',(WEB/'data-model.js').read_text(encoding='utf-8'),'script'),('RiskView',(WEB/'risk-view.js').read_text(encoding='utf-8'),'script'),('WaterloggedView',(WEB/'waterlogged-view.js').read_text(encoding='utf-8'),'script'),('Styles',(WEB/'dashboard.css').read_text(encoding='utf-8'),'style')]:
     (ROOT/(name+'.html')).write_text('<'+tag+'>\n'+text+'\n</'+tag+'>',encoding='utf-8')
 html=(WEB/'template.html').read_text(encoding='utf-8')
 html=html.replace('<link rel="stylesheet" href="/dashboard.css">', "<?!= include_('Styles'); ?>")
 html=html.replace('<script src="/data-model.js"></script><script src="/dashboard.js"></script>', '\n'.join("<?!= include_('"+n+"'); ?>" for n in ['GeoJSON','BkkGeoJSON','RegionsGeoJSON','DataModel','Dashboard']))
 # The flood-prep tab ("เตรียมรับน้ำท่วม") reads Google Sheets like the other tabs, so unlike the news tab it ships in both builds.
 html=html.replace('<script src="/risk-view.js"></script>', "<?!= include_('RiskView'); ?>")
+# The waterlogging tab ("น้ำขัง") reads Google Sheets too, so it also ships in both builds.
+html=html.replace('<script src="/waterlogged-view.js"></script>', "<?!= include_('WaterloggedView'); ?>")
 # Blocks marked pages-only (the news tab) exist only on the GitHub Pages site: leave a numbered slot here and
 # build_pages.py fills it from template.html. The Apps Script package has no news.json, so it must not show the tab.
 pages_only = iter(range(1000))

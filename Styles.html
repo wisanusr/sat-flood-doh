@@ -392,7 +392,7 @@ details.risk-all[open]>summary::before{content:"▾"}
 /* Screenshot button next to the definitions button; not shown on the news, flood-prep and DOH tabs */
 .subnav-actions{display:flex;gap:8px;align-items:center}
 .subnav-actions .lightbtn:disabled{opacity:.6;cursor:progress}
-.news-mode #shotBtn,.risk-mode #shotBtn,.doh-mode #shotBtn{display:none}
+.news-mode #shotBtn,.risk-mode #shotBtn,.doh-mode #shotBtn,.water-mode #shotBtn{display:none}
 @media(max-width:767px){.subnav-actions{margin-bottom:8px}}
 .layer-chip .chip-text{white-space:nowrap}
 .data-age .age-basis{margin-top:3px;font-size:12.5px;opacity:.9}
@@ -455,6 +455,57 @@ details.risk-all[open]>summary::before{content:"▾"}
 .panel:has([data-table-filters]) [data-table-filters]>.table-control-top [data-filter-toggle]{position:absolute;top:16px;right:20px;z-index:2}
 .panel:has([data-table-filters]) .panel-head{padding-right:130px}
 
+/* Waterlogging tab ("น้ำขัง", waterlogged-view.js): body.water-mode hides the dashboard sections and shows #waterPane. */
+#waterPane{display:none}
+.water-mode #waterPane{display:block}
+.water-mode #workspace>:not(#waterPane){display:none!important}
+#waterPane .panel{margin-bottom:18px}
+#waterPane .cards{margin-bottom:18px}
+#waterPane .num{text-align:right;white-space:nowrap}
+.water-chip .dot,.water-badge .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:baseline}
+.water-badge{background:#f1f5f9;color:#1e293b;border:1px solid var(--line);white-space:nowrap}
+.water-link{all:unset;cursor:pointer;color:var(--teal);font-weight:600;border-radius:4px;text-decoration:underline;text-underline-offset:2px}
+.water-link:hover{background:#eef6f6}
+.water-link:focus-visible{outline:3px solid #7cc4c0;outline-offset:1px}
+#waterTable tbody tr.sel td{background:#e6f4f3}
+.water-notes{margin:0;padding-left:20px;line-height:1.7}
+@media(min-width:1024px){#waterPane .cards{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(min-width:1280px){#waterPane .cards{grid-template-columns:repeat(6,minmax(0,1fr))}}
+.water-badge.water-ddpm{background:#fff3e6;border-color:#e0a04a;color:#7a4a05;font-weight:600;white-space:nowrap}
+.water-ddpm-note{margin:0 0 12px}
+#waterDistrictNote:empty{display:none}
+.water-badge.water-conf{font-size:11px;padding:1px 7px;margin-left:4px;white-space:nowrap}
+.water-conf-image{background:#e6f4f3;border-color:#9fd3cf;color:#075a56}
+.water-conf-ddpm{background:#fff3e6;border:1px dashed #d98a3b;color:#7a4a05}
+.dot.dot-dashed{outline:1px dashed #7f1d1d;outline-offset:1px}
+.water-prov-legend{gap:6px 16px;padding-bottom:4px}
+.water-prov-key{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
+.swatch{display:inline-block;width:14px;height:14px;border-radius:3px;border:1px solid #94a3b8;flex:0 0 auto}
+.swatch-none{background:#f1f5f9}
+.water-prov-note{margin:0 20px 12px;font-size:12px}
+.water-prov-none{margin:0 20px 12px}
+.water-plan{margin:0 0 10px;font-size:14px}
+.water-level-note{margin:0 0 10px}
+/* Waterlogging tab layout follows the national tab: heading + date, data-age bar, .filters bar, .cards, .grid (map | detail), situation box, section titles. */
+#waterPane .grid{margin:18px 0}
+#waterPane .section-title{margin:26px 0 12px;align-items:flex-end;flex-wrap:wrap;gap:10px}
+#waterPane .section-title .sub{margin-top:2px;max-width:70ch}
+#waterPane .filters{margin-bottom:18px}
+#waterPane .situation{margin:18px 0}
+.water-map{height:520px}
+@media(max-width:767px){.water-map{height:380px}}
+@media(min-width:1024px){#waterPane .grid.water-grid{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr)}}
+.water-status-cards{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+.water-status-card{background:#f8fafc;border:1px solid var(--line);color:var(--ink);text-align:left;cursor:pointer;font:inherit;font-weight:700}
+.water-status-card .tc-label{white-space:normal;font-size:13px}
+.water-status-card[aria-pressed="false"]{opacity:.45}
+.water-status-card[aria-pressed="false"] .tc-label{text-decoration:line-through}
+.water-status-card .dot{flex:none;margin:0}
+.water-basis-chips{display:flex;flex-wrap:wrap;gap:8px}
+#waterDistrictNote:empty{display:none}
+#waterDetail>.panel-body{max-height:520px;overflow-y:auto}
+#waterDetail .table-wrap{max-height:none;overflow:visible}
+#waterPane .section-title>div:first-child{display:block;flex:1;min-width:0}
 /* Summary columns must fit their contents before the table starts scrolling. */
 #sideBody:is(.ops-summary,.nat-summary) table{table-layout:auto;min-width:600px}
 #sideBody:is(.ops-summary,.nat-summary) th:nth-child(n){width:auto}
@@ -479,5 +530,7 @@ details.risk-all[open]>summary::before{content:"▾"}
  #workspace .map-expanded #dohMap,#workspace .map-expanded .risk-map{height:65svh!important;min-height:0!important}
  .map-expanded{padding-bottom:env(safe-area-inset-bottom)}
 }
+/* Mobile map sizing for the waterlogging map, same clamp as the other maps (after the shared mobile rules above) */
+@media(max-width:767px){#workspace .water-map{height:clamp(300px,50svh,440px)!important;min-height:300px!important}#workspace .map-expanded .water-map{height:65svh!important;min-height:0!important}}
 
 </style>
