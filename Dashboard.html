@@ -63,7 +63,13 @@ function opsExtraCards(affected){
  const vulCard=card('กลุ่มเปราะบางที่อาจได้รับผลกระทบ',total,'คน',`ผู้สูงอายุ ${fmt(n[0])} · หญิงตั้งครรภ์ ${fmt(n[1])} · เด็กเล็ก ${fmt(n[2])} (ประชากรทั้งจังหวัดที่ประสบภัย)`);
  return dohCard+vulCard;
 }
-function renderTrendCards(bkk){const el=$('trendCards');el.classList.toggle('hidden',bkk);if(bkk)return;const allowed=new Set(allowedProvinces()),t=new Map();for(const r of getReports(true)){if(!allowed.has(r.Province))continue;const k=DashboardModel.trendKind(r.Water_Level_Trend);if(k)t.set(r.Province,k)}const n={up:0,steady:0,down:0};t.forEach(k=>n[k]++);const defs=[['up','น้ำเพิ่มขึ้น','↗'],['steady','น้ำทรงตัว','='],['down','น้ำลดลง','↓']];el.innerHTML=defs.map(([k,l,i])=>`<div class="trend-card tc-${k}" style="${trendBadgeStyle(l.replace(/^น้ำ/,''))}"><span class="tc-icon" aria-hidden="true">${i}</span><span class="tc-label">${l}</span><span class="tc-num">${fmt(n[k])} <small>จ.</small></span></div>`).join('')}
+function bkkStationTrend(r){return DashboardModel.bkkTrend(r,DATA.sourceStatus.BKK_water_DB?.loadedAt||DATA.loadedAt)}
+function bkkTrendBadge(r){const k=bkkStationTrend(r),label={up:'เพิ่ม',steady:'คงตัว',down:'ลด'},style={up:'เพิ่มขึ้น',steady:'ทรงตัว',down:'ลดลง'};return `<span class="badge" style="${trendBadgeStyle(style[k])}" title="เทียบค่าเฉลี่ย 24 ชั่วโมงของสถานี">${label[k]||'ข้อมูลไม่เพียงพอ'}</span>`}
+function bkkDistrictTrends(){return DashboardModel.bkkTrendDistricts(currentStations,districts.filter(name=>!state.district||state.district===name),DATA.sourceStatus.BKK_water_DB?.loadedAt||DATA.loadedAt)}
+function renderTrendCards(bkk){const el=$('trendCards');el.classList.remove('hidden');el.setAttribute('aria-label',bkk?'สรุปแนวโน้มระดับน้ำรายเขต':'สรุปแนวโน้มระดับน้ำรายจังหวัด');if(bkk){
+ const n={up:0,steady:0,down:0,mixed:0,unknown:0},summaries=bkkDistrictTrends();for(const r of summaries)n[r.kind]++;
+ el.innerHTML=[['up','เพิ่ม','↗','เพิ่มขึ้น'],['steady','คงตัว','=','ทรงตัว'],['down','ลด','↓','ลดลง']].map(([k,l,i,t])=>`<div class="trend-card tc-${k}" style="${trendBadgeStyle(t)}" title="นับเขตตามผลสรุปเดียวกับสีแผนที่ · แต่ละเขตนับครั้งเดียว"><span class="tc-icon" aria-hidden="true">${i}</span><span class="tc-label">${l}</span><span class="tc-num">${fmt(n[k])} <small>เขต</small></span></div>`).join('')+`<div class="sub" style="grid-column:1/-1">รวม ${fmt(summaries.length)} เขต · แนวโน้มผสม ${fmt(n.mixed)} เขต · ข้อมูลไม่เพียงพอ ${fmt(n.unknown)} เขต · ใช้กลุ่มสถานีที่มีจำนวนมากที่สุดในแต่ละเขต</div>`;return;}
+ const allowed=new Set(allowedProvinces()),t=new Map();for(const r of getReports(true)){if(!allowed.has(r.Province))continue;const k=DashboardModel.trendKind(r.Water_Level_Trend);if(k)t.set(r.Province,k)}const n={up:0,steady:0,down:0};t.forEach(k=>n[k]++);const defs=[['up','น้ำเพิ่มขึ้น','↗'],['steady','น้ำทรงตัว','='],['down','น้ำลดลง','↓']];el.innerHTML=defs.map(([k,l,i])=>`<div class="trend-card tc-${k}" style="${trendBadgeStyle(l.replace(/^น้ำ/,''))}"><span class="tc-icon" aria-hidden="true">${i}</span><span class="tc-label">${l}</span><span class="tc-num">${fmt(n[k])} <small>จ.</small></span></div>`).join('')}
 function card(label,value,unit,note,accent=false){return `<article class="card ${accent?'accent':''}"><div class="eyebrow">${label}</div><div class="number">${fmt(value)}<span class="unit">${unit}</span></div><div class="card-note">${note}</div></article>`}
 function metric(label,value){return `<div class="metricline"><span>${label}</span><strong>${value}</strong></div>`}
 function bars(rows){let max=Math.max(...rows.map(r=>r.value),1);return rows.map(r=>{let color='#087873';if(r.value>=100000)color='#dc2626';else if(r.value>=10000)color='#f97316';else if(r.value>=1000)color='#facc15';else if(r.value>=1)color='#22c55e';return `<div class="barrow"><button data-province="${esc(r.name)}" title="ดูจังหวัด ${esc(r.name)}">${esc(r.name)}</button><div class="bartrack"><div class="bar" style="width:${r.value/max*100}%;background:${color}"></div></div><strong>${fmt(r.value)}</strong></div>`}).join('')||'<p class="empty">ไม่มีรายงานในขอบเขตที่เลือก</p>'}
@@ -102,20 +108,16 @@ $('bkkVulPanel').classList.toggle('hidden', !bkk);$('areaNote').classList.toggle
  }
 $('cards').innerHTML=bkk?card('เขตวิกฤต / ล้นตลิ่ง',bkkCriticalDistricts,'เขต','จากข้อมูลสถานีน้ำ 24 ชม.',true)+card('สถานีวิกฤต / ล้นตลิ่ง',bkkCriticalStations,'สถานี',`จากทั้งหมด ${fmt(fresh.length)} สถานีที่ข้อมูลอัปเดต`)+card('ผู้เข้าพักศูนย์พักพิง',bkkShelterOcc,'คน',`รองรับได้ทั้งหมด ${fmt(bkkShelterCap)} คน`)+card('จำนวนศูนย์ที่เต็ม/ใกล้เต็ม',bkkShelterFull,'แห่ง',`จากศูนย์ตามตัวกรองทั้งหมด ${fmt(currentShelters.length)} แห่ง`):card('จังหวัดที่มีรายงานภัย',affected.length,'จังหวัด','',true)+card('ครัวเรือนตามรายงาน',households,'ครัวเรือน','')+(ops?'':card('จังหวัดแนวโน้มน้ำเพิ่มขึ้น',uniq(reports.filter(r=>r.Water_Level_Trend==='เพิ่มขึ้น').map(r=>r.Province)).length,'จังหวัด',''))+(ops?opsExtraCards(affected):card('สถานีวิกฤติ / ล้นตลิ่ง',severe.length,'แห่ง',''));
  $('alert').style.display='none';
- $('mapTitle').textContent=bkk?'สถานะระดับน้ำรายเขต กรุงเทพมหานคร':'การเฝ้าระวังน้ำและผลกระทบ';$('mapSubtitle').textContent='';$('mapSource').textContent=bkk?'ที่มา : สำนักการระบายน้ำ กทม., ระบบช่วยเหลือผู้ประสบภัย กรุงเทพมหานคร':'ที่มา : กรมป้องกันและบรรเทาสาธารณะภัย, ThaiWater, HDC';$('mapSubtitle').classList.toggle('hidden',!bkk);$('mapCount').textContent=bkk?(state.district?'เขต'+state.district:'50 เขต')+` · ${fmt(currentStations.length)} สถานี`:ops?`${fmt(affected.length)} จังหวัด`:`${fmt(currentStations.length)} สถานี`;
+ $('mapTitle').textContent=bkk?'แนวโน้มระดับน้ำรายเขต กรุงเทพมหานคร':'การเฝ้าระวังน้ำและผลกระทบ';$('mapSubtitle').textContent='';$('mapSource').textContent=bkk?'ที่มา : สำนักการระบายน้ำ กทม., ระบบช่วยเหลือผู้ประสบภัย กรุงเทพมหานคร':'ที่มา : กรมป้องกันและบรรเทาสาธารณะภัย, ThaiWater, HDC';$('mapSubtitle').classList.toggle('hidden',!bkk);$('mapCount').textContent=bkk?(state.district?'เขต'+state.district:'50 เขต')+` · ${fmt(currentStations.length)} สถานี`:ops?`${fmt(affected.length)} จังหวัด`:`${fmt(currentStations.length)} สถานี`;
  $('stationMapLegend').classList.add('hidden');$('householdMapLegend').classList.add('hidden');$('map').classList.toggle('national-view',!bkk);$('bkkMapTools').classList.toggle('hidden',!bkk);$('healthRegionTools').classList.toggle('hidden',bkk);$('districtWaterLegend').classList.toggle('hidden',!bkk);$('districtShelterLegend').classList.toggle('hidden',!bkk);$('districtWaterNote').classList.toggle('hidden',!bkk);$('nationalHeatNote').classList.toggle('hidden',bkk);renderTrendCards(bkk);
- if(bkk){$('sideTitle').textContent='สรุปสถานีระดับน้ำรายเขต';$('sideSub').textContent=state.district||'';const over=currentShelters.filter(r=>r.occupied>r.capacity),coords=currentShelters.filter(r=>typeof r.latitude==='number'&&typeof r.longitude==='number');const distStats=new Map();for(const r of currentStations){if(quality(r)!=='ภายใน 24 ชั่วโมง')continue;const d=r.district_or_area||'ไม่ระบุ',st=canonicalWaterStatus(r.flood_status_source);if(!distStats.has(d))distStats.set(d,{วิกฤต:0,เตือนภัย:0,ปกติ:0});const stat=distStats.get(d);if((WATER_STATUS[st]?.rank||0)>=4)stat.วิกฤต++;else if((WATER_STATUS[st]?.rank||0)>=2)stat.เตือนภัย++;else if(st==='ปกติ')stat.ปกติ++;}const sortedDistricts = Array.from(distStats.entries())
-    .filter(([_,s]) => s.วิกฤต > 0 || s.เตือนภัย > 0 || s.ปกติ > 0)
-    .sort((a,b) => b[1].วิกฤต - a[1].วิกฤต || b[1].เตือนภัย - a[1].เตือนภัย || b[1].ปกติ - a[1].ปกติ);
-    
-  $('sideBody').innerHTML = table(['เขต', 'วิกฤต', 'เตือนภัย', 'ปกติ'], sortedDistricts.map(([d, s]) => {
-    return [
-      `<button class="linkbutton" data-district="${esc(d)}">${esc(d)}</button>`,
-      s.วิกฤต ? `<span class="badge" style="background:#dc2626;color:#fff">${s.วิกฤต}</span>` : '-',
-      s.เตือนภัย ? `<span class="badge" style="background:#ea580c;color:#fff">${s.เตือนภัย}</span>` : '-',
-      s.ปกติ ? `<span class="badge" style="background:#16a34a;color:#fff">${s.ปกติ}</span>` : '-',
-    ];
-  }));
+ if(bkk){
+ $('sideTitle').textContent='สรุปแนวโน้มระดับน้ำรายเขต';$('sideSub').textContent='หนึ่งรายการต่อเขต · ผลสรุปตรงกับสีพื้นแผนที่';
+ const rank={up:0,steady:1,down:2,mixed:3,unknown:4};
+ const summaries=bkkDistrictTrends().sort((a,b)=>rank[a.kind]-rank[b.kind]||a.name.localeCompare(b.name,'th'));
+ $('sideBody').innerHTML=table(['เขต','แนวโน้ม','สถานะเตือนภัยสูงสุด'],summaries.map(r=>{
+   const water=districtWaterSummary(currentStations.filter(s=>String(s.district_or_area??'').replace(/^เขต/,'').trim()===r.name));
+   return [`<button class="linkbutton" data-district="${esc(r.name)}">${esc(r.name)}</button>`,`<span class="badge" style="background:${BKK_TREND_COLORS[r.kind]};color:${r.kind==='up'||r.kind==='steady'?'#fff':'#172b36'}">${esc(r.label)}</span>`,water.status?statusBadge(water.status):'ข้อมูลไม่เพียงพอ'];
+ }));
 } else {
   $('sideTitle').textContent = 'ตารางสรุปผลกระทบ ปภ.';
   $('sideSub').textContent = state.province || state.region || '';
@@ -319,7 +321,9 @@ function renderStations(){
     const timeA = timestamp(a.observed_at_th || a.updated_at_source || a.Ingested_At) || 0;
     const timeB = timestamp(b.observed_at_th || b.updated_at_source || b.Ingested_At) || 0;
     return timeB - timeA;
-  });$('stationSub').textContent=state.tab==='national'||state.tab==='bkk'?'':`${latest.day?'เฉพาะวันที่ตรวจวัดล่าสุด '+date(latest.day+'T00:00:00+07:00'):'ไม่มีข้อมูลตรวจวัดที่ระบุเวลาได้'} · ${fmt(rows.length)} สถานีในพื้นที่เลือก · ใช้รายการล่าสุดของแต่ละสถานีในวันนั้น ไม่รวมวันอื่น · ระดับน้ำเป็นเมตร รทก. ไม่ใช่ความลึกน้ำท่วม · ไม่รวมสถานีขัดข้อง/ไม่ทราบสถานะ ${fmt(state.tab==='bkk'?DATA.excludedStations.bkk:DATA.excludedStations.national)} แห่ง`;$('stationTable').innerHTML=table(['สถานี',state.tab==='bkk'?'เขต':'พื้นที่','ระดับน้ำ (ม. รทก.)','สถานะต้นทาง','เวลาตรวจวัด'],rows.map(r=>[esc(r.station_name),esc(r.district_or_area),typeof r.water_in_m_msl==='number'?r.water_in_m_msl.toFixed(2):'ไม่มีข้อมูล',statusBadge(r.flood_status_source),time(r.observed_at_th)]));paginateTables();}
+  });$('stationSub').textContent=state.tab==='national'||state.tab==='bkk'?'':`${latest.day?'เฉพาะวันที่ตรวจวัดล่าสุด '+date(latest.day+'T00:00:00+07:00'):'ไม่มีข้อมูลตรวจวัดที่ระบุเวลาได้'} · ${fmt(rows.length)} สถานีในพื้นที่เลือก · ใช้รายการล่าสุดของแต่ละสถานีในวันนั้น ไม่รวมวันอื่น · ระดับน้ำเป็นเมตร รทก. ไม่ใช่ความลึกน้ำท่วม · ไม่รวมสถานีขัดข้อง/ไม่ทราบสถานะ ${fmt(state.tab==='bkk'?DATA.excludedStations.bkk:DATA.excludedStations.national)} แห่ง`;const bkk=state.tab==='bkk';
+ if(bkk)$('stationSub').textContent='เพิ่ม–คงตัว–ลด: เทียบค่าเฉลี่ย 24 ชั่วโมงของแต่ละสถานี ตามข้อมูลต้นทาง · ไม่ใช่รายงานแนวโน้มจาก ปภ. · ข้อมูลเก่าหรือไม่มีผลเทียบแสดง “ข้อมูลไม่เพียงพอ”';
+ $('stationTable').innerHTML=table(['สถานี',bkk?'เขต':'พื้นที่','ระดับน้ำ (ม. รทก.)',...(bkk?['แนวโน้มระดับน้ำ']:[]),'สถานะต้นทาง','เวลาตรวจวัด'],rows.map(r=>[esc(r.station_name),esc(r.district_or_area),typeof r.water_in_m_msl==='number'?r.water_in_m_msl.toFixed(2):'ไม่มีข้อมูล',...(bkk?[bkkTrendBadge(r)]:[]),statusBadge(r.flood_status_source),time(r.observed_at_th)]));paginateTables();}
 function sourceLinks(rows,label){const urls=uniq(rows.map(r=>r.source_url).filter(Boolean));return 'ที่มา: '+esc(label)+(urls.length>1?' · '+urls.map((u,i)=>link(u,'แหล่งข้อมูล '+(i+1))).join(' '):'')}
 const SHELTER_COLORS={'เปิดให้บริการ/ว่าง':'#15803d','ใกล้เต็ม':'#ea580c','เต็ม':'#dc2626'};
 function shelterStatusColor(status){return SHELTER_COLORS[String(status??'').trim()]||'#64748b'}
@@ -518,37 +522,30 @@ function renderShelterTable(shelters) {
 const WATER_STATUS=DashboardModel.WATER_STATUS;
 const canonicalWaterStatus=DashboardModel.canonicalWaterStatus;
 const districtWaterSummary=rows=>DashboardModel.districtSummary(rows,quality);
+const BKK_TREND_COLORS={up:'#082f6b',steady:'#3b82f6',down:'#93c5fd',mixed:'#a78bfa',unknown:'#cbd5e1'};
+const districtTrendSummary=rows=>DashboardModel.bkkDistrictTrend(rows,DATA.sourceStatus.BKK_water_DB?.loadedAt||DATA.loadedAt);
+const districtTrendCounts=t=>`เพิ่ม ${fmt(t.counts.up)} · คงตัว ${fmt(t.counts.steady)} · ลด ${fmt(t.counts.down)} · ข้อมูลไม่เพียงพอ ${fmt(t.unknown)} สถานี`;
+function bkkTrendLegend(){return [['up','เพิ่ม'],['steady','คงตัว'],['down','ลด'],['mixed','แนวโน้มผสม (จำนวนเท่ากัน)'],['unknown','ข้อมูลไม่เพียงพอ']].map(([k,l])=>`<span><i class="dot" style="border-radius:2px;background:${BKK_TREND_COLORS[k]}"></i>${l}</span>`).join('')}
 function renderDistrictWaterMap(fit=false){
  $('districtShelterLegend').innerHTML=shelterLegend();
  
  if(!window.BKK_DISTRICTS_GEOJSON){$('mapSubtitle').textContent='โหลดเส้นแบ่งเขตไม่สำเร็จ กรุณารีเฟรชอีกครั้ง';map.setView([13.75,100.55],10);return}
- const rows=DATA.bkkStations.filter(r=>r.province==='กรุงเทพมหานคร'),summaries=new Map();const activeStatuses=new Set(rows.map(r=>canonicalWaterStatus(r.flood_status_source))); const knownLegend=Object.entries(WATER_STATUS).filter(([label])=>activeStatuses.has(label)).map(([label,value])=>`<span><i class="dot" style="border-radius:2px;background:${value.color}"></i>${label}</span>`).join(''); const unknownStatuses=Array.from(activeStatuses).filter(s=>s&&!WATER_STATUS[s]); const unknownLegend=unknownStatuses.length?`<span><i class="dot" style="border-radius:2px;background:#94a3b8"></i>${esc(unknownStatuses.join(' / '))}</span>`:''; $('districtWaterLegend').innerHTML=knownLegend+unknownLegend+'<span>สีเทา/ไม่ระบายสี: ไม่มีสถานีหรือไม่มีสถานะล่าสุดที่ใช้ได้</span>';
- for(const name of districts)summaries.set(name,districtWaterSummary(rows.filter(r=>String(r.district_or_area??'').replace(/^เขต/,'').trim()===name)));
+ const rows=DATA.bkkStations.filter(r=>r.province==='กรุงเทพมหานคร'),summaries=new Map(),trends=new Map();
+ $('districtWaterLegend').innerHTML='<strong>สีพื้นเขต: แนวโน้มระดับน้ำ</strong>'+bkkTrendLegend();
+ for(const name of districts){const stations=rows.filter(r=>String(r.district_or_area??'').replace(/^เขต/,'').trim()===name);summaries.set(name,districtWaterSummary(stations));trends.set(name,districtTrendSummary(stations));}
  let selected=null;
  const area=L.geoJSON(window.BKK_DISTRICTS_GEOJSON,{
-  style(feature){const name=feature.properties.amp_th,summary=summaries.get(name)||districtWaterSummary([]),active=!state.district||state.district===name;return {className:'bkk-district',color:summary.status?summary.color:(active?'#334155':'#94a3b8'),weight:summary.status?3:(state.district===name?2.5:1),fillColor:'transparent',fillOpacity:0}},
+  style(feature){const name=feature.properties.amp_th,summary=summaries.get(name)||districtWaterSummary([]),active=!state.district||state.district===name;return {className:'bkk-district',color:summary.status?summary.color:(active?'#334155':'#94a3b8'),weight:summary.status?3:(state.district===name?2.5:1),fillColor:BKK_TREND_COLORS[trends.get(name)?.kind||'unknown'],fillOpacity:active?0.65:0.18}},
   onEachFeature(feature,layer){const name=feature.properties.amp_th,summary=summaries.get(name)||districtWaterSummary([]),stations=rows.filter(r=>String(r.district_or_area??'').replace(/^เขต/,'').trim()===name),old=stations.filter(r=>quality(r)!=='ภายใน 24 ชั่วโมง').length;
-   layer.bindTooltip(`<b>เขต${esc(name)}</b><br>${esc(summary.label)} · ${fmt(stations.length)} สถานี`);
-   const details=summary.drivers.map(r=>`${esc(r.station_name)} — ${time(r.observed_at_th)} (${esc(quality(r))})`).join('<br>');
-   layer.bindPopup(`<b>เขต${esc(name)}</b><br>สถานะรุนแรงที่สุด: ${esc(summary.label)}<br>สถานีในข้อมูล ${fmt(stations.length)} แห่ง<br>ข้อมูลเก่า / เวลาไม่ผ่านเกณฑ์ ${fmt(old)} แห่ง${details?'<hr><b>สถานีที่กำหนดสีเขต</b><br>'+details:''}${!summary.status&&stations.length?'<br>สถานะต้นทาง: '+esc(uniq(stations.map(r=>r.flood_status_source||'ไม่ระบุ')).join(', ')):''}`);
+   const trend=trends.get(name)||districtTrendSummary([]);
+   layer.bindTooltip(`<b>เขต${esc(name)} · ${esc(trend.label)}</b><br>${districtTrendCounts(trend)}`);
+   const details=stations.map(r=>`${esc(r.station_name)} — ${bkkTrendBadge(r)}<br><small>${time(r.observed_at_th)}</small>`).join('<br>');
+   layer.bindPopup(`<b>เขต${esc(name)} · ${esc(trend.label)}</b><br>${districtTrendCounts(trend)}<br>ใช้กลุ่มสถานีที่มีจำนวนมากที่สุด · จำนวนเท่ากัน = แนวโน้มผสม<br>เทียบค่าเฉลี่ย 24 ชม. ของแต่ละสถานี<br>เส้นเขต: สถานะรุนแรงที่สุด ${esc(summary.label)}<br>ข้อมูลเก่า / เวลาไม่ผ่านเกณฑ์ ${fmt(old)} แห่ง${details?'<hr><div style="max-height:220px;overflow:auto">'+details+'</div>':''}`,{maxWidth:360});
    if(name===state.district)selected=layer;
   }
  }).addTo(layers);
  if($('showShelterPins').checked)addShelterPins(layers,currentShelters);
- // heatmap drawn below
- // Draw heatmap for BKK stations
- $('districtWaterNote').textContent='โหลด Heatmap ไม่สำเร็จ · เส้นเขตและหมุดศูนย์พักพิงยังใช้งานได้';
- if(window.L && L.heatLayer){
-   const maxRank=Math.max(1,...currentStations.filter(r=>quality(r)==='ภายใน 24 ชั่วโมง').map(r=>WATER_STATUS[canonicalWaterStatus(r.flood_status_source)]?.rank||1));
-   const heatData=currentStations.filter(r=>typeof r.latitude==='number'&&typeof r.longitude==='number').map(r=>{
-     const status=canonicalWaterStatus(r.flood_status_source),q=quality(r);
-     const rank=WATER_STATUS[status]?.rank||0;
-     const intensity=q!=='ภายใน 24 ชั่วโมง'?0:rank/maxRank;
-     return [r.latitude,r.longitude,intensity];
-   }).filter(d=>d[2]>0);
-   if(heatData.length) safeHeatLayer(heatData,{radius:40,blur:20,maxZoom:14,max:1.0,minOpacity:0.05,gradient:{.15:'#93c5fd',.4:'#3b82f6',.7:'#1d4ed8',1:'#082f6b'}}).addTo(layers);
-   $('districtWaterNote').innerHTML = '<b style="color:#334155">คำอธิบายแผนที่:</b><br/>' + '• <b>เส้นกรอบเขต:</b> สีบ่งบอกสถานะของสถานีน้ำที่รุนแรงที่สุดในเขตนั้นๆ (อัปเดต 24 ชม.)<br/>' + (heatData.length ? '• <b>Heatmap (สีฟุ้ง):</b> แสดงจุดหนาแน่นของสถานีน้ำ (ยิ่งสีน้ำเงินเข้ม = วิกฤต) <i>*ไม่ใช่พื้นที่น้ำท่วมจริง</i><br/>' : '• <b>Heatmap:</b> (ไม่มีข้อมูลสถานีอัปเดตใน 24 ชม. จึงไม่แสดง Heatmap)<br/>') + '• <b>หมุด:</b> ตำแหน่งศูนย์พักพิง สามารถกดกรองสถานะ (ว่าง/เต็ม) ได้ที่ปุ่มด้านบน<br/>' + '<i style="color:#64748b; margin-top:4px; display:block">👉 กดคลิกที่พื้นที่แต่ละเขต เพื่อดูรายชื่อสถานีน้ำทั้งหมดในเขตนั้น</i>';
- }
+ $('districtWaterNote').textContent='สีพื้นเขต: ใช้กลุ่มสถานี เพิ่ม–คงตัว–ลด ที่มีจำนวนมากที่สุดในเขต โดยเทียบค่าเฉลี่ย 24 ชม. ของแต่ละสถานี · จำนวนเท่ากัน = แนวโน้มผสม · ไม่นับข้อมูลเก่าหรือผลเทียบที่ใช้ไม่ได้ · เส้นเขตแสดงสถานะเตือนภัยสูงสุด · ไม่ใช่ขอบเขตน้ำท่วมจริง · กดเขตเพื่อดูรายสถานี';
  map._dashboardBounds=(selected||area).getBounds();map.stop();map.invalidateSize({animate:false});watchMapResize();if(fit){map._fitting=true;map.fitBounds(map._dashboardBounds,{padding:[24,24],maxZoom:13,animate:false});map._fitting=false;map._userMoved=false}
 }
 function householdBadge(n){
@@ -584,11 +581,11 @@ function updateBkkMapKey(target, showPins){
  const rows=DATA.bkkStations.filter(r=>r.province==='กรุงเทพมหานคร');
  const statuses=new Set(rows.map(r=>canonicalWaterStatus(r.flood_status_source)));
  target._bkkKey.getContainer().querySelector('.bkk-key-content').innerHTML=
- '<strong>ความเข้มสถานะระดับน้ำ</strong><div class="heat-scale"></div><div class="heat-scale-label"><span>ปกติ (ใส)</span><span>รุนแรง / กระจุกตัว</span></div><hr><strong>เส้นเขต: สถานะน้ำสูงสุด</strong>'+
+ (target===map?'<strong>สีพื้น: แนวโน้มรายเขต</strong><div style="display:grid;gap:6px;margin:8px 0">'+bkkTrendLegend()+'</div><small>กลุ่มสถานีที่มีจำนวนมากที่สุด<br>เทียบค่าเฉลี่ย 24 ชม. ของแต่ละสถานี</small>':'<strong>ความเข้มสถานะระดับน้ำ</strong><div class="heat-scale"></div><div class="heat-scale-label"><span>ปกติ (ใส)</span><span>รุนแรง / กระจุกตัว</span></div>')+'<hr><strong>เส้นเขต: สถานะน้ำสูงสุด</strong>'+
  Object.entries(WATER_STATUS).filter(([label])=>statuses.has(label)).map(([label,value])=>`<div class="border-key"><i style="border-color:${value.color}"></i>${esc(label)}</div>`).join('')+
  '<div class="border-key"><i style="border-color:#94a3b8"></i>ไม่มีสถานะล่าสุดที่ใช้ได้</div>'+
  (showPins?'<hr><div class="bkk-key-shelters">'+shelterLegend()+'</div>':'')+
- '<small>ใช้สถานีภายใน 24 ชม.<br>สีฟุ้งไม่ใช่ขอบเขตน้ำท่วมจริง</small>';
+ '<small>ใช้สถานีภายใน 24 ชม.<br>สีบนแผนที่ไม่ใช่ขอบเขตน้ำท่วมจริง</small>';
 }
 function fitNationalMap(bounds){map._fitting=true;if(bounds?.isValid())map.fitBounds(bounds,{padding:[44,44],maxZoom:11,animate:false});else map.setView([13,101],5);map._fitting=false}
 // Keep the data area centred when the container is resized after the first fit (cards / fonts reflow), until the user pans or zooms.

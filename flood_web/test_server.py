@@ -3,6 +3,13 @@ from unittest.mock import patch
 import server
 
 class SourceTests(unittest.TestCase):
+    def test_bkk_comparison_survives_transform(self):
+        raw={name:[] for name in server.SHEETS}
+        raw['BKK_water_DB']=[{'water_status_vs_24h_avg':'ลด'},{}]
+        result=server.transform(raw)['bkkStations']
+        self.assertEqual(result[0]['water_status_vs_24h_avg'],'ลด')
+        self.assertIsNone(result[1]['water_status_vs_24h_avg'])
+
     def test_dates_and_zero(self):
         self.assertEqual(server.normalize('Report_Date','2/10/2569'),'2026-10-02T00:00:00+07:00')
         self.assertEqual(server.normalize('Affected_Subdistricts_Count','0'),0)
