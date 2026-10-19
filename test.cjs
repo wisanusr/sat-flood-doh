@@ -109,3 +109,6 @@ assert(!read('Dashboard.html').includes("fetch('/"));
 assert(!read('Index.html').includes('src="/'));
 JSON.stringify(data);
 console.log('PASS: syntax, normalization, mapping, partial failure, retry, bundled paths');
+
+assert.equal(evaluate("transform_('BKK_water_DB',[{water_status_vs_24h_avg:'เพิ่ม'}])[0].water_status_vs_24h_avg"),'เพิ่ม');
+assert.equal(evaluate("transform_('BKK_water_DB',[{}])[0].water_status_vs_24h_avg"),null);

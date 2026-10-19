@@ -7,6 +7,24 @@
   function timestamp(v){if(!v)return NaN;let t=String(v).trim().replace(' ','T');if(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(t))return NaN;if(!/(Z|[+-]\d{2}:?\d{2})$/i.test(t))t+='+07:00';return Date.parse(t)}
   function sum(rows,key){const values=rows.map(r=>r[key]).filter(Number.isFinite);return values.length?values.reduce((a,b)=>a+b,0):null}
   function quality(row,loadedAt){const measured=row.station_id!=null?row.observed_at_th:row.shelter_id!=null?row.fetched_at_th:null;const age=(timestamp(loadedAt)-timestamp(measured))/60000;return !Number.isFinite(age)?'ไม่ทราบเวลาข้อมูล':age<0?'เวลาอนาคต':age<=1440?'ภายใน 24 ชั่วโมง':'ข้อมูลเก่าเกิน 24 ชั่วโมง'}
+  // BMA's source comparison is relative to its 24-hour average, not a DDPM report.
+  function bkkTrend(row,loadedAt){
+    if(quality(row,loadedAt)!=='ภายใน 24 ชั่วโมง'||!WATER_STATUS[canonicalWaterStatus(row.flood_status_source)]||!Number.isFinite(row.water_in_m_msl)||row.water_in_m_msl===-99)return null;
+    const label=String(row.water_status_vs_24h_avg??'').trim();
+    return label==='เพิ่ม'?'up':label==='คงตัว'?'steady':label==='ลด'?'down':null;
+  }
+  function bkkDistrictTrend(rows,loadedAt){
+    const counts={up:0,steady:0,down:0};let unknown=0;
+    for(const row of rows){const kind=bkkTrend(row,loadedAt);if(kind)counts[kind]++;else unknown++;}
+    const max=Math.max(...Object.values(counts)),winners=Object.keys(counts).filter(k=>counts[k]===max);
+    const kind=max===0?'unknown':winners.length===1?winners[0]:'mixed';
+    return {kind,counts,unknown,label:{up:'เพิ่ม',steady:'คงตัว',down:'ลด',mixed:'แนวโน้มผสม',unknown:'ข้อมูลไม่เพียงพอ'}[kind]};
+  }
+  function bkkTrendDistricts(rows,names,loadedAt){
+    const grouped=new Map(names.map(name=>[name,[]]));
+    for(const row of rows){const name=String(row.district_or_area??'').replace(/^เขต/,'').trim();if(grouped.has(name))grouped.get(name).push(row);}
+    return Array.from(grouped,([name,stations])=>({name,...bkkDistrictTrend(stations,loadedAt)}));
+  }
   function householdBorderColor(n,blue){return !Number.isFinite(n)||n<1?'#94a3b8':blue?(n>=100000?'#082f6b':n>=10000?'#1d4ed8':n>=1000?'#3b82f6':'#93c5fd'):n>=100000?'#dc2626':n>=10000?'#f97316':n>=1000?'#facc15':'#22c55e'}
   function validCoordinates(r){return Number.isFinite(r.latitude)&&Number.isFinite(r.longitude)&&Math.abs(r.latitude)<=90&&Math.abs(r.longitude)<=180}
   function districtSummary(rows,getQuality){const fresh=rows.filter(r=>getQuality(r)==='ภายใน 24 ชั่วโมง');let status=null,rank=0;for(const r of fresh){const s=canonicalWaterStatus(r.flood_status_source);if((WATER_STATUS[s]?.rank||0)>rank){status=s;rank=WATER_STATUS[s].rank}}return {status,drivers:fresh.filter(r=>status&&canonicalWaterStatus(r.flood_status_source)===status),color:status?WATER_STATUS[status].color:rows.length?'#94a3b8':'transparent',label:status||(!rows.length?'ไม่มีสถานีในข้อมูล':!fresh.length?'ไม่มีข้อมูลล่าสุดภายใน 24 ชั่วโมง':'ไม่มีสถานะระดับน้ำที่ใช้ได้')}}
@@ -32,6 +50,68 @@
   function growthValue(g){const s=String(g??'').trim();if(/^breakout$/i.test(s))return Infinity;const n=Number(s.replace(/[^\d.]/g,''));return s!==''&&Number.isFinite(n)?n:-1}
   function newsRising(trends){const best=new Map();for(const q of trends?.rising_queries||[]){const k=String(q.query||'').trim();if(!k)continue;const v=growthValue(q.growth);if(!best.has(k)||v>best.get(k).value)best.set(k,{query:k,growth:String(q.growth??''),value:v})}return Array.from(best.values()).sort((a,b)=>b.value-a.value||a.query.localeCompare(b.query,'th')).map(({query,growth})=>({query,growth}))}
   function newsTopRegions(trends,n){const rows=(trends?.interest_by_region||[]).filter(r=>Number.isFinite(r.score)).slice().sort((a,b)=>b.score-a.score||String(a.region).localeCompare(String(b.region),'th'));return n>0?rows.slice(0,n):rows}
+  const HEALTH_NEED_CATEGORIES = {
+    stagnant_water: {
+      key: 'stagnant_water',
+      label: '🟡 โซนน้ำขัง / น้ำเน่า',
+      shortLabel: 'น้ำขัง/น้ำเน่า',
+      desc: 'ความสนใจและค้นหาคำว่า "น้ำขัง", "น้ำเน่า", ขยะ, กลิ่นเหม็น',
+      colorScale: ['#fef3c7', '#fde047', '#eab308', '#ca8a04', '#a16207'],
+      baseColor: '#eab308'
+    },
+    epidemic: {
+      key: 'epidemic',
+      label: '🔴 โซนโรคระบาด & สาธารณสุข',
+      shortLabel: 'โรคระบาด/สาธารณสุข',
+      desc: 'ความสนใจและค้นหาคำว่า "โรคฉี่หนู", "น้ำกัดเท้า", ท้องร่วง, ตาแดง',
+      colorScale: ['#fee2e2', '#fca5a5', '#ef4444', '#dc2626', '#991b1b'],
+      baseColor: '#dc2626'
+    },
+    recovery: {
+      key: 'recovery',
+      label: '🟢 โซนฟื้นฟู & เยียวยา',
+      shortLabel: 'ฟื้นฟู/เยียวยา',
+      desc: 'ความสนใจและค้นหาคำว่า "เงินเยียวยา", "หลังน้ำท่วม", ซ่อมบ้าน, เชื้อรา',
+      colorScale: ['#dcfce7', '#86efac', '#22c55e', '#16a34a', '#15803d'],
+      baseColor: '#16a34a'
+    }
+  };
+  function healthNeedMapData(trends, categoryKey) {
+    const hn = trends?.health_need_by_province || {};
+    const key = categoryKey || 'stagnant_water';
+    const out = {};
+    const scores = [];
+    const rawScores = Object.values(hn).map(v => {
+      if (key === 'stagnant_water') return v.stagnant_water ?? 0;
+      if (key === 'recovery') return v.recovery ?? 0;
+      return v.epidemic ?? (v.stagnant_water ? Math.round(v.stagnant_water * 0.8) : 0);
+    });
+    const maxRaw = Math.max(1, ...rawScores);
+
+    for (const [prov, vals] of Object.entries(hn)) {
+      let raw = 0;
+      if (key === 'stagnant_water') {
+        raw = vals.stagnant_water ?? 0;
+      } else if (key === 'recovery') {
+        raw = vals.recovery ?? 0;
+      } else if (key === 'epidemic') {
+        raw = vals.epidemic ?? (vals.stagnant_water ? Math.round(vals.stagnant_water * 0.8) : 0);
+      }
+      let score = 0;
+      if (raw > 0) {
+        score = Math.min(100, Math.max(10, Math.round((raw / maxRaw) * 100)));
+      }
+      out[prov] = score;
+      if (score > 0) scores.push(score);
+    }
+    return { data: out, max: 100, category: HEALTH_NEED_CATEGORIES[key] || HEALTH_NEED_CATEGORIES.stagnant_water };
+  }
+  function healthNeedColor(score, max, scale) {
+    if (!Number.isFinite(score) || score <= 0) return '#f8fafc';
+    const pct = Math.min(1, score / (max || 100));
+    const idx = Math.min(scale.length - 1, Math.floor(pct * scale.length));
+    return scale[idx] || scale[0];
+  }
   function newsTopByCount(words,n){const rows=(words||[]).slice().sort((a,b)=>b.count-a.count||(b.tfidf??0)-(a.tfidf??0)||String(a.word).localeCompare(String(b.word),'th'));return n>0?rows.slice(0,n):rows}
   function sourceInitial(name){const m=String(name??'').match(/[\p{L}\p{N}]/u);return m?m[0].toUpperCase():'?'}
   // ── Google Trends timeline (hourly points written by news/trends_scraper.py; values are Google's 0-100 scale) ──
@@ -358,7 +438,7 @@
   }
   const waterDdpmOnlyCount=rows=>new Set((rows||[]).filter(r=>waterIsDdpmLogged(r)).map(r=>r.district_code||(r.province+'|'+r.district))).size;
   const reasonList=s=>String(s??'').split(';').map(x=>x.trim()).filter(Boolean);
-  const model={WATER_2P2R,water2p2rLevel,waterProvCode,waterAmpCode,waterAmphoeRows,waterProvincesFromAmphoe,waterIsDdpmLogged,waterScope,waterProvinceRows,waterProvinceSummary,waterProvinceIndex,waterProvinceUnmatched,WATER_CONFIDENCE,waterConfidence,waterIsLogged,waterIsDashed,WATER_BASIS_DDPM_ONLY,waterIsDdpmOnly,waterDdpmOnlyCount,WATERLOGGED_SOURCES,WATER_LOG_STATUS,waterStatusRank,waterRows,waterSummary,waterDdpmDistricts,waterHasPoint,waterFilter,waterFreshness,waterDistricts,latestPerKey,disasterTime,latestTime,parseSeries,RAIN_CLASSES,rainClass,seriesDates,exposure,reasonList,RISK_SOURCES,RISK_LEVELS,riskRank,parseBool,riskRows,riskSummary,waterTrend,overbankM,riskFreshness,dataAge,vulnerableTotals,trendKind,provinceLevel,situationGroups,regionNumber,timelineDaily,termWindows,lifecycle,trendLevel,newsRising,newsTopRegions,newsTopByCount,sourceInitial,growthValue,newsArticles,newsProvinces,newsUrgencyCounts,newsWords,ageLabel,safeUrl,URGENCY,NEWS_CATEGORIES,latestStationDay,SOURCES,WATER_STATUS,canonicalWaterStatus,timestamp,sum,quality,householdBorderColor,validCoordinates,districtSummary};
+  const model={bkkTrendDistricts,bkkDistrictTrend,bkkTrend,WATER_2P2R,water2p2rLevel,waterProvCode,waterAmpCode,waterAmphoeRows,waterProvincesFromAmphoe,waterIsDdpmLogged,waterScope,waterProvinceRows,waterProvinceSummary,waterProvinceIndex,waterProvinceUnmatched,WATER_CONFIDENCE,waterConfidence,waterIsLogged,waterIsDashed,WATER_BASIS_DDPM_ONLY,waterIsDdpmOnly,waterDdpmOnlyCount,WATERLOGGED_SOURCES,WATER_LOG_STATUS,waterStatusRank,waterRows,waterSummary,waterDdpmDistricts,waterHasPoint,waterFilter,waterFreshness,waterDistricts,latestPerKey,disasterTime,latestTime,parseSeries,RAIN_CLASSES,rainClass,seriesDates,exposure,reasonList,RISK_SOURCES,RISK_LEVELS,riskRank,parseBool,riskRows,riskSummary,waterTrend,overbankM,riskFreshness,dataAge,vulnerableTotals,trendKind,provinceLevel,situationGroups,regionNumber,timelineDaily,termWindows,lifecycle,trendLevel,newsRising,newsTopRegions,newsTopByCount,sourceInitial,growthValue,newsArticles,newsProvinces,newsUrgencyCounts,newsWords,ageLabel,safeUrl,URGENCY,NEWS_CATEGORIES,HEALTH_NEED_CATEGORIES,healthNeedMapData,healthNeedColor,latestStationDay,SOURCES,WATER_STATUS,canonicalWaterStatus,timestamp,sum,quality,householdBorderColor,validCoordinates,districtSummary};
   if(typeof module!=='undefined')module.exports=model;else root.DashboardModel=model;
 })(typeof window!=='undefined'?window:globalThis);
 

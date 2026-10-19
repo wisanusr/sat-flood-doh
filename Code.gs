@@ -52,6 +52,7 @@ function transform_(name, rows) {
   return rows.map(r=>{
     const out=pick_(r,'station_id station_name district_or_area latitude longitude observed_at_th water_in_m_msl warning_in_source critical_in_source flood_status_source age_minutes_at_fetch fetched_at_th source_url');
     if(name==='BKK_water_DB') {
+      out.water_status_vs_24h_avg=r.water_status_vs_24h_avg??null;
       let payload={};try{payload=JSON.parse(r.raw_station_json||'{}')||{};}catch(e){}
       const district=String(r.district_or_area||payload.district_name||'').replace(/^เขต/,'').trim();
       out.district_or_area=district;
@@ -62,7 +63,7 @@ function transform_(name, rows) {
 }
 // Per-sheet result cache (5 min). Values over 100 KB are split into chunks; only successful reads are cached,
 // so a failed sheet is retried on the next request. Any cache problem falls back to reading the sheet.
-const CACHE_SECONDS=300, CACHE_CHUNK=30000, CACHE_PREFIX='dash1_';
+const CACHE_SECONDS=300, CACHE_CHUNK=30000, CACHE_PREFIX='dash2_';
 function cacheGet_(key) {
   if(typeof CacheService==='undefined') return null;
   try {

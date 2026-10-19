@@ -39,6 +39,22 @@ assert.equal(m.validCoordinates({latitude:91,longitude:100}),false);
   assert.deepEqual(m.newsTopRegions(reg,2).map(r=>r.region),['ก','ค']);assert.equal(m.newsTopRegions(reg,0).length,3);assert.deepEqual(m.newsTopRegions(null,5),[]);
   const wc=[{word:'x',count:3,tfidf:1},{word:'y',count:9,tfidf:0.5},{word:'z',count:3,tfidf:2}];
   assert.deepEqual(m.newsTopByCount(wc,2).map(r=>r.word),['y','z']);assert.equal(m.newsTopByCount(wc,0).length,3);assert.deepEqual(m.newsTopByCount(null,3),[]);
+  // Health Need Map helper tests
+  const fakeHn = {
+    health_need_by_province: {
+      'เชียงใหม่': { flood_general: 80, stagnant_water: 45, recovery: 20 },
+      'พระนครศรีอยุธยา': { flood_general: 90, stagnant_water: 15, recovery: 60 }
+    }
+  };
+  const mapData = m.healthNeedMapData(fakeHn, 'stagnant_water');
+  assert.equal(typeof mapData.data['เชียงใหม่'], 'number');
+  assert.equal(mapData.data['เชียงใหม่'] > mapData.data['พระนครศรีอยุธยา'], true);
+  assert.equal(mapData.max, 100);
+  assert.equal(mapData.category.key, 'stagnant_water');
+  const recData = m.healthNeedMapData(fakeHn, 'recovery');
+  assert.equal(typeof recData.data['พระนครศรีอยุธยา'], 'number');
+  assert.equal(m.healthNeedColor(0, 100, ['#fff', '#f00']), '#f8fafc');
+  assert.equal(m.healthNeedColor(100, 100, ['#fff', '#f00']), '#f00');
   assert.equal(m.sourceInitial('matichon.co.th'),'M');assert.equal(m.sourceInitial('ไทยรัฐ'),'ไ');assert.equal(m.sourceInitial('  '),'?');assert.equal(m.sourceInitial(null),'?');
   // Trends timeline: daily means, 24 h windows, phase index
   const pt=(h,v)=>({t:'2026-10-0'+(5+Math.floor(h/24))+'T'+String(h%24).padStart(2,'0')+':00+07:00',v});
@@ -240,4 +256,30 @@ assert.equal(m.validCoordinates({latitude:91,longitude:100}),false);
   assert.equal(m.waterIsDdpmOnly({basis:' '+O+' '}),true);assert.equal(m.waterIsDdpmOnly({basis:null}),false);assert.equal(m.waterIsDdpmOnly(null),false);
   assert.equal(m.waterDdpmDistricts(mix,3),3);                                  // districts the DDPM reports on >= 3 days in a row
 }
-console.log('PASS: household boundaries, freshness, missing/zero totals, district severity, coordinates, news filters, flood-prep rules, rain series/classes, exposure, waterlogging tab');
+
+// Missing or unusable BMA comparisons must never inflate the steady count.
+{
+ const row={station_id:'bkk',observed_at_th:loaded,water_in_m_msl:0,flood_status_source:'ปกติ'};
+ for(const [label,expected] of [['เพิ่ม','up'],['คงตัว','steady'],['ลด','down'],['ข้อมูลไม่เพียงพอ',null],['',null],[null,null],['toString',null]])assert.equal(m.bkkTrend({...row,water_status_vs_24h_avg:label},loaded),expected);
+ for(const extra of [{observed_at_th:'2026-10-03T11:59:00+07:00'},{observed_at_th:null},{observed_at_th:'2026-10-04T12:01:00+07:00'},{flood_status_source:'ขัดข้อง'},{water_in_m_msl:null},{water_in_m_msl:-99}])assert.equal(m.bkkTrend({...row,water_status_vs_24h_avg:'เพิ่ม',...extra},loaded),null);
+ assert.equal(m.bkkTrend({...row,water_in_m_msl:-0.3,water_status_vs_24h_avg:'ลด'},loaded),'down');
+}
+
+{
+ const row={station_id:'bkk',observed_at_th:loaded,water_in_m_msl:0,flood_status_source:'ปกติ'};
+ const rows=labels=>labels.map(water_status_vs_24h_avg=>({...row,water_status_vs_24h_avg}));
+ for(const [labels,kind] of [[['เพิ่ม','เพิ่ม','ลด'],'up'],[['คงตัว','คงตัว','เพิ่ม'],'steady'],[['ลด'],'down'],[['เพิ่ม','ลด'],'mixed'],[['เพิ่ม','คงตัว','ลด'],'mixed'],[[],'unknown'],[['ข้อมูลไม่เพียงพอ'],'unknown']])assert.equal(m.bkkDistrictTrend(rows(labels),loaded).kind,kind);
+ const result=m.bkkDistrictTrend([...rows(['ลด']),{...row,water_status_vs_24h_avg:'เพิ่ม',observed_at_th:'2026-10-01T12:00:00+07:00'}],loaded);
+ assert.equal(result.kind,'down');assert.equal(result.unknown,1);assert.deepEqual(result.counts,{up:0,steady:0,down:1});
+}
+
+// Count official districts once each, irrespective of the number of their stations.
+{
+ const r={station_id:'x',observed_at_th:loaded,water_in_m_msl:0,flood_status_source:'ปกติ'};
+ const rows=[...Array.from({length:10},()=>({...r,district_or_area:'เขตบางรัก',water_status_vs_24h_avg:'เพิ่ม'})),{...r,district_or_area:'บางแค',water_status_vs_24h_avg:'ลด'},{...r,district_or_area:'นอก กทม.',water_status_vs_24h_avg:'เพิ่ม'}];
+ const result=m.bkkTrendDistricts(rows,['บางรัก','บางแค','พระนคร'],loaded);
+ assert.equal(result.length,3);assert.deepEqual(result.map(r=>r.kind),['up','down','unknown']);assert.equal(result.filter(r=>r.kind==='up').length,1);
+ const filtered=m.bkkTrendDistricts(rows,['บางแค'],loaded);assert.deepEqual(filtered.map(r=>r.kind),['down']);
+}
+
+console.log('PASS: data model, waterlogging and BKK district trends');

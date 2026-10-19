@@ -187,6 +187,8 @@ class TrendsParts(unittest.TestCase):
         self.assertEqual(set(doc['parts'].values()), {'ok'})
         self.assertEqual(doc['rising_queries'][0]['growth'], '+3400%')
         self.assertEqual([r['region'] for r in doc['interest_by_region']], ['กระบี่', 'ตาก'])   # zero scores dropped
+        self.assertIn('กระบี่', doc['health_need_by_province'])
+        self.assertEqual(doc['health_need_by_province']['กระบี่']['flood_general'], 100)
 
     def test_timeline_is_bangkok_time_without_the_incomplete_hour(self):
         tl = self.fetch(FakeTrends())['timeline']

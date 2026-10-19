@@ -102,6 +102,7 @@ def transform(raw):
         for row in rows:
             item = pick(row, 'station_id station_name district_or_area latitude longitude observed_at_th water_in_m_msl warning_in_source critical_in_source flood_status_source age_minutes_at_fetch fetched_at_th source_url')
             if bkk:
+                item['water_status_vs_24h_avg'] = row.get('water_status_vs_24h_avg')
                 try:
                     payload = json.loads(row.get('raw_station_json') or '{}')
                 except (TypeError, ValueError):
