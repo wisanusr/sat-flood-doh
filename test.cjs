@@ -10,7 +10,7 @@ assert.equal(evaluate("normalize_('capacity','')"),null);
 assert.equal(evaluate("normalize_('Report_Date','05/10/2569')"),'2026-10-05T00:00:00+07:00');
 assert.equal(evaluate("transform_('BKK_water_DB',[{district_or_area:'เขตบางรัก'}])[0].province"),'กรุงเทพมหานคร');
 // flood-prep tabs: typed output, rows without a province dropped, never confused with the station tabs
-assert.deepEqual(evaluate("CONFIG.optional"),['flood_2p2r_province','flood_risk','flood_waterlogged','flood_waterlogged_district','flood_wl_critical']);
+assert.deepEqual(evaluate("CONFIG.optional"),['flood_risk','flood_waterlogged','flood_waterlogged_amphoe','flood_wl_critical']);
 {
   const risk=evaluate("transform_('flood_risk',[{run_at:'2026-10-07T15:04:00+07:00',province:'ระนอง',risk_level:'สูง',forecast_total_mm:224.6,in_active_cap:'True'},{province:'',risk_level:'สูง'}])");
   assert.equal(risk[0].forecast_daily_mm,null);assert.equal(evaluate("transform_('flood_risk',[{province:'ก',forecast_start:'2026-10-07T00:00:00+07:00',forecast_daily_mm:'1.9|19.3||69.6',cap_headlines:'x',tmd_warning_title:'t',tmd_warning_text:'b',forecast_fetched_at:'2026-10-07T15:03:00+07:00'}])[0].forecast_daily_mm"),'1.9|19.3||69.6');
@@ -38,43 +38,36 @@ assert.deepEqual(evaluate("CONFIG.optional"),['flood_2p2r_province','flood_risk'
   assert.equal(w[0].tb_idn,'180101');assert.equal(w[0].province_code,'18');assert.equal(w[0].reasons,'a;b');
   assert.equal(w[0].run_at,'2026-10-09T07:30:00+07:00');assert.equal(w[0].run_start,'2026-10-06T18:23:00+07:00');assert.equal(w[0].run_end,'2026-10-09T00:00:00+07:00');assert.equal(w[0].ddpm_report_date,'2026-10-09T00:00:00+07:00');
   assert.deepEqual(Object.keys(w[0]),evaluate("CONFIG.required.flood_waterlogged"));
-  give('flood_waterlogged_district',[{run_at:'2026-10-09 07:30',province:'ชัยนาท',district_code:'1801',district:'เมืองชัยนาท',waterlogged_tambons:'2',confirmed_tambons:'',total_tambons:'8',latest_area_km2:'0.5',max_run_days:'5',in_ddpm:'ใช่',ddpm_days:'3',basis:'ภาพดาวเทียม + ปภ.'},{run_at:'2026-10-09 07:30',province:'กาญจนบุรี',district_code:'7111',district:'ด่านมะขามเตี้ย',in_ddpm:'ใช่',ddpm_days:'12',basis:'ปภ. (ไม่มีภาพดาวเทียม)'},{province:'ชัยนาท',district:''}]);
-  r=evaluate("getDashboardData('flood_waterlogged_district')");
-  const dd=r.floodWaterloggedDistrict;
-  assert.equal(dd.length,2);assert.equal(dd[0].basis,'ภาพดาวเทียม + ปภ.');assert.equal(dd[0].waterlogged_tambons,2);
-  // DDPM-only district: every count / area column is null (blank cell), never 0; ddpm_days survives
-  for(const k of ['waterlogged_tambons','confirmed_tambons','watch_tambons','new_tambons','nodata_tambons','stale_tambons','total_tambons','latest_area_km2','max_run_days'])assert.equal(dd[1][k],null,k);
-  assert.equal(dd[1].ddpm_days,12);assert.equal(dd[1].basis,'ปภ. (ไม่มีภาพดาวเทียม)');assert.equal(dd[0].confirmed_tambons,null);assert.equal(dd[0].max_run_days,5);
-  assert.deepEqual(Object.keys(dd[0]),evaluate("CONFIG.required.flood_waterlogged_district"));
-  // 2P2R province colours: all 5 levels, blank max_ddpm_days stays null (never 0), codes stay text, rows without province / level dropped
-  give('flood_2p2r_province',[{run_at:'2026-10-12 16:00',province_code:'14',province:'พระนครศรีอยุธยา',level_code:'red',level:'แดง',phase:'Response',plan:'p',red_districts:'13',orange_districts:'2',yellow_districts:'1',green_districts:'0',waterlogged_tambons:'117',max_ddpm_days:'12',reasons:'r'},
-    {province_code:'22',province:'จันทบุรี',level_code:'green',level:'เขียว',phase:'Recovery',green_districts:'2',waterlogged_tambons:'0',max_ddpm_days:''},
-    {province_code:'30',province:'นครราชสีมา',level_code:'normal',level:'ปกติ'},{province_code:'31',province:'x',level_code:'orange'},{province_code:'32',province:'y',level_code:'yellow'},{province:'',level_code:'red'},{province:'z',level_code:''}]);
-  r=evaluate("getDashboardData('flood_2p2r_province')");
-  assert.equal(r.sourceStatus.flood_2p2r_province.status,'ok');
-  const pv=r.flood2p2r;assert.equal(pv.length,5);
-  assert.deepEqual(pv.map(x=>x.level_code),['red','green','normal','orange','yellow']);
-  assert.equal(pv[0].province_code,'14');assert.equal(pv[0].red_districts,13);assert.equal(pv[0].waterlogged_tambons,117);assert.equal(pv[0].max_ddpm_days,12);
-  assert.equal(pv[1].max_ddpm_days,null);assert.equal(pv[2].red_districts,null);   // blank -> null, not 0
-  assert.deepEqual(Object.keys(pv[0]),evaluate("CONFIG.required.flood_2p2r_province"));
-  assert.equal(evaluate("CONFIG.required.flood_2p2r_province.length"),14);
+  // district rows with their 2P2R level: blank counts stay null (never 0), codes stay text, rows without a code / level dropped
+  give('flood_waterlogged_amphoe',[{run_at:'2026-10-19 09:30',province_code:'18',province:'ชัยนาท',district_code:'1801',district:'เมืองชัยนาท',level_code:'orange',basis:'ภาพดาวเทียม + ปภ.',reasons:'r',waterlogged_tambons:'2',confirmed_tambons:'',total_tambons:'8',latest_area_km2:'0.5',max_run_days:'5',in_ddpm:'ใช่',ddpm_days:'3',province_level_code:'orange',province_reasons:'pr'},
+    {run_at:'2026-10-19 09:30',province_code:'71',province:'กาญจนบุรี',district_code:'7111',district:'ด่านมะขามเตี้ย',level_code:'green',basis:'ปภ. (ไม่มีภาพดาวเทียม)',absent_days:'3',province_level_code:'green'},
+    {province:'ชัยนาท',district_code:'',level_code:'red'},{province:'ชัยนาท',district_code:'1802',level_code:''}]);
+  r=evaluate("getDashboardData('flood_waterlogged_amphoe')");
+  assert.equal(r.sourceStatus.flood_waterlogged_amphoe.status,'ok');
+  const dd=r.floodWaterloggedAmphoe;
+  assert.equal(dd.length,2);assert.equal(dd[0].level_code,'orange');assert.equal(dd[0].waterlogged_tambons,2);assert.equal(dd[0].confirmed_tambons,null);assert.equal(dd[0].max_run_days,5);
+  assert.equal(dd[0].district_code,'1801');assert.equal(dd[0].province_code,'18');assert.equal(dd[0].province_level_code,'orange');assert.equal(dd[0].province_reasons,'pr');
+  for(const k of ['waterlogged_tambons','confirmed_tambons','watch_tambons','new_tambons','nodata_tambons','stale_tambons','total_tambons','latest_area_km2','max_run_days','ddpm_days'])assert.equal(dd[1][k],null,k);
+  assert.equal(dd[1].absent_days,3);assert.equal(dd[1].basis,'ปภ. (ไม่มีภาพดาวเทียม)');
+  assert.deepEqual(Object.keys(dd[0]),evaluate("CONFIG.required.flood_waterlogged_amphoe"));
+  assert.equal(evaluate("CONFIG.required.flood_waterlogged_amphoe.length"),22);
   // a bad date fails that tab only (the other tabs keep their data)
   give('flood_waterlogged',[{status:'น้ำขัง',province:'ก',run_at:'not a date'}]);
   assert.equal(evaluate("getDashboardData('flood_waterlogged')").sourceStatus.flood_waterlogged.status,'error');
 }
 evaluate(`SpreadsheetApp={openById:()=>({getSheetByName:name=>({getDataRange:()=>({getValues:()=>[CONFIG.required[name]]})})})}`);
 let data=evaluate('getDashboardData()');
-assert.equal(Object.keys(data.sourceStatus).length,10);
+assert.equal(Object.keys(data.sourceStatus).length,9);
 assert(Object.values(data.sourceStatus).every(s=>s.status==='ok'));
 evaluate(`SpreadsheetApp={openById:()=>({getSheetByName:name=>name==='shelter_DB'?null:({getDataRange:()=>({getValues:()=>[CONFIG.required[name]]})})})}`);
 data=evaluate('getDashboardData()');
 assert.equal(data.sourceStatus.shelter_DB.status,'error');
 assert.equal(data.sourceStatus.Disaster_DB.status,'ok');
 // waterlogging tabs: a missing tab, a wrong header row and an empty tab each fail that tab only
-evaluate(`SpreadsheetApp={openById:()=>({getSheetByName:name=>name==='flood_waterlogged'?null:name==='flood_waterlogged_district'?({getDataRange:()=>({getValues:()=>[['wrong','header']]})}):({getDataRange:()=>({getValues:()=>[CONFIG.required[name]]})})})}`);
+evaluate(`SpreadsheetApp={openById:()=>({getSheetByName:name=>name==='flood_waterlogged'?null:name==='flood_waterlogged_amphoe'?({getDataRange:()=>({getValues:()=>[['wrong','header']]})}):({getDataRange:()=>({getValues:()=>[CONFIG.required[name]]})})})}`);
 data=evaluate('getDashboardData()');
-assert.equal(data.sourceStatus.flood_waterlogged.status,'error');assert.equal(data.sourceStatus.flood_waterlogged_district.status,'error');assert.equal(data.sourceStatus.flood_2p2r_province.status,'ok');
-assert.deepEqual([data.floodWaterlogged,data.floodWaterloggedDistrict],[[],[]]);
+assert.equal(data.sourceStatus.flood_waterlogged.status,'error');assert.equal(data.sourceStatus.flood_waterlogged_amphoe.status,'error');assert.equal(data.sourceStatus.flood_risk.status,'ok');
+assert.deepEqual([data.floodWaterlogged,data.floodWaterloggedAmphoe],[[],[]]);
 assert.equal(data.sourceStatus.Disaster_DB.status,'ok');assert.equal(data.sourceStatus.flood_risk.status,'ok');
 evaluate(`SpreadsheetApp={openById:()=>({getSheetByName:name=>name==='flood_waterlogged'?({getDataRange:()=>({getValues:()=>[]})}):({getDataRange:()=>({getValues:()=>[CONFIG.required[name]]})})})}`);
 assert.equal(evaluate("getDashboardData('flood_waterlogged')").sourceStatus.flood_waterlogged.status,'error');

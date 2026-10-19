@@ -20,7 +20,7 @@ function csvFor(name) {
     station_id: 's1', district_or_area: name === 'BKK_water_DB' ? 'เขตบางรัก' : 'ปทุมธานี', latitude: '13.7', longitude: '100.5',
     observed_at_th: '2026-10-05T10:00:00+07:00', fetched_at_th: '2026-10-05T10:05:00+07:00', raw_station_json: '{"district_name":"เขตบางรัก"}',
     run_at: '2026-10-07 15:04', province: 'ระนอง', risk_level: 'สูง', situation_level: '5', station_name: 'สถานีทดสอบ',
-    shelter_id: 'sh1', district: 'บางรัก', status: 'น้ำขัง', level_code: 'orange', level: 'ส้ม', phase: 'Preparedness → Response', red_districts: '0', orange_districts: '2', max_ddpm_days: '', basis: 'ภาพดาวเทียม + ปภ.', confidence: 'สูง', subdistrict: 'บางรัก', tb_idn: '100101', province_code: '10', district_code: '1001', ddpm_days: '4', waterlogged_tambons: '1', shelter_name: 'โรงเรียน, ทดสอบ', capacity: '100', occupied: '40', available: '60',
+    shelter_id: 'sh1', district: 'บางรัก', status: 'น้ำขัง', level_code: 'orange', province_level_code: 'red', absent_days: '', basis: 'ภาพดาวเทียม + ปภ.', confidence: 'สูง', subdistrict: 'บางรัก', tb_idn: '100101', province_code: '10', district_code: '1001', ddpm_days: '4', waterlogged_tambons: '1', shelter_name: 'โรงเรียน, ทดสอบ', capacity: '100', occupied: '40', available: '60',
   };
   const rows = [headers.map(h => quote(h)).join(',')];
   rows.push(headers.map(h => quote(String(sample[h] ?? (h.includes('จังหวัด') ? 'กรุงเทพมหานคร' : h.includes('เขตสุขภาพ') ? 'เขตสุขภาพที่ 13' : h.includes('(คน)') ? '1,000' : '')))).join(','));
@@ -45,12 +45,12 @@ const reader = fetchImpl => live.createReader({ configSrc, codeSrc, fetchImpl, a
   // --- full read: URLs, cache mode and values
   let f = makeFetch();
   let data = await reader(f).read();
-  assert.strictEqual(f.calls.length, 10);
+  assert.strictEqual(f.calls.length, 9);
   for (const c of f.calls) {
     assert(c.url.startsWith('https://docs.google.com/spreadsheets/d/' + config.spreadsheetId + '/gviz/tq?tqx=out:csv&sheet='), c.url);
     assert.strictEqual(c.opts.cache, 'no-store');
   }
-  assert.deepStrictEqual(Object.values(data.sourceStatus).map(s => s.status), ['ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok']);
+  assert.deepStrictEqual(Object.values(data.sourceStatus).map(s => s.status), ['ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok']);
   assert.strictEqual(data.disasters[0].Affected_Households, 1234);
   assert.strictEqual(data.disasters[0].Report_Date, '2026-10-05T00:00:00+07:00');
   assert.strictEqual(data.shelters[0].shelter_name, 'โรงเรียน, ทดสอบ');
@@ -68,24 +68,25 @@ const reader = fetchImpl => live.createReader({ configSrc, codeSrc, fetchImpl, a
   assert.strictEqual(data.floodWaterlogged[0].tb_idn, '100101');
   assert.strictEqual(data.floodWaterlogged[0].image_age_hours, null);
   assert.strictEqual(data.floodWaterlogged[0].run_at, '2026-10-07T15:04:00+07:00');
-  assert.strictEqual(data.floodWaterloggedDistrict[0].waterlogged_tambons, 1);
-  assert.strictEqual(data.floodWaterloggedDistrict[0].basis, 'ภาพดาวเทียม + ปภ.');
-  assert.strictEqual(data.flood2p2r.length, 1);
-  assert.strictEqual(data.flood2p2r[0].level_code, 'orange');
-  assert.strictEqual(data.flood2p2r[0].orange_districts, 2);
-  assert.strictEqual(data.flood2p2r[0].max_ddpm_days, null);
-  assert.strictEqual(data.flood2p2r[0].province_code, '10');
-  f = makeFetch({ flood_2p2r_province: () => respond(200, '') });
+  assert.strictEqual(data.floodWaterloggedAmphoe.length, 1);
+  assert.strictEqual(data.floodWaterloggedAmphoe[0].waterlogged_tambons, 1);
+  assert.strictEqual(data.floodWaterloggedAmphoe[0].basis, 'ภาพดาวเทียม + ปภ.');
+  assert.strictEqual(data.floodWaterloggedAmphoe[0].level_code, 'orange');
+  assert.strictEqual(data.floodWaterloggedAmphoe[0].province_level_code, 'red');
+  assert.strictEqual(data.floodWaterloggedAmphoe[0].absent_days, null);
+  assert.strictEqual(data.floodWaterloggedAmphoe[0].district_code, '1001');
+  assert.strictEqual(data.floodWaterloggedAmphoe[0].province_code, '10');
+  f = makeFetch({ flood_waterlogged_amphoe: () => respond(200, '') });
   data = await reader(f).read();
-  assert.deepStrictEqual(Object.keys(data.liveErrors), ['flood_2p2r_province']);
-  assert.deepStrictEqual(data.flood2p2r, []);
+  assert.deepStrictEqual(Object.keys(data.liveErrors), ['flood_waterlogged_amphoe']);
+  assert.deepStrictEqual(data.floodWaterloggedAmphoe, []);
   assert.strictEqual(data.sourceStatus.flood_waterlogged.status, 'ok');
   // a waterlogging tab that is empty (being rewritten) fails alone, after the retries
   f = makeFetch({ flood_waterlogged: () => respond(200, '') });
   data = await reader(f).read();
   assert.deepStrictEqual(Object.keys(data.liveErrors), ['flood_waterlogged']);
   assert.strictEqual(data.sourceStatus.flood_waterlogged.status, 'error');
-  assert.strictEqual(data.sourceStatus.flood_waterlogged_district.status, 'ok');
+  assert.strictEqual(data.sourceStatus.flood_waterlogged_amphoe.status, 'ok');
   assert.deepStrictEqual(data.floodWaterlogged, []);
   // a flood tab that is empty/unreadable is an error for that tab only
   f = makeFetch({ flood_risk: () => respond(200, '') });
@@ -130,7 +131,7 @@ const reader = fetchImpl => live.createReader({ configSrc, codeSrc, fetchImpl, a
     f = makeFetch(Object.fromEntries(Object.keys(config.required).map(n => [n, () => respond(503, '')])));
     data = await reader(f).read();
     assert(Object.values(data.sourceStatus).every(s => s.status === 'error'));
-    assert.strictEqual(Object.keys(data.liveErrors).length, 10);
+    assert.strictEqual(Object.keys(data.liveErrors).length, 9);
   } finally { console.warn = warn; console.error = err; }
 
   // --- a single tab (per-sheet retry button)

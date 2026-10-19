@@ -75,11 +75,15 @@ const CONFIG = {
       "longitude",
       "reasons"
     ],
-    "flood_waterlogged_district": [
+    "flood_waterlogged_amphoe": [
       "run_at",
+      "province_code",
       "province",
       "district_code",
       "district",
+      "level_code",
+      "basis",
+      "reasons",
       "waterlogged_tambons",
       "confirmed_tambons",
       "watch_tambons",
@@ -91,23 +95,9 @@ const CONFIG = {
       "max_run_days",
       "in_ddpm",
       "ddpm_days",
-      "basis"
-    ],
-    "flood_2p2r_province": [
-      "run_at",
-      "province_code",
-      "province",
-      "level_code",
-      "level",
-      "phase",
-      "plan",
-      "red_districts",
-      "orange_districts",
-      "yellow_districts",
-      "green_districts",
-      "waterlogged_tambons",
-      "max_ddpm_days",
-      "reasons"
+      "absent_days",
+      "province_level_code",
+      "province_reasons"
     ]
   },
   "numeric": [
@@ -116,6 +106,7 @@ const CONFIG = {
     "Affected_Subdistricts_Count",
     "Affected_Villages_Count",
     "Casualties_Deaths",
+    "absent_days",
     "age_minutes_at_fetch",
     "available",
     "capacity",
@@ -127,21 +118,17 @@ const CONFIG = {
     "discharge",
     "forecast_max_day_mm",
     "forecast_total_mm",
-    "green_districts",
     "image_age_hours",
     "latest_area_km2",
     "latitude",
     "longitude",
-    "max_ddpm_days",
     "max_overbank_m",
     "max_run_days",
     "new_tambons",
     "nodata_tambons",
     "occupied",
-    "orange_districts",
     "rain_24h_max_mm",
     "rain_next_24h_mm",
-    "red_districts",
     "run_span_days",
     "situation_level",
     "stale_tambons",
@@ -156,7 +143,6 @@ const CONFIG = {
     "wl_level5",
     "wl_rising_critical",
     "wl_stations",
-    "yellow_districts",
     "จำนวนผู้สูงอายุ 60 ปีขึ้นไปทั้งหมด (คน)",
     "จำนวนหญิงตั้งครรภ์ทั้งหมด (คน)",
     "จำนวนเด็ก 0-4 ปีทั้งหมด (คน)"
@@ -177,10 +163,9 @@ const CONFIG = {
     "updated_at_source"
   ],
   "optional": [
-    "flood_2p2r_province",
     "flood_risk",
     "flood_waterlogged",
-    "flood_waterlogged_district",
+    "flood_waterlogged_amphoe",
     "flood_wl_critical"
   ],
   "districts": [

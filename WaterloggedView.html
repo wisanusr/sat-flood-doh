@@ -1,6 +1,6 @@
 <script>
 /* "น้ำขัง" tab: tambons where the waterlogging pipeline found standing water, with the district summary.
-   Reads the flood_waterlogged and flood_waterlogged_district sheet tabs (one row per tambon / per district) through
+   Reads the flood_waterlogged and flood_waterlogged_amphoe sheet tabs (one row per tambon / per district with its 2P2R level) through
    window.dashboardData (published by dashboard.js) and redraws on the 'dashboard:data' event. Table paging, column filters
    and the table markup come from window.DashboardTables (dashboard.js), so this tab looks like the others.
    Both tabs are optional: when they cannot be read this tab says so and the rest of the dashboard is unaffected.
@@ -17,7 +17,7 @@
   const day=iso=>{const t=M.timestamp(iso);return Number.isFinite(t)?new Date(t).toLocaleDateString('th-TH',{...tz,day:'numeric',month:'short'}):'-'};
   const hoursText=h=>!Number.isFinite(h)?'–':h<1?'ไม่ถึง 1 ชม.':fmt(Math.floor(h))+' ชม.';
   const STATUSES=Object.keys(M.WATER_LOG_STATUS);
-  const state={statuses:new Set(STATUSES),province:'',district:null,query:'',sel:null,basis:'',note:null,provSel:null,showProv:true,showAmp:true};
+  const state={statuses:new Set(STATUSES),province:'',district:null,level:'',query:'',sel:null,basis:'',note:null,provSel:null,showProv:true,showProvFill:false,showRegion:true,showProvLine:true,showAmp:true,showProvName:true};
   let map=null,ro=null,markers=new Map(),markerLayer=null,isOpen=false;
 
   const data=()=>window.dashboardData;
@@ -25,11 +25,22 @@
   const key=r=>r.tb_idn||[r.province,r.district,r.subdistrict].join('|');
   const meta=s=>M.WATER_LOG_STATUS[String(s??'').trim()]||{color:'#94a3b8',short:String(s??'')};
   const rowsAll=()=>M.waterRows(data()?.floodWaterlogged);
-  // 2P2R province colours: rows are the pipeline's (level_code decides the colour); unavailable when the tab is missing / empty / unreadable.
-  const provRows=()=>status('flood_2p2r_province')?.status==='ok'?M.waterProvinceRows(data()?.flood2p2r):[];
+  // 2P2R levels: district rows are the pipeline's (level_code decides the colour); province rows are built from them.
+  // Both are empty when the tab is missing / empty / unreadable.
+  const ampRows=()=>status('flood_waterlogged_amphoe')?.status==='ok'?M.waterAmphoeRows(data()?.floodWaterloggedAmphoe):[];
+  const ampIndex=()=>new Map(ampRows().map(r=>[r.district_code,r]));
+  const provRows=()=>M.waterProvinceRows(M.waterProvincesFromAmphoe(ampRows()));
+  // District fill needs the district outlines; without them the map falls back to province colours.
+  const ampFill=()=>!!window.AMPHOE_GEOJSON&&ampRows().length>0;
   const provIndex=()=>M.waterProvinceIndex(provRows());
   const provByName=name=>provRows().find(r=>r.province===name);
-  const visibleRows=()=>M.waterFilter(rowsAll(),{statuses:state.statuses,province:state.province,districtCode:state.district?.code,query:state.query});
+  // Every section reads the same scope (province, district, 2P2R level, search); the status toggles narrow the tambons only.
+  const scope=()=>M.waterScope(rowsAll(),ampRows(),{province:state.province,districtCode:state.district?.code,level:state.level,query:state.query});
+  const scopeAmps=()=>M.waterDistricts(scope().amps);
+  const visibleRows=()=>M.waterFilter(scope().tambons,{statuses:state.statuses});
+  const selCode=()=>state.district?state.district.code:null;
+  const LEVELS=['red','orange','yellow','green'];
+  const stageOf=k=>M.WATER_2P2R[k]?.stage||k;
 
   function select(active){
     document.querySelectorAll('.tab').forEach(x=>x.setAttribute('aria-selected',String(x===active)));
@@ -59,29 +70,42 @@
 
   // ---------- 2. cards ----------
   function cardsHtml(rows,districts){
-    const s=M.waterSummary(rows);
-    const ddpmDistricts=districts.length?M.waterDdpmDistricts(districts):M.waterDdpmDistricts(rows);
-    const ddpmOnly=districts.length?M.waterDdpmOnlyCount(districts):null;   // null (no district tab) shows as –, never 0
-    return '<div class="cards" aria-live="polite">'
+    const s=M.waterSummary(rows),hasAmp=ampRows().length>0;
+    const ddpmDistricts=hasAmp?M.waterDdpmDistricts(districts):M.waterDdpmDistricts(rows);
+    const ddpmOnly=hasAmp?M.waterDdpmOnlyCount(districts):null;   // null (no district tab) shows as –, never 0
+    return '<div class="cards" id="waterCards" aria-live="polite">'
       +card('น้ำขัง (ตำบล)',s.logged,'ยืนยันด้วยภาพ '+fmt(s.image)+' · ตาม ปภ. '+fmt(s.ddpm)+(s.unknownConf?' · ไม่ระบุ '+fmt(s.unknownConf):''),true)
       +card('พบน้ำล่าสุด (ไม่มีภาพใหม่)',s.stale,'ไม่ใช่น้ำขัง และไม่ได้แปลว่าน้ำลด')
       +card('พบน้ำใหม่',s.fresh,'ตำบล พบน้ำในภาพล่าสุดครั้งแรก')
       +card('เฝ้าระวัง / ข้อมูลไม่พอ',s.watch,'ตำบล'+(s.other?' · สถานะอื่น '+fmt(s.other):''))
       +card('อำเภอน้ำขังตาม ปภ. (ไม่มีภาพ)',ddpmOnly,'อำเภอ ในจังหวัดที่ไม่มีภาพดาวเทียมพบน้ำ ใช้ประกาศ ปภ. ระดับอำเภอ')
-      +card('อำเภอที่ ปภ. รายงานต่อเนื่อง ≥ 3 วัน',ddpmDistricts,'อำเภอ'+(districts.length?'':' (นับจากรายการตำบล)'))
+      +card('อำเภอที่ ปภ. รายงานต่อเนื่อง ≥ 3 วัน',ddpmDistricts,'อำเภอ'+(hasAmp?'':' (นับจากรายการตำบล)'))
       +'</div>';
   }
 
   // ---------- 3. filters ----------
   // Same bar as the other tabs: white card, labelled fields, buttons on the right. The status toggles live above the map.
   function provinceOptions(rows){
-    return Array.from(new Set(rows.map(r=>r.province).concat((data()?.floodWaterloggedDistrict||[]).map(r=>r.province),provRows().map(r=>r.province)).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'th'));
+    return Array.from(new Set(rows.map(r=>r.province).concat(ampRows().map(r=>r.province)).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'th'));
+  }
+  // Districts for the district dropdown: every district with a 2P2R row or a tambon, within the chosen province and level.
+  function districtOptions(){
+    const by=new Map();
+    for(const r of ampRows())by.set(r.district_code,{code:r.district_code,name:r.district,province:r.province,level:r.level_code});
+    for(const r of rowsAll()){const c=M.waterAmpCode(r.district_code);if(c&&!by.has(c))by.set(c,{code:c,name:r.district,province:r.province,level:null})}
+    return [...by.values()].filter(d=>(!state.province||d.province===state.province)&&(!state.level||d.level===state.level))
+      .sort((a,b)=>String(a.province).localeCompare(String(b.province),'th')||String(a.name).localeCompare(String(b.name),'th'));
+  }
+  function districtSelectHtml(){
+    const cur=selCode();
+    return '<option value="">ทุกอำเภอ</option>'+districtOptions().map(d=>'<option value="'+esc(d.code)+'"'+(d.code===cur?' selected':'')+'>อ.'+esc(d.name)+(state.province?'':' (จ.'+esc(d.province)+')')+'</option>').join('');
   }
   function filtersHtml(rows){
     return '<div class="filters" id="waterFilters" role="search">'
       +'<div class="field"><label for="waterProvince">จังหวัด</label><select id="waterProvince"><option value="">ทุกจังหวัด</option>'+provinceOptions(rows).map(p=>'<option'+(p===state.province?' selected':'')+'>'+esc(p)+'</option>').join('')+'</select></div>'
+      +'<div class="field"><label for="waterDistrict">อำเภอ</label><select id="waterDistrict">'+districtSelectHtml()+'</select></div>'
+      +'<div class="field"><label for="waterLevel">ระดับ 2P2R</label><select id="waterLevel"><option value="">ทุกระดับ</option>'+LEVELS.map(k=>'<option value="'+k+'"'+(k===state.level?' selected':'')+'>'+esc(stageOf(k))+' ('+esc(M.WATER_2P2R[k].label)+')</option>').join('')+'</select></div>'
       +'<div class="field"><label for="waterQuery">ค้นหา</label><input type="search" id="waterQuery" placeholder="ชื่อตำบล อำเภอ หรือจังหวัด" value="'+esc(state.query)+'"></div>'
-      +'<span id="waterDistrictChip"></span>'
       +'<button class="lightbtn" id="waterReset" type="button">ล้างตัวกรอง</button>'
       +'<button class="lightbtn" id="waterRefresh" type="button" title="อ่านข้อมูลสดจากชีตอีกครั้ง">รีเฟรชข้อมูล</button>'
       +'<span class="filter-note" id="waterRefreshStatus" aria-live="polite"></span></div>';
@@ -91,35 +115,39 @@
     const counts=new Map();for(const r of rows)counts.set(r.status,(counts.get(r.status)||0)+1);
     return STATUSES.map(st=>'<button type="button" class="trend-card water-status-card" data-water-status="'+esc(st)+'" aria-pressed="'+state.statuses.has(st)+'" title="แสดง/ซ่อน '+esc(st)+'"><i class="dot" style="background:'+meta(st).color+'"></i><span class="tc-label">'+esc(st)+'</span><span class="tc-num">'+fmt(counts.get(st)||0)+'</span></button>').join('');
   }
-  function chipHtml(){
-    return state.district?'<button type="button" class="lightbtn water-chip" data-water-clear-district title="เอาตัวกรองอำเภอออก">อำเภอ '+esc(state.district.name)+' ('+esc(state.district.province)+') ✕</button>':'';
-  }
 
   // ---------- 4. map ----------
+  // Legend of the 2P2R fill: districts per level (the map colours districts), with the province count beside it.
   function provLegendHtml(){
-    const rows=provRows();
-    if(!rows.length)return '<p class="mini-note water-prov-none">ยังไม่มีข้อมูลสีจังหวัดรอบนี้ (แท็บ flood_2p2r_province) จุดตำบลยังใช้ได้ตามปกติ</p>';
-    const c=M.waterProvinceSummary(rows);
-    const codes=(window.PROVINCES_GEOJSON?.features||[]).map(f=>M.waterProvCode(f.properties&&f.properties.pro_code)),unmatched=codes.length?M.waterProvinceUnmatched(rows,codes):[];
-    const item=k=>{const l=M.WATER_2P2R[k];return '<span class="water-prov-key"><i class="swatch" style="background:'+l.color+'"></i><b>'+l.label+'</b> '+esc(l.phase)+' <span class="mini-note">('+fmt(c[k])+' จังหวัด)</span></span>'};
-    return '<div class="map-legend water-prov-legend" aria-label="สีจังหวัด 2P2R">'+['red','orange','yellow','green'].map(item).join('')
-      +'<span class="water-prov-key"><i class="swatch swatch-none"></i><b>ปกติ</b> ไม่เติมสี <span class="mini-note">('+fmt(c.normal)+' จังหวัด)</span></span></div>'
-      +(unmatched.length?'<p class="mini-note water-prov-note">ไม่พบจังหวัดนี้ในแผนที่ จึงไม่มีสี (ดูได้ในรายการ): '+unmatched.map(r=>esc(r.province)+' ('+esc(r.level)+')').join(', ')+'</p>':'')
-      +'<p class="mini-note water-prov-note">แดง = น้ำขังนาน เสี่ยงน้ำเน่าเสีย ไม่ใช่การยืนยันคุณภาพน้ำ · เขียว = ประมาณว่าน้ำลดจากรายงาน ปภ. ไม่ใช่การยืนยัน · สีจังหวัดคือระดับสูงสุดของอำเภอในจังหวัด</p>';
+    if(!ampRows().length)return '<p class="mini-note water-prov-none">ยังไม่มีข้อมูลสี 2P2R รอบนี้ (แท็บ flood_waterlogged_amphoe) จุดตำบลยังใช้ได้ตามปกติ</p>';
+    const amps=scope().amps,n={red:0,orange:0,yellow:0,green:0},c={red:new Set(),orange:new Set(),yellow:new Set(),green:new Set()};
+    for(const r of amps){const k=String(r.level_code).trim();n[k]++;c[k].add(r.province_code)}
+    for(const k of LEVELS)c[k]=c[k].size;   // provinces with at least one district at this level
+    // Stage name only (ตอบโต้ทันที / ตรวจเชิงรุก / ...); colour, 2P2R phase and counts (within the filters) are in the tooltip.
+    // A stage is also a button: it sets / clears the level filter like the "ระดับ 2P2R" dropdown.
+    const item=k=>{const l=M.WATER_2P2R[k];return '<button type="button" class="water-prov-key water-level-key" data-water-level="'+k+'" aria-pressed="'+(state.level===k)+'" title="'+esc(l.label+' · '+l.phase)+' · '+fmt(n[k])+' อำเภอ ใน '+fmt(c[k])+' จังหวัด · กดเพื่อกรองระดับนี้"><i class="swatch" style="background:'+l.color+'"></i>'+esc(l.stage)+'</button>'};
+    return '<div class="map-legend water-prov-legend" aria-label="สี 2P2R">'+['red','orange','yellow','green'].map(item).join('')
+      +'<span class="water-prov-key"><i class="swatch swatch-none"></i>'+esc(M.WATER_2P2R.normal.stage)+'</span></div>';
   }
   function mapPanel(rows){
     const legend=STATUSES.map(st=>'<span><i class="dot" style="background:'+meta(st).color+'"></i>'+esc(st)+'</span>').join('')
-      +'<span><i class="dot dot-dashed" style="background:'+meta('น้ำขัง').color+'"></i>ขอบประ = น้ำขัง (ตาม ปภ.)</span>';
+      +'<span><i class="dot dot-dashed" style="background:'+meta('น้ำขัง').color+'"></i>ขอบประ = ตาม ปภ.</span>';
     return '<section class="panel" id="waterMapPanel"><div class="panel-head"><div><h2>แผนที่น้ำขัง</h2><p class="sub" id="waterMapSub"></p></div><span class="badge" id="waterMapCount">'+fmt(rows.length)+' ตำบล</span></div>'
-      +'<div class="trend-cards water-status-cards" role="group" aria-label="กรองตามสถานะ">'+statusCardsHtml(rows)+'</div>'
-      +'<div id="waterMap" class="map water-map" role="img" aria-label="แผนที่ตำบลที่พบน้ำ สีตามสถานะ และสีจังหวัดตามระดับ 2P2R"></div>'
+      +'<div class="trend-cards water-status-cards" id="waterStatusCards" role="group" aria-label="กรองตามสถานะ">'+statusCardsHtml(rows)+'</div>'
+      +'<div id="waterMap" class="map water-map" role="img" aria-label="แผนที่ตำบลที่พบน้ำ สีตามสถานะ และสีอำเภอตามระดับ 2P2R"></div>'
       +'<div class="map-legend">'+legend+'</div><div id="waterProvLegend">'+provLegendHtml()+'</div>'
-      +'<div class="map-source">ที่มา : GISTDA (ภาพดาวเทียม), กรมป้องกันและบรรเทาสาธารณภัย (ปภ.) · ขอบเขตอำเภอ: OpenGISData-Thailand (ย่อขนาด) · จัดระดับโดย pipeline ไม่ใช่ประกาศทางการ</div></section>';
+      +'<div class="map-source">ที่มา : GISTDA (ภาพดาวเทียม), กรมป้องกันและบรรเทาสาธารณภัย (ปภ.) · ขอบเขตอำเภอ: OpenGISData-Thailand (ย่อขนาด)</div></section>';
   }
   // Layer toggle goes into the shared map footer (expand button + layers popover) like the other maps.
   function layerTools(){
     const chip=(id,on,icon,text)=>'<label class="layer-chip"><input type="checkbox" id="'+id+'"'+(on?' checked':'')+'><span class="chip-icon '+icon+'" aria-hidden="true"></span><span class="chip-text">'+text+'</span><span class="chip-check" aria-hidden="true">✓</span></label>';
-    const html=(provRows().length?chip('waterProvLayer',state.showProv,'ic-regions','สีจังหวัด 2P2R'):'')+(window.AMPHOE_GEOJSON?chip('waterAmpLayer',state.showAmp,'ic-amphoe','เส้นอำเภอ'):'');
+    // District fill and province fill (= the highest district level) are exclusive: one fill at a time, never stacked.
+    const html=(provRows().length?chip('waterProvLayer',state.showProv,'ic-p2r',ampFill()?'สีอำเภอ 2P2R':'สีจังหวัด 2P2R'):'')
+      +(provRows().length&&ampFill()?chip('waterProvFillLayer',state.showProvFill,'ic-p2r','สีจังหวัด 2P2R (ระดับสูงสุด)'):'')
+      +(window.HEALTH_REGIONS_GEOJSON?chip('waterRegionLayer',state.showRegion,'ic-region-thick','เส้นเขตสุขภาพ'):'')
+      +(window.PROVINCES_GEOJSON?chip('waterProvLineLayer',state.showProvLine,'ic-province','เส้นจังหวัด'):'')
+      +(window.PROVINCES_GEOJSON?chip('waterProvNameLayer',state.showProvName,'ic-label','ชื่อจังหวัด'):'')
+      +(window.AMPHOE_GEOJSON?chip('waterAmpLayer',state.showAmp,'ic-amphoe','เส้นอำเภอ'):'');
     if(!html)return null;
     const d=document.createElement('div');d.innerHTML=html;
     return d;
@@ -144,19 +172,22 @@
     fit();
     if(typeof ResizeObserver!=='undefined'){ro=new ResizeObserver(fit);ro.observe(el)}else{requestAnimationFrame(fit);setTimeout(fit,250)}
   }
-  let mapTries=0,fitBounds=null,canvas=null,provLayer=null,ampLayer=null,provByCode=new Map();
+  let mapTries=0,fitBounds=null,canvas=null,provLayer=null,ampLayer=null,ampFillLayer=null,regionLayer=null,nameLayer=null,provByCode=new Map();
   function fitToPoints(){
     if(!map)return;
     if(fitBounds)map.fitBounds(fitBounds,{padding:[20,20],maxZoom:9,animate:false});
   }
   const featCode=f=>M.waterProvCode(f.properties&&f.properties.pro_code);
+  // Province fill: the "สีจังหวัด" layer, or the only 2P2R fill when there are no district outlines.
+  const provFillOn=()=>ampFill()?state.showProvFill:state.showProv;
   function provStyle(f){
-    const r=provByCode.get(featCode(f)),lv=r&&state.showProv?M.water2p2rLevel(r):null,sel=!!state.provSel&&featCode(f)===state.provSel;
-    return {renderer:canvas,color:sel?'#0f172a':'#94a3b8',weight:sel?2.5:0.7,fillColor:lv&&lv.color?lv.color:'#f1f5f9',fillOpacity:lv&&lv.color?0.62:0.35};
+    const r=provByCode.get(featCode(f)),lv=r&&provFillOn()?M.water2p2rLevel(r):null,sel=!!state.provSel&&featCode(f)===state.provSel;
+    const out=lv&&lv.color&&scopeProvs&&!scopeProvs.has(featCode(f));   // filtered out: faded, not hidden
+    return {renderer:canvas,stroke:sel||state.showProvLine,color:sel?'#0f172a':ampFill()?'#64748b':'#94a3b8',weight:sel?2.5:ampFill()?1:0.7,fillColor:lv&&lv.color?lv.color:'#f1f5f9',fillOpacity:lv&&lv.color?(out?0.12:0.62):0.35};
   }
   function provTooltip(f){
     const r=provByCode.get(featCode(f)),name=esc(f.properties.pro_th||'');
-    if(!r||!state.showProv)return name;
+    if(!r||!(state.showProv||state.showProvFill))return name;
     const lv=M.water2p2rLevel(r);
     return '<b>'+name+'</b> · '+esc(r.level||lv.label)+(r.phase?' ('+esc(r.phase)+')':'')+(lv.note?'<br><i>'+esc(lv.note)+'</i>':'');
   }
@@ -174,19 +205,79 @@
   // keep theirs) and show from AMP_MIN_ZOOM up, where they no longer blur into one grey mass; the district picked in
   // the district table is outlined at every zoom.
   const AMP_MIN_ZOOM=7;
+  const ampSelected=code=>!!state.district&&M.waterAmpCode(code)===state.district.code;
   function ampStyle(f){
-    const sel=!!state.district&&String(f.properties.amp_code)===String(state.district.code);
+    const sel=ampSelected(f.properties.amp_code);
     const show=state.showAmp&&(sel||(map&&map.getZoom()>=AMP_MIN_ZOOM));
     return {renderer:canvas,interactive:false,fill:false,color:sel?'#0f172a':'#475569',weight:sel?2.5:0.6,opacity:show?(sel?1:0.55):0};
   }
+  // Districts with a 2P2R level are filled (and clickable) under the outline layer; the rest of the map stays the province's.
+  // With the layer off they draw nothing and take no clicks (no fill, no stroke), so the province below gets the click.
+  function ampFillStyle(f){
+    const code=M.waterAmpCode(f.properties.amp_code),r=ampIndex().get(code),lv=r&&M.water2p2rLevel(r),on=state.showProv&&!!lv;
+    const out=scopeCodes&&!scopeCodes.has(code);   // outside the filters: faded so the chosen area stands out
+    return {renderer:canvas,fill:on,stroke:on&&!out,color:lv?.color||'#94a3b8',weight:0.4,opacity:0.9,fillColor:lv?.color||'#f1f5f9',fillOpacity:out?0.12:0.68};
+  }
+  function ampTooltip(f){
+    const r=ampIndex().get(M.waterAmpCode(f.properties.amp_code));if(!r)return '';
+    const lv=M.water2p2rLevel(r);
+    return '<b>อ.'+esc(r.district)+'</b> จ.'+esc(r.province)+' · '+esc(lv.label)+' ('+esc(lv.phase)+')'+(r.reasons?'<br>'+esc(r.reasons):'')+(lv.note?'<br><i>'+esc(lv.note)+'</i>':'');
+  }
   function drawAmphoes(){
     if(ampLayer){ampLayer.remove();ampLayer=null}
+    if(ampFillLayer){ampFillLayer.remove();ampFillLayer=null}
     if(!map||!window.AMPHOE_GEOJSON)return;
+    const idx=ampIndex();
+    if(idx.size)ampFillLayer=L.geoJSON({type:'FeatureCollection',features:window.AMPHOE_GEOJSON.features.filter(f=>idx.has(M.waterAmpCode(f.properties.amp_code)))},
+      {renderer:canvas,style:ampFillStyle,onEachFeature:(f,l)=>{l.bindTooltip(()=>ampTooltip(f),{sticky:true});l.on('click',()=>chooseDistrict(M.waterAmpCode(f.properties.amp_code)))}}).addTo(map);
     ampLayer=L.geoJSON(window.AMPHOE_GEOJSON,{renderer:canvas,interactive:false,style:ampStyle}).addTo(map);
     map.on('zoomend',restyleAmphoes);
   }
-  function restyleAmphoes(){if(ampLayer)ampLayer.setStyle(ampStyle)}
-  function drawLayers(refit){drawProvinces();drawAmphoes();drawPoints(refit)}
+  // Codes inside the current scope (null = no filter, everything at full strength); refreshed before every restyle.
+  let scopeCodes=null,scopeProvs=null;
+  function updateScopeSets(){
+    const s=scope();
+    scopeCodes=s.active?new Set(s.amps.map(r=>r.district_code)):null;
+    scopeProvs=s.active?new Set(s.amps.map(r=>r.province_code)):null;
+  }
+  function restyleAmphoes(){updateScopeSets();if(ampLayer)ampLayer.setStyle(ampStyle);if(ampFillLayer)ampFillLayer.setStyle(ampFillStyle);if(provLayer)provLayer.setStyle(provStyle)}
+  // Health-region boundaries go above the province and district lines, thicker and darker so they read as a different
+  // level of boundary; below the tambon points, and they take no clicks.
+  const regionStyle=()=>({renderer:canvas,interactive:false,fill:false,color:'#111827',weight:3,opacity:state.showRegion?0.85:0,lineCap:'round',lineJoin:'round'});
+  function drawRegions(){
+    if(regionLayer){regionLayer.remove();regionLayer=null}
+    if(!map||!window.HEALTH_REGIONS_GEOJSON)return;
+    regionLayer=L.geoJSON(window.HEALTH_REGIONS_GEOJSON,{renderer:canvas,interactive:false,style:regionStyle}).addTo(map);
+  }
+  // Province names: one label per province at the centroid of its largest polygon (the first ring can be a small island).
+  // DOM markers in the marker pane, click-through, shown from NAME_MIN_ZOOM up (at the national view 77 names overlap).
+  const NAME_MIN_ZOOM=6.5;
+  function ringCentroid(ring){
+    let a=0,x=0,y=0;
+    for(let i=0,j=ring.length-1;i<ring.length;j=i++){const [x0,y0]=ring[j],[x1,y1]=ring[i],f=x0*y1-x1*y0;a+=f;x+=(x0+x1)*f;y+=(y0+y1)*f}
+    return a?{area:Math.abs(a/2),lng:x/(3*a),lat:y/(3*a)}:null;
+  }
+  function labelPoint(geom){
+    const polys=geom.type==='MultiPolygon'?geom.coordinates:geom.type==='Polygon'?[geom.coordinates]:[];
+    let best=null;for(const poly of polys){const c=ringCentroid(poly[0]);if(c&&(!best||c.area>best.area))best=c}
+    return best&&[best.lat,best.lng];
+  }
+  function drawNames(){
+    if(nameLayer){nameLayer.remove();nameLayer=null}
+    if(!map||!window.PROVINCES_GEOJSON)return;
+    nameLayer=L.layerGroup();
+    for(const f of window.PROVINCES_GEOJSON.features){
+      const at=labelPoint(f.geometry),name=f.properties&&f.properties.pro_th;if(!at||!name)continue;
+      L.marker(at,{interactive:false,keyboard:false,icon:L.divIcon({className:'water-prov-name',html:'<span>'+esc(name)+'</span>',iconSize:null})}).addTo(nameLayer);
+    }
+    map.on('zoomend',showNames);showNames();
+  }
+  function showNames(){
+    if(!map||!nameLayer)return;
+    const on=state.showProvName&&map.getZoom()>=NAME_MIN_ZOOM;
+    if(on&&!map.hasLayer(nameLayer))nameLayer.addTo(map);else if(!on&&map.hasLayer(nameLayer))nameLayer.remove();
+  }
+  function drawLayers(refit){updateScopeSets();drawProvinces();drawAmphoes();drawRegions();drawNames();drawPoints(refit)}
   // Draws the visible tambons that have a usable coordinate; the rest stay in the list only.
   function drawPoints(refit){
     if(!map)return;
@@ -199,20 +290,32 @@
       mk.on('click',()=>choose(key(r),false));
       markers.set(key(r),mk);pts.push([r.latitude,r.longitude]);
     }
-    fitBounds=pts.length?L.latLngBounds(pts):null;
+    fitBounds=scopeBounds(pts);
     const missing=rows.length-withPoint.length;
     const cnt=$('waterMapCount');if(cnt)cnt.textContent=fmt(rows.length)+' ตำบล';
     const sub=$('waterMapSub');
     if(sub)sub.textContent='แสดง '+fmt(withPoint.length)+' จาก '+fmt(rows.length)+' ตำบลตามตัวกรอง'+(missing?' · '+fmt(missing)+' ตำบลไม่มีพิกัด จึงไม่แสดงบนแผนที่ (ยังอยู่ในรายการ)':'')+' · กดจุดเพื่อดูรายละเอียด';
     if(refit)fitToPoints();
   }
-  function destroyMap(){if(ro){ro.disconnect();ro=null}if(map){map.remove();map=null}markers=new Map();markerLayer=null;fitBounds=null;provLayer=null;ampLayer=null;canvas=null;provByCode=new Map()}
+  // What the map zooms to: the chosen district's outline, else the tambon points, else the districts / province in scope.
+  function scopeBounds(pts){
+    const feats=(gj,test)=>(gj?.features||[]).filter(test);
+    const boundsOf=fs=>{if(!fs.length)return null;const b=L.geoJSON({type:'FeatureCollection',features:fs}).getBounds();return b.isValid()?b:null};
+    if(state.district){const b=boundsOf(feats(window.AMPHOE_GEOJSON,f=>M.waterAmpCode(f.properties.amp_code)===state.district.code));if(b)return b}
+    if(pts.length)return L.latLngBounds(pts);
+    if(scopeCodes){const b=boundsOf(feats(window.AMPHOE_GEOJSON,f=>scopeCodes.has(M.waterAmpCode(f.properties.amp_code))));if(b)return b}
+    if(state.provSel)return boundsOf(feats(window.PROVINCES_GEOJSON,f=>featCode(f)===state.provSel));
+    return null;
+  }
+  function destroyMap(){if(ro){ro.disconnect();ro=null}if(map){map.remove();map=null}markers=new Map();markerLayer=null;fitBounds=null;provLayer=null;ampLayer=null;ampFillLayer=null;regionLayer=null;nameLayer=null;canvas=null;provByCode=new Map()}
 
   // ---------- 5. detail ----------
   // Detail panel = selected province (2P2R level, plan, counts, reasons) above the selected tambon.
   function provinceDetailHtml(){
-    const row=state.provSel&&provIndex().get(state.provSel);
-    if(!row)return '';
+    const full=state.provSel&&provIndex().get(state.provSel);
+    if(!full)return '';
+    const part=M.waterProvincesFromAmphoe(scope().amps).find(r=>r.province_code===state.provSel)||{red_districts:0,orange_districts:0,yellow_districts:0,green_districts:0,waterlogged_tambons:null,max_ddpm_days:null};
+    const row={...full,red_districts:part.red_districts,orange_districts:part.orange_districts,yellow_districts:part.yellow_districts,green_districts:part.green_districts,waterlogged_tambons:part.waterlogged_tambons,max_ddpm_days:part.max_ddpm_days};
     const lv=M.water2p2rLevel(row),reasons=M.reasonList(row.reasons).map(x=>'<li>'+esc(x)+'</li>').join('');
     const stat=(k,v,sub)=>'<div class="stat"><div class="stat-k">'+k+'</div><div class="stat-v">'+v+'</div>'+(sub?'<div class="stat-s">'+sub+'</div>':'')+'</div>';
     const badge='<span class="badge water-badge"><i class="dot" style="background:'+(lv.color||'#e2e8f0')+';border:1px solid #94a3b8"></i>'+esc(row.level||lv.label)+(row.phase?' · '+esc(row.phase):'')+'</span>';
@@ -221,32 +324,53 @@
       +(row.plan?'<p class="water-plan"><b>แนวทาง:</b> '+esc(row.plan)+'</p>':'')
       +(lv.note?'<div class="alert water-level-note" role="note">'+esc(lv.note)+'</div>':'')
       +'<div class="stat-grid">'
-        +stat('อำเภอ แดง / ส้ม',fmt(row.red_districts)+' / '+fmt(row.orange_districts),'')
-        +stat('อำเภอ เหลือง / เขียว',fmt(row.yellow_districts)+' / '+fmt(row.green_districts),'')
-        +stat('ตำบลน้ำขัง',fmt(row.waterlogged_tambons),'ในจังหวัดนี้')
+        +stat('อำเภอ '+stageOf('red')+' / '+stageOf('orange'),fmt(row.red_districts)+' / '+fmt(row.orange_districts),'')
+        +stat('อำเภอ '+stageOf('yellow')+' / '+stageOf('green'),fmt(row.yellow_districts)+' / '+fmt(row.green_districts),'')
+        +stat('ตำบลน้ำขัง',fmt(row.waterlogged_tambons),scope().active?'ตามตัวกรอง':'ในจังหวัดนี้')
         +stat('ปภ. ต่อเนื่องสูงสุด',Number.isFinite(row.max_ddpm_days)?fmt(row.max_ddpm_days)+' วัน':'–','')
       +'</div>'
       +(reasons?'<h3 class="risk-h">เหตุผลที่ประเมิน</h3><ul class="reason-chips">'+reasons+'</ul>':'')
       +'<p class="mini-note">ตารางตำบลและอำเภอด้านล่างกรองตามจังหวัดนี้อยู่ <button type="button" class="water-link" data-water-clear-province>ล้างตัวกรองจังหวัด</button></p>'
       +'</div>';
   }
+  // Selected district (map click or district table): its own level, plan, reasons and counts, above the province.
+  function districtDetailHtml(){
+    const r=selCode()&&ampIndex().get(selCode());
+    if(!r)return '';
+    const lv=M.water2p2rLevel(r),reasons=M.reasonList(r.reasons).map(x=>'<li>'+esc(x)+'</li>').join('');
+    const stat=(k,v,sub)=>'<div class="stat"><div class="stat-k">'+k+'</div><div class="stat-v">'+v+'</div>'+(sub?'<div class="stat-s">'+sub+'</div>':'')+'</div>';
+    const hasTambons=!M.waterIsDdpmOnly(r)&&Number.isFinite(r.total_tambons);
+    return '<div class="panel-head"><div><h2>อ.'+esc(r.district)+'</h2><p class="sub">จ.'+esc(r.province)+' · ระดับ 2P2R ของอำเภอ · ข้อมูลรอบ '+when(r.run_at)+'</p></div><div>'+levelBadge(r)+'</div></div>'
+      +'<div class="panel-body">'
+      +(lv.plan?'<p class="water-plan"><b>แนวทาง:</b> '+esc(lv.plan)+'</p>':'')
+      +(lv.note?'<div class="alert water-level-note" role="note">'+esc(lv.note)+'</div>':'')
+      +'<div class="stat-grid">'
+        +stat('ตำบลน้ำขัง',hasTambons?fmt(r.waterlogged_tambons)+' / '+fmt(r.total_tambons):'–',hasTambons?'ยืนยันด้วยภาพ '+fmt(r.confirmed_tambons)+' ตำบล':'ไม่มีรายการตำบล ('+esc(r.basis||'–')+')')
+        +stat('ปภ. รายงานต่อเนื่อง',Number.isFinite(r.ddpm_days)?fmt(r.ddpm_days)+' วัน':'–',Number.isFinite(r.absent_days)?'ไม่อยู่ในรายงาน '+fmt(r.absent_days)+' วัน':'')
+      +'</div>'
+      +(reasons?'<h3 class="risk-h">เหตุผลที่ประเมิน</h3><ul class="reason-chips">'+reasons+'</ul>':'')
+      +'<p class="mini-note">'+(hasTambons?'ตารางตำบลด้านล่างกรองตามอำเภอนี้อยู่ · ':'')+'<button type="button" class="water-link" data-water-clear-district>ล้างตัวกรองอำเภอ</button></p>'
+      +'</div>';
+  }
+  const levelBadge=r=>{const lv=M.water2p2rLevel(r);return lv?'<span class="badge water-badge"><i class="dot" style="background:'+(lv.color||'#e2e8f0')+';border:1px solid #94a3b8"></i>'+esc(lv.label)+(lv.phase?' · '+esc(lv.phase):'')+'</span>':'–'};
   // Default content of the right-hand panel (like the summary table beside the national map): provinces by 2P2R level.
+  // Provinces within the filters; each keeps the pipeline's province level, the district counts are those in scope.
   function provinceListHtml(){
-    const rows=provRows().filter(r=>M.water2p2rLevel(r).rank>0);
+    const rows=M.waterProvinceRows(M.waterProvincesFromAmphoe(scope().amps)).filter(r=>M.water2p2rLevel(r).rank>0);
     const body=rows.map(r=>{const lv=M.water2p2rLevel(r);
       return '<tr><td><span class="badge water-badge"><i class="dot" style="background:'+lv.color+'"></i>'+esc(r.level||lv.label)+'</span></td>'
         +'<td><button type="button" class="water-link" data-water-prov="'+esc(M.waterProvCode(r.province_code))+'">'+esc(r.province)+'</button></td>'
         +'<td class="num">'+fmt(r.waterlogged_tambons)+'</td><td class="num">'+fmt(r.red_districts)+' / '+fmt(r.orange_districts)+' / '+fmt(r.yellow_districts)+' / '+fmt(r.green_districts)+'</td></tr>'}).join('');
-    return '<div class="panel-head"><div><h2>จังหวัดตามระดับ 2P2R</h2><p class="sub">'+fmt(rows.length)+' จังหวัดที่มีสถานการณ์ · กดชื่อจังหวัดเพื่อดูแนวทางและกรองตาราง หรือกดจุดตำบลบนแผนที่</p></div></div>'
+    return '<div class="panel-head"><div><h2>จังหวัดตามระดับ 2P2R</h2><p class="sub">'+fmt(rows.length)+' จังหวัด'+(scope().active?'ตามตัวกรอง':'ที่มีสถานการณ์')+' · ระดับจังหวัด = ระดับสูงสุดของอำเภอ · จำนวนอำเภอนับตามตัวกรอง</p></div></div>'
       +'<div class="panel-body"><div class="table-wrap"><table><thead><tr><th>ระดับ</th><th>จังหวัด</th><th class="num">ตำบลน้ำขัง</th><th class="num">อำเภอ แดง/ส้ม/เหลือง/เขียว</th></tr></thead><tbody>'
       +(body||'<tr><td colspan="4" class="empty">ไม่มีจังหวัดที่มีสถานการณ์</td></tr>')+'</tbody></table></div></div>';
   }
   function detailHtml(){
     const r=state.sel&&rowsAll().find(x=>key(x)===state.sel);
-    const prov=provinceDetailHtml();
+    const prov=districtDetailHtml()+provinceDetailHtml();
     if(!r&&prov)return prov;
-    if(!r&&provRows().length)return provinceListHtml();
-    if(!r)return '<div class="panel-head"><div><h2>รายละเอียดตำบล</h2><p class="sub">กดจุดบนแผนที่ หรือชื่อตำบลในตารางเพื่อดูรายละเอียด กดจังหวัดบนแผนที่เพื่อดูระดับ 2P2R</p></div></div><div class="panel-body"><p class="empty">ยังไม่ได้เลือกตำบลหรือจังหวัด</p></div>';
+    if(!r&&ampRows().length)return provinceListHtml();
+    if(!r)return '<div class="panel-head"><div><h2>รายละเอียดตำบล</h2><p class="sub">กดจุดบนแผนที่ หรือชื่อตำบลในตารางเพื่อดูรายละเอียด กดอำเภอบนแผนที่เพื่อดูระดับ 2P2R</p></div></div><div class="panel-body"><p class="empty">ยังไม่ได้เลือกตำบลหรือจังหวัด</p></div>';
     return prov+tambonDetailHtml(r);
   }
   function tambonDetailHtml(r){
@@ -277,53 +401,67 @@
     return T.table(['สถานะ','ตำบล','อำเภอ','จังหวัด','พบน้ำต่อเนื่อง (วัน)','ช่วงที่พบน้ำ','อายุภาพ (ชม.)','พื้นที่น้ำ (ตร.กม.)','ปภ.'],body);
   }
   const ddpmOnlyBadge='<span class="badge water-badge water-ddpm" title="จังหวัดนี้ไม่มีภาพดาวเทียมพบน้ำ แต่ ปภ. รายงานอำเภอต่อเนื่อง ≥ 3 วัน">น้ำขังตามประกาศ ปภ. — ไม่มีภาพดาวเทียม</span>';
-  const basisOf=r=>M.waterIsDdpmOnly(r)?ddpmOnlyBadge:esc(r.basis||'–');
+  const basisOf=r=>M.waterIsDdpmLogged(r)?ddpmOnlyBadge:esc(r.basis||'–');
   function districtTable(rows){
     const T=window.DashboardTables;
     // Empty (null) count / area cells of DDPM-only rows show "–", never 0.
-    const body=rows.map(r=>['<button type="button" class="water-link" data-water-district="'+esc(r.district_code||'')+'" data-water-dname="'+esc(r.district)+'" data-water-dprov="'+esc(r.province)+'" data-water-ddays="'+esc(r.ddpm_days??'')+'"'+(M.waterIsDdpmOnly(r)?' data-water-ddpm-only="1"':'')+'>'+esc(r.district)+'</button>',esc(r.province),
+    const body=rows.map(r=>[levelBadge(r),'<button type="button" class="water-link" data-water-district="'+esc(r.district_code||'')+'">'+esc(r.district)+'</button>',esc(r.province),
       fmt(r.waterlogged_tambons),fmt(r.confirmed_tambons),fmt(r.watch_tambons),fmt(r.new_tambons),fmt(r.nodata_tambons),fmt(r.stale_tambons),fmt(r.total_tambons),fmt(r.latest_area_km2,2),fmt(r.max_run_days,1),
-      esc(r.in_ddpm||'–')+(Number.isFinite(r.ddpm_days)?' ('+fmt(r.ddpm_days)+' วัน)':''),basisOf(r)]);
-    return T.table(['อำเภอ','จังหวัด','ตำบลน้ำขัง','ยืนยัน','เฝ้าระวัง','พบน้ำใหม่','ข้อมูลไม่พอ','พบน้ำล่าสุด','ตำบลทั้งหมด','พื้นที่น้ำล่าสุด (ตร.กม.)','ขังนานสุด (วัน)','ปภ.','ที่มา'],body);
+      esc(r.in_ddpm||'–')+(Number.isFinite(r.ddpm_days)?' ('+fmt(r.ddpm_days)+' วัน)':''),basisOf(r),'<div class="water-reason-cell">'+esc(r.reasons||'–')+'</div>']);
+    return T.table(['ระดับ','อำเภอ','จังหวัด','ตำบลน้ำขัง','ยืนยัน','เฝ้าระวัง','พบน้ำใหม่','ข้อมูลไม่พอ','พบน้ำล่าสุด','ตำบลทั้งหมด','พื้นที่น้ำล่าสุด (ตร.กม.)','ขังนานสุด (วัน)','ปภ.','ที่มา','เหตุผล'],body);
   }
   const districtRows=()=>{
-    const all=M.waterDistricts(data()?.floodWaterloggedDistrict).filter(r=>!state.province||r.province===state.province);
+    const all=scopeAmps();
     return state.basis==='ddpm'?all.filter(M.waterIsDdpmOnly):state.basis==='sat'?all.filter(r=>!M.waterIsDdpmOnly(r)):all;
   };
   function districtNoteHtml(){
     const n=state.note;if(!n)return '';
-    return '<div class="alert water-ddpm-note" role="status"><b>อ.'+esc(n.name)+' (จ.'+esc(n.province)+')</b> ไม่มีรายการตำบล: จังหวัดนี้ไม่มีภาพดาวเทียมพบน้ำ แต่ ปภ. รายงานอำเภอนี้ต่อเนื่อง'+(n.days?' '+esc(n.days)+' วัน':'')+' (น้ำขังตามประกาศ ปภ. ซึ่งระบุสถานการณ์ระดับอำเภอ ไม่ระบุตำบล)</div>';
+    return '<div class="alert water-ddpm-note" role="status"><b>อ.'+esc(n.name)+' (จ.'+esc(n.province)+')</b> ไม่มีรายการตำบล: ระดับของอำเภอนี้มาจากรายงาน ปภ. ซึ่งระบุสถานการณ์ระดับอำเภอ ไม่ระบุตำบล'+(n.reasons?' · '+esc(n.reasons):'')+'</div>';
   }
   // The district table and the basis chips are redrawn alone (the basis filter must not rebuild the page or the map).
   function renderDistrictTable(){
     const host=$('waterDistrictTable');if(!host)return;
     host.innerHTML=districtTable(districtRows());
-    pane.querySelectorAll('[data-water-basis]').forEach(b=>b.setAttribute('aria-pressed',String((b.dataset.waterBasis)===state.basis)));
+    const chips=pane.querySelector('.water-basis-chips');if(chips)chips.innerHTML=basisChipsHtml(scopeAmps());
     const note=$('waterDistrictNote');if(note)note.innerHTML=districtNoteHtml();
     window.DashboardTables.paginate();window.DashboardTables.hints();
   }
-  function districtPanel(districts){
-    const st=status('flood_waterlogged_district');
+  function basisChipsHtml(districts){
     const nDdpm=districts.filter(M.waterIsDdpmOnly).length;
-    const chips=[['','ทั้งหมด ('+fmt(districts.length)+')'],['sat','ภาพดาวเทียม + ปภ. ('+fmt(districts.length-nDdpm)+')'],['ddpm','ปภ. (ไม่มีภาพดาวเทียม) ('+fmt(nDdpm)+')']].map(([v,l])=>'<button type="button" class="lightbtn water-chip" data-water-basis="'+v+'" aria-pressed="'+(state.basis===v)+'">'+l+'</button>').join('');
-    const ok=st&&st.status!=='error'&&districts.length;
-    const inner=!st||st.status==='error'?'<div class="panel-body"><div class="alert">ยังไม่มีข้อมูลสรุปรายอำเภอรอบนี้ (แท็บ flood_waterlogged_district) รายการตำบลด้านบนยังใช้งานได้</div></div>'
-      :!districts.length?'<div class="panel-body"><div class="alert">ยังไม่มีข้อมูลสรุปรายอำเภอรอบนี้</div></div>'
+    return [['','ทั้งหมด ('+fmt(districts.length)+')'],['sat','ภาพดาวเทียม + ปภ. ('+fmt(districts.length-nDdpm)+')'],['ddpm','ปภ. (ไม่มีภาพดาวเทียม) ('+fmt(nDdpm)+')']].map(([v,l])=>'<button type="button" class="lightbtn water-chip" data-water-basis="'+v+'" aria-pressed="'+(state.basis===v)+'">'+l+'</button>').join('');
+  }
+  function districtPanel(districts){
+    const st=status('flood_waterlogged_amphoe');
+    const chips=basisChipsHtml(districts);
+    const ok=st&&st.status!=='error'&&ampRows().length;
+    const inner=!st||st.status==='error'?'<div class="panel-body"><div class="alert">ยังไม่มีข้อมูลสรุปรายอำเภอรอบนี้ (แท็บ flood_waterlogged_amphoe) รายการตำบลด้านบนยังใช้งานได้</div></div>'
+      :!ampRows().length?'<div class="panel-body"><div class="alert">ยังไม่มีข้อมูลสรุปรายอำเภอรอบนี้</div></div>'
       :'<div id="waterDistrictNote" aria-live="polite">'+districtNoteHtml()+'</div><div class="table-wrap" id="waterDistrictTable">'+districtTable(districtRows())+'</div>';
-    return '<div class="section-title"><div><h2>สรุปรายอำเภอ</h2><p class="sub">กดชื่ออำเภอเพื่อกรองรายการตำบลด้านบน · ปภ. ระบุสถานการณ์ระดับอำเภอเท่านั้น · แถว "ปภ. (ไม่มีภาพดาวเทียม)" คือจังหวัดที่ไม่มีภาพดาวเทียมพบน้ำ ใช้ประกาศ ปภ. ระดับอำเภอแทน และไม่มีรายการตำบล</p></div>'
+    return '<div class="section-title"><div><h2>สรุปรายอำเภอ</h2><p class="sub">ระดับ 2P2R รายอำเภอจาก pipeline เรียงจากระดับสูงสุด · กดชื่ออำเภอเพื่อดูรายละเอียดและกรองรายการตำบลด้านบน · ปภ. ระบุสถานการณ์ระดับอำเภอเท่านั้น · แถว "ปภ. (ไม่มีภาพดาวเทียม)" ไม่มีรายการตำบล</p></div>'
       +(ok?'<div class="water-basis-chips" role="group" aria-label="กรองตามที่มา">'+chips+'</div>':'')+'</div>'
       +'<section class="panel">'+inner+'</section>';
   }
 
   // One-box summary like the national "situation" panel, with a copy button.
   function dateTh(iso){const t=M.timestamp(iso);return Number.isFinite(t)?new Date(t).toLocaleDateString('th-TH',{...tz,day:'numeric',month:'short',year:'numeric'}):'–'}
+  function scopeText(){
+    const parts=[];
+    if(state.province)parts.push('จ.'+state.province);
+    if(state.district)parts.push('อ.'+state.district.name);
+    if(state.level)parts.push('ระดับ'+stageOf(state.level));
+    if(state.query.trim())parts.push('ค้นหา "'+state.query.trim()+'"');
+    return parts.join(' · ');
+  }
   function situationLines(rows,districts){
-    const s=M.waterSummary(rows),pv=M.waterProvinceSummary(provRows()),ddpmOnly=districts.length?M.waterDdpmOnlyCount(districts):null;
+    const s=M.waterSummary(rows),pv=M.waterProvinceSummary(M.waterProvincesFromAmphoe(districts)),ddpmOnly=ampRows().length?M.waterDdpmOnlyCount(districts):null;
     const loggedProv=new Set(rows.filter(M.waterIsLogged).map(r=>r.province)).size;
     const lines=['ตำบลน้ำขัง '+fmt(s.logged)+' ตำบล ใน '+fmt(loggedProv)+' จังหวัด (ยืนยันด้วยภาพ '+fmt(s.image)+' · ตาม ปภ. '+fmt(s.ddpm)+')',
       'พบน้ำใหม่ '+fmt(s.fresh)+' ตำบล · พบน้ำล่าสุด (ไม่มีภาพใหม่) '+fmt(s.stale)+' ตำบล · เฝ้าระวัง/ข้อมูลไม่พอ '+fmt(s.watch)+' ตำบล'];
     if(ddpmOnly!=null)lines.push('อำเภอน้ำขังตามประกาศ ปภ. ที่ไม่มีภาพดาวเทียม '+fmt(ddpmOnly)+' อำเภอ');
-    if(pv.total)lines.push('สีจังหวัด 2P2R: แดง '+fmt(pv.red)+' · ส้ม '+fmt(pv.orange)+' · เหลือง '+fmt(pv.yellow)+' · เขียว '+fmt(pv.green)+' · ปกติ '+fmt(pv.normal)+' จังหวัด');
+    if(ampRows().length){const n={red:0,orange:0,yellow:0,green:0};for(const r of districts)n[String(r.level_code).trim()]++;
+      lines.push('อำเภอตามระดับ 2P2R: '+LEVELS.map(k=>stageOf(k)+' '+fmt(n[k])).join(' · ')+' อำเภอ')}
+    if(pv.total&&!state.level)lines.push('จังหวัดตามระดับ 2P2R (ระดับสูงสุดของอำเภอ): '+LEVELS.map(k=>stageOf(k)+' '+fmt(pv[k])).join(' · ')+' จังหวัด');
+    const sc=scopeText();if(sc)lines.unshift('ตามตัวกรอง: '+sc);
     return lines;
   }
   function situationHtml(rows,districts){
@@ -333,8 +471,8 @@
       +'<p class="mini-note situation-rule">ไม่ใช่ประกาศทางการ · สีแดง = น้ำขังนาน เสี่ยงน้ำเน่าเสีย (ไม่ใช่การยืนยันคุณภาพน้ำ) · สีเขียว = ประมาณว่าน้ำลด (ไม่ใช่การยืนยัน)</p></section>';
   }
   async function copySituation(button){
-    const rows=rowsAll(),f=M.waterFreshness(rows,Date.now());
-    const districts=M.waterDistricts(status('flood_waterlogged_district')?.status==='ok'?data().floodWaterloggedDistrict:[]);
+    const f=M.waterFreshness(rowsAll(),Date.now()),rows=scope().tambons;
+    const districts=scopeAmps();
     const text=dateTh(f.runAt)+' สรุปสถานการณ์น้ำขัง\n'+situationLines(rows,districts).map(l=>'- '+l).join('\n')+'\n(ไม่ใช่ประกาศทางการ · สีแดง = น้ำขังนาน เสี่ยงน้ำเน่าเสีย ไม่ใช่การยืนยันคุณภาพน้ำ · สีเขียว = ประมาณว่าน้ำลด ไม่ใช่การยืนยัน)';
     let done=false;
     try{await navigator.clipboard.writeText(text);done=true}catch(e){
@@ -357,14 +495,15 @@
     }
     // A selection or filter left over from an earlier load may point at rows that are gone.
     if(state.sel&&!all.some(r=>key(r)===state.sel))state.sel=null;
-    const known=new Set(all.map(r=>r.province).concat((d.floodWaterloggedDistrict||[]).map(r=>r.province),provRows().map(r=>r.province)));
+    const known=new Set(all.map(r=>r.province).concat(ampRows().map(r=>r.province)));
     if(state.province&&!known.has(state.province))setProvince('');
     else state.provSel=provByName(state.province)?M.waterProvCode(provByName(state.province).province_code):null;
-    const districts=M.waterDistricts(st&&status('flood_waterlogged_district')?.status==='ok'?d.floodWaterloggedDistrict:[]);
-    if(state.district&&!all.some(r=>String(r.district_code)===String(state.district.code)))state.district=null;
-    pane.innerHTML=head+freshnessHtml(all)+filtersHtml(all)+cardsHtml(all,districts)
-      +'<div class="grid water-grid">'+mapPanel(all)+'<section class="panel" id="waterDetail" aria-live="polite">'+detailHtml()+'</section></div>'
-      +situationHtml(all,districts)
+    if(state.district&&!ampIndex().has(state.district.code)&&!all.some(r=>M.waterAmpCode(r.district_code)===state.district.code)){state.district=null;state.note=null}
+    if(state.level&&!M.WATER_2P2R[state.level])state.level='';
+    const sc=scope(),districts=M.waterDistricts(sc.amps);
+    pane.innerHTML=head+freshnessHtml(all)+filtersHtml(all)+cardsHtml(sc.tambons,districts)
+      +'<div class="grid water-grid">'+mapPanel(sc.tambons)+'<section class="panel" id="waterDetail" aria-live="polite">'+detailHtml()+'</section></div>'
+      +situationHtml(sc.tambons,districts)
       +'<div class="section-title"><div><h2>รายการตำบลที่พบน้ำ</h2><p class="sub" id="waterTableSub"></p></div><button type="button" class="lightbtn" data-water-csv>ดาวน์โหลด CSV</button></div>'
       +'<section class="panel"><div class="table-wrap" id="waterTable"></div></section>'
       +districtPanel(districts)
@@ -373,8 +512,7 @@
       +'<li>ปภ. ระบุสถานการณ์ระดับอำเภอเท่านั้น การเชื่อมกับตำบลจึงบอกได้เพียงว่าตำบลอยู่ในอำเภอที่ ปภ. รายงาน</li>'
       +'<li>"พบน้ำล่าสุด (ไม่มีภาพใหม่)" คือเคยพบน้ำแต่ภาพนั้นเก่าเกินเกณฑ์ของ pipeline และยังไม่มีภาพใหม่ยืนยัน ไม่ใช่สถานะน้ำขัง</li>'
       +'<li>ในจังหวัดที่ไม่มีภาพดาวเทียม ใช้ประกาศ ปภ. ระดับอำเภอแทน (ดูตารางสรุปรายอำเภอ แถว "ปภ. (ไม่มีภาพดาวเทียม)")</li>'
-      +'<li>สีจังหวัด 2P2R มาจากระดับที่ pipeline คำนวณ (สีจังหวัด = ระดับสูงสุดของอำเภอ): สีแดง = น้ำขังนาน เสี่ยงน้ำเน่าเสีย ไม่ใช่การยืนยันคุณภาพน้ำ · สีเขียว = ประมาณว่าน้ำลดจากรายงาน ปภ. ไม่ใช่การยืนยัน (ปภ. อาจหยุดรายงานเฉย ๆ)</li></ul></div></section>';
-    $('waterDistrictChip').innerHTML=chipHtml();
+      +'<li>สี 2P2R บนแผนที่เป็นรายอำเภอ มาจากระดับที่ pipeline คำนวณ (ระดับจังหวัด = ระดับสูงสุดของอำเภอ): สีแดง = น้ำขังนาน เสี่ยงน้ำเน่าเสีย ไม่ใช่การยืนยันคุณภาพน้ำ · สีเขียว = ประมาณว่าน้ำลดจากรายงาน ปภ. ไม่ใช่การยืนยัน (ปภ. อาจหยุดรายงานเฉย ๆ)</li></ul></div></section>';
     bind();
     drawMap();
     renderTable();
@@ -385,24 +523,30 @@
     const host=$('waterTable');if(!host)return;
     const rows=visibleRows(),T=window.DashboardTables;
     host.innerHTML=tambonTable(rows);
-    const sub=$('waterTableSub');if(sub)sub.textContent=fmt(rows.length)+' จาก '+fmt(rowsAll().length)+' ตำบล · เรียงตามสถานะ แล้วตามพื้นที่น้ำมากไปน้อย · ใช้ปุ่ม "ตัวกรอง" ของตารางเพื่อกรอง/เรียงตามคอลัมน์';
+    const sub=$('waterTableSub');if(sub)sub.textContent=fmt(rows.length)+' จาก '+fmt(rowsAll().length)+' ตำบล'+(scopeText()?' ('+scopeText()+')':'')+' · เรียงตามสถานะ แล้วตามพื้นที่น้ำมากไปน้อย · ใช้ปุ่ม "ตัวกรอง" ของตารางเพื่อกรอง/เรียงตามคอลัมน์';
     T.paginate();T.hints();
     markSelectedRow();
   }
   function markSelectedRow(){
     pane.querySelectorAll('#waterTable tbody tr').forEach(tr=>tr.classList.toggle('sel',!!state.sel&&tr.querySelector('[data-water-sel]')?.dataset.waterSel===state.sel));
   }
+  // Any filter change redraws every section from the same scope; the page and the map instance stay.
   function applyFilters(refit=true){
-    $('waterDistrictChip').innerHTML=chipHtml();
-    pane.querySelectorAll('[data-water-status]').forEach(b=>b.setAttribute('aria-pressed',String(state.statuses.has(b.dataset.waterStatus))));
+    const sc=scope(),districts=M.waterDistricts(sc.amps);
     const sel=$('waterProvince');if(sel&&sel.value!==state.province)sel.value=state.province;
+    const ds=$('waterDistrict');if(ds)ds.innerHTML=districtSelectHtml();
+    const lv=$('waterLevel');if(lv&&lv.value!==state.level)lv.value=state.level;
+    const cards=$('waterCards');if(cards)cards.outerHTML=cardsHtml(sc.tambons,districts);
+    const stc=$('waterStatusCards');if(stc)stc.innerHTML=statusCardsHtml(sc.tambons);
+    const lg=$('waterProvLegend');if(lg)lg.innerHTML=provLegendHtml();
+    const si=$('waterSituation');if(si)si.outerHTML=situationHtml(sc.tambons,districts);
     renderTable();restyleAmphoes();drawPoints(refit);renderDistrictTable();
-    if(provLayer)provLayer.setStyle(provStyle);
     const detail=$('waterDetail');if(detail)detail.innerHTML=detailHtml();
   }
   // The province filter (dropdown, map click, reset) also decides which province is highlighted and shown in the detail panel.
   function setProvince(name){
     state.province=name||'';
+    if(state.district&&state.province&&state.district.province!==state.province){state.district=null;state.note=null}
     const row=state.province?provByName(state.province):null;
     state.provSel=row?M.waterProvCode(row.province_code):null;
   }
@@ -412,6 +556,37 @@
     applyFilters(true);
     const detail=$('waterDetail');
     if(detail&&state.provSel&&matchMedia('(max-width:900px)').matches)detail.scrollIntoView({behavior:'smooth',block:'start'});
+  }
+
+  // Turning one 2P2R fill on turns the other off (the two must never be drawn on top of each other).
+  function setFill(which,on){
+    if(which==='amp'){state.showProv=on;if(on&&ampFill())state.showProvFill=false}
+    else{state.showProvFill=on;if(on)state.showProv=false}
+    const a=document.getElementById('waterProvLayer'),b=document.getElementById('waterProvFillLayer');
+    if(a)a.checked=state.showProv;if(b)b.checked=state.showProvFill;
+    if(provLayer)provLayer.setStyle(provStyle);restyleAmphoes();
+  }
+  // A district (map polygon or district table): outline it, filter to its province, show its level in the detail panel and,
+  // when it has tambons, filter the tambon list to it. A district without tambons (DDPM-based) says so instead of an empty list.
+  // Clicking the selected district on the map again clears it.
+  function setDistrict(code){
+    const c=M.waterAmpCode(code);
+    if(!c){state.district=null;state.note=null;return false}
+    const r=ampIndex().get(c)||null,t=rowsAll().find(x=>M.waterAmpCode(x.district_code)===c);
+    if(!r&&!t)return false;
+    const name=r?r.district:t.district,province=r?r.province:t.province;
+    state.district={code:c,name,province};setProvince(province);
+    if(state.level&&(!r||r.level_code!==state.level))state.level='';   // the district's own level wins over a level filter that excludes it
+    state.note=t?null:{name,province,reasons:r&&r.reasons};
+    return !!t;
+  }
+  function chooseDistrict(code,fromTable){
+    const c=M.waterAmpCode(code);
+    if(!fromTable&&state.district&&state.district.code===c){setDistrict('');applyFilters(false);return}
+    const hasTambons=setDistrict(c);if(!state.district)return;
+    applyFilters(true);
+    const target=fromTable?(hasTambons?$('waterTable'):$('waterDistrictNote')):$('waterDetail');
+    if(target&&(fromTable||matchMedia('(max-width:900px)').matches))target.scrollIntoView({behavior:'smooth',block:'start'});
   }
 
   // Selecting a tambon patches the detail card, the two markers and the table row (no full redraw: scroll and map stay).
@@ -461,7 +636,14 @@
   function bind(){
     const prov=$('waterProvince');if(prov)prov.addEventListener('change',()=>{setProvince(prov.value);applyFilters()});
     const q=$('waterQuery');if(q)q.addEventListener('input',()=>{state.query=q.value;applyFilters()});
-    const reset=$('waterReset');if(reset)reset.addEventListener('click',()=>{state.statuses=new Set(STATUSES);setProvince('');state.query='';state.district=null;$('waterProvince').value='';$('waterQuery').value='';applyFilters()});
+    const dist=$('waterDistrict');if(dist)dist.addEventListener('change',()=>{setDistrict(dist.value);applyFilters()});
+    const lvl=$('waterLevel');if(lvl)lvl.addEventListener('change',()=>{setLevel(lvl.value);applyFilters()});
+    const reset=$('waterReset');if(reset)reset.addEventListener('click',()=>{state.statuses=new Set(STATUSES);state.district=null;state.note=null;setProvince('');state.level='';state.query='';$('waterProvince').value='';$('waterQuery').value='';applyFilters()});
+  }
+  // A level filter that excludes the chosen district clears the district.
+  function setLevel(k){
+    state.level=M.WATER_2P2R[k]&&k!=='normal'?k:'';
+    if(state.level&&state.district){const r=ampIndex().get(state.district.code);if(!r||r.level_code!==state.level){state.district=null;state.note=null}}
   }
   // One delegated listener: pane.innerHTML is rebuilt on every full render, but the pane element itself stays.
   function onClick(e){
@@ -470,20 +652,20 @@
     const rf=e.target.closest('#waterRefresh');if(rf){refresh(rf);return}
     const cp=e.target.closest('[data-water-copy]');if(cp){copySituation(cp);return}
     if(e.target.closest('[data-water-clear-province]')){setProvince('');applyFilters();return}
-    if(e.target.id==='waterProvLayer'){state.showProv=e.target.checked;if(provLayer)provLayer.setStyle(provStyle);return}
+    if(e.target.id==='waterProvLayer'||e.target.id==='waterProvFillLayer'){setFill(e.target.id==='waterProvLayer'?'amp':'prov',e.target.checked);return}
     if(e.target.id==='waterAmpLayer'){state.showAmp=e.target.checked;restyleAmphoes();return}
-    if(e.target.closest('[data-water-clear-district]')){state.district=null;applyFilters();return}
+    if(e.target.id==='waterRegionLayer'){state.showRegion=e.target.checked;if(regionLayer)regionLayer.setStyle(regionStyle);return}
+    if(e.target.id==='waterProvLineLayer'){state.showProvLine=e.target.checked;if(provLayer)provLayer.setStyle(provStyle);return}
+    if(e.target.id==='waterProvNameLayer'){state.showProvName=e.target.checked;showNames();return}
+    if(e.target.closest('[data-water-clear-district]')){setDistrict('');applyFilters();return}
+    const lk=e.target.closest('[data-water-level]');if(lk){setLevel(state.level===lk.dataset.waterLevel?'':lk.dataset.waterLevel);applyFilters();return}
     const st=e.target.closest('[data-water-status]');
     if(st){const v=st.dataset.waterStatus;if(state.statuses.has(v))state.statuses.delete(v);else state.statuses.add(v);applyFilters();return}
     const sel=e.target.closest('[data-water-sel]');if(sel){choose(sel.dataset.waterSel,true);return}
     const bs=e.target.closest('[data-water-basis]');
     if(bs){state.basis=bs.dataset.waterBasis;renderDistrictTable();return}
     const dist=e.target.closest('[data-water-district]');
-    if(dist&&dist.hasAttribute('data-water-ddpm-only')){
-      // DDPM-only district: there are no tambons to filter to, so say so instead of showing an empty list.
-      state.note={name:dist.dataset.waterDname,province:dist.dataset.waterDprov,days:dist.dataset.waterDdays};renderDistrictTable();return;
-    }
-    if(dist){state.note=null;const nt=$('waterDistrictNote');if(nt)nt.innerHTML='';state.district={code:dist.dataset.waterDistrict,name:dist.dataset.waterDname,province:dist.dataset.waterDprov};applyFilters();$('waterTable')?.scrollIntoView({behavior:'smooth',block:'start'});return}
+    if(dist){chooseDistrict(dist.dataset.waterDistrict,true);return}
     if(e.target.closest('[data-water-csv]')){
       const u=URL.createObjectURL(new Blob([csv(exportRows())],{type:'text/csv;charset=utf-8'}));
       const a=document.createElement('a');a.href=u;a.download='waterlogged-tambons.csv';a.click();setTimeout(()=>URL.revokeObjectURL(u),1000);

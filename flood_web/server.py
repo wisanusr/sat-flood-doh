@@ -18,14 +18,15 @@ SOURCE_URL = f'https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit'
 SHEETS = {'Disaster_DB': 0, 'Vulnerable_group': 1622234299,
           'thai_water_DB': 32587398, 'BKK_water_DB': 1876038359, 'shelter_DB': 992577657,
           'flood_risk': 651436760, 'flood_wl_critical': 69746994,
-          'flood_waterlogged': None, 'flood_waterlogged_district': None, 'flood_2p2r_province': None}
+          'flood_waterlogged': None, 'flood_waterlogged_amphoe': None}
 # A gid of None means "read the tab by name" (gviz), used for tabs whose gid we were not given.
 # Tabs written by the flood-prep pipeline (geeks_project_google). The dashboard works without them: a tab that is missing or
 # empty only turns the "เตรียมรับน้ำท่วม" tab into a notice and never fails a build. Same for the waterlogging tab ("น้ำขัง").
-OPTIONAL = {'flood_risk', 'flood_wl_critical', 'flood_waterlogged', 'flood_waterlogged_district', 'flood_2p2r_province'}
+OPTIONAL = {'flood_risk', 'flood_wl_critical', 'flood_waterlogged', 'flood_waterlogged_amphoe'}
 WATERLOGGED_TAMBON = 'run_at status confidence province_code province district_code district subdistrict tb_idn run_span_days run_start run_end image_age_hours detections latest_area_km2 in_ddpm ddpm_days ddpm_report_date latitude longitude reasons'.split()
-WATERLOGGED_2P2R = 'run_at province_code province level_code level phase plan red_districts orange_districts yellow_districts green_districts waterlogged_tambons max_ddpm_days reasons'.split()
-WATERLOGGED_DISTRICT = 'run_at province district_code district waterlogged_tambons confirmed_tambons watch_tambons new_tambons nodata_tambons stale_tambons total_tambons latest_area_km2 max_run_days in_ddpm ddpm_days basis'.split()
+# One row per district with its 2P2R level (and its province's level / reasons repeated on each row); replaces the old
+# flood_waterlogged_district and flood_2p2r_province tabs. The page builds the province rows from it.
+WATERLOGGED_AMPHOE = 'run_at province_code province district_code district level_code basis reasons waterlogged_tambons confirmed_tambons watch_tambons new_tambons nodata_tambons stale_tambons total_tambons latest_area_km2 max_run_days in_ddpm ddpm_days absent_days province_level_code province_reasons'.split()
 REQUIRED = {
     'Disaster_DB': 'Record_ID Report_Date Province Affected_Households Current_Status'.split(),
     'Vulnerable_group': ['จังหวัด', 'เขตสุขภาพ', 'จำนวนเด็ก 0-4 ปีทั้งหมด (คน)', 'จำนวนหญิงตั้งครรภ์ทั้งหมด (คน)', 'จำนวนผู้สูงอายุ 60 ปีขึ้นไปทั้งหมด (คน)'],
@@ -35,10 +36,9 @@ REQUIRED = {
     'flood_risk': 'run_at province risk_level'.split(),
     'flood_wl_critical': 'province situation_level station_name'.split(),
     'flood_waterlogged': WATERLOGGED_TAMBON,
-    'flood_waterlogged_district': WATERLOGGED_DISTRICT,
-    'flood_2p2r_province': WATERLOGGED_2P2R,
+    'flood_waterlogged_amphoe': WATERLOGGED_AMPHOE,
 }
-NUMERIC = set('Affected_Districts_Count Affected_Subdistricts_Count Affected_Villages_Count Affected_Households Casualties_Deaths latitude longitude water_in_m_msl warning_in_source critical_in_source age_minutes_at_fetch capacity occupied available rain_24h_max_mm forecast_total_mm forecast_max_day_mm rain_next_24h_mm wl_level5 wl_level4 wl_stations wl_rising_critical max_overbank_m situation_level waterlevel_msl waterlevel_msl_prev diff_wl_bank discharge run_span_days image_age_hours detections latest_area_km2 ddpm_days waterlogged_tambons confirmed_tambons watch_tambons new_tambons nodata_tambons stale_tambons total_tambons max_run_days red_districts orange_districts yellow_districts green_districts max_ddpm_days'.split()) | set(REQUIRED['Vulnerable_group'][2:])
+NUMERIC = set('Affected_Districts_Count Affected_Subdistricts_Count Affected_Villages_Count Affected_Households Casualties_Deaths latitude longitude water_in_m_msl warning_in_source critical_in_source age_minutes_at_fetch capacity occupied available rain_24h_max_mm forecast_total_mm forecast_max_day_mm rain_next_24h_mm wl_level5 wl_level4 wl_stations wl_rising_critical max_overbank_m situation_level waterlevel_msl waterlevel_msl_prev diff_wl_bank discharge run_span_days image_age_hours detections latest_area_km2 ddpm_days waterlogged_tambons confirmed_tambons watch_tambons new_tambons nodata_tambons stale_tambons total_tambons max_run_days absent_days'.split()) | set(REQUIRED['Vulnerable_group'][2:])
 BKK_DISTRICTS = set('คลองสาน คลองสามวา คลองเตย คันนายาว จตุจักร จอมทอง ดอนเมือง ดินแดง ดุสิต ตลิ่งชัน ทวีวัฒนา ทุ่งครุ ธนบุรี บางกอกน้อย บางกอกใหญ่ บางกะปิ บางขุนเทียน บางคอแหลม บางซื่อ บางนา บางบอน บางพลัด บางรัก บางเขน บางแค บึงกุ่ม ปทุมวัน ประเวศ ป้อมปราบศัตรูพ่าย พญาไท พระนคร พระโขนง ภาษีเจริญ มีนบุรี ยานนาวา ราชเทวี ราษฎร์บูรณะ ลาดกระบัง ลาดพร้าว วังทองหลาง วัฒนา สวนหลวง สะพานสูง สัมพันธวงศ์ สาทร สายไหม หนองจอก หนองแขม หลักสี่ ห้วยขวาง'.split())
 DATES = set('Report_Date Ingested_At observed_at_th fetched_at_th updated_at_source run_at forecast_peak_date forecast_start forecast_fetched_at observed_at run_start run_end ddpm_report_date'.split())
 
@@ -127,8 +127,7 @@ def transform(raw):
         floodRisk=[pick(r, 'run_at province_code province risk_level rain_24h_max_mm rain_24h_station forecast_total_mm forecast_max_day_mm forecast_peak_date forecast_source rain_next_24h_mm wl_level5 wl_level4 wl_stations wl_rising_critical max_overbank_m in_active_cap reasons forecast_start forecast_fetched_at forecast_daily_mm cap_headlines tmd_warning_title tmd_warning_text') for r in raw['flood_risk'] if r.get('province')],
         floodCritical=[pick(r, 'province province_code situation_level station_name river_name waterlevel_msl waterlevel_msl_prev diff_wl_bank diff_wl_bank_text discharge observed_at latitude longitude amphoe basin_name') for r in raw['flood_wl_critical'] if r.get('province')],
         floodWaterlogged=[pick(r, ' '.join(WATERLOGGED_TAMBON)) for r in raw['flood_waterlogged'] if r.get('province') and r.get('status')],
-        floodWaterloggedDistrict=[pick(r, ' '.join(WATERLOGGED_DISTRICT)) for r in raw['flood_waterlogged_district'] if r.get('province') and r.get('district')],
-        flood2p2r=[pick(r, ' '.join(WATERLOGGED_2P2R)) for r in raw['flood_2p2r_province'] if r.get('province') and r.get('level_code')])
+        floodWaterloggedAmphoe=[pick(r, ' '.join(WATERLOGGED_AMPHOE)) for r in raw['flood_waterlogged_amphoe'] if r.get('province') and r.get('district_code') and r.get('level_code')])
 
 def read_data(source=None):
     # A failed source must not discard the other live sources. No snapshot fallback.
