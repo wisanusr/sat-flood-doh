@@ -172,6 +172,7 @@ assert.equal(m.validCoordinates({latitude:91,longitude:100}),false);
   const T='น้ำขัง',W='เฝ้าระวัง',N='พบน้ำใหม่',D='ข้อมูลไม่พอ',S='พบน้ำล่าสุด (ไม่มีภาพใหม่)';
   assert.deepEqual(Object.keys(m.WATER_LOG_STATUS),[T,W,N,D,S]);   // exactly the pipeline's 5 labels; no separate "pending" status
   assert(!('น้ำขัง (รอยืนยัน)' in m.WATER_LOG_STATUS));
+  assert.equal(m.waterStatusLabel(S),'เคยพบน้ำ');assert.equal(m.waterStatusLabel(' '+T+' '),T);assert.equal(m.waterStatusLabel('อื่น'),'อื่น');   // shown name; the key stays the pipeline's
   assert(!('flood_waterlogged' in m.SOURCES),'waterlogging tabs must stay out of SOURCES (core retry/footer/refresh loops)');
   const row=(st,sub,area,extra={})=>({province:'ก',district:'ข',district_code:'1001',subdistrict:sub,status:st,latest_area_km2:area,...extra});
   const rows=[row(S,'s1',9),row(D,'s2',null),row(N,'s3',2),row(W,'s4',1),row(T,'s5',50,{confidence:'กลาง'}),row(T,'s6',1,{confidence:'สูง'}),row(T,'s7',3,{confidence:'สูง'}),row(T,'s8',null,{confidence:'สูง'}),row(T,'s10',4,{confidence:'กลาง'}),row(T,'s11',7),row('???','s9',5),{province:'',status:T},{province:'ก',status:''}];
@@ -223,17 +224,62 @@ assert.equal(m.validCoordinates({latitude:91,longitude:100}),false);
   const idx=m.waterProvinceIndex(pv);assert.equal(idx.get('14').level_code,'red');assert.equal(idx.get('30').level_code,'normal');assert.equal(idx.size,5);   // duplicate code: first (highest) wins
   assert.deepEqual(m.waterProvinceUnmatched(pv,['14','22','30','31']).map(r=>r.province),['จ']);   // 32 is not in the map
   assert.deepEqual(m.waterProvinceUnmatched([],['14']),[]);
-  assert.deepEqual(m.WATERLOGGED_SOURCES,{flood_waterlogged:'floodWaterlogged',flood_waterlogged_district:'floodWaterloggedDistrict',flood_2p2r_province:'flood2p2r'});
-  // district list: most waterlogged tambons first; DDPM-only rows (null counts) last, longest DDPM run first
-  assert.deepEqual(m.waterDistricts([{province:'ก',district:'a',waterlogged_tambons:1},{province:'ก',district:'b',waterlogged_tambons:5},{province:'ก',district:'c',waterlogged_tambons:null},{province:'',district:'x'}]).map(r=>r.district),['b','a','c']);
+  assert.deepEqual(m.WATERLOGGED_SOURCES,{flood_waterlogged:'floodWaterlogged',flood_waterlogged_amphoe:'floodWaterloggedAmphoe'});
+  assert(m.WATER_2P2R.red.plan.startsWith('แก้ไขทันที')&&m.WATER_2P2R.green.plan.startsWith('ฟื้นฟู')&&m.WATER_2P2R.normal.plan==='');
+  assert.deepEqual([1404,'1404',' 101 ','',null,'x'].map(m.waterAmpCode),['1404','1404','0101','','','x']);
   const O=m.WATER_BASIS_DDPM_ONLY,S2='ภาพดาวเทียม + ปภ.';
   assert.equal(O,'ปภ. (ไม่มีภาพดาวเทียม)');
-  const mix=[{province:'ก',district:'o1',district_code:'1',ddpm_days:5,basis:O},{province:'ก',district:'s1',district_code:'2',waterlogged_tambons:0,basis:S2},{province:'ข',district:'o2',district_code:'3',ddpm_days:12,basis:O},{province:'ก',district:'s2',district_code:'4',waterlogged_tambons:3,basis:S2},{province:'ก',district:'o3',district_code:'1',ddpm_days:5,basis:O}];
-  assert.deepEqual(m.waterDistricts(mix).map(r=>r.district),['s2','s1','o2','o1','o3']);
-  assert.equal(m.waterDdpmOnlyCount(mix),2);                                   // distinct district codes
-  assert.equal(m.waterDdpmOnlyCount(null),0);assert.equal(m.waterDdpmOnlyCount([{basis:S2}]),0);
+  // district rows: a level and a district code are required; codes are padded; highest level first, then province, longest DDPM run
+  const amp=[{province:'ก',province_code:'14',district_code:1404,district:'a',level_code:'orange',ddpm_days:4,province_level_code:'red',province_reasons:'pr'},
+    {province:'ก',province_code:'14',district_code:'1405',district:'b',level_code:'red',waterlogged_tambons:5,total_tambons:8,ddpm_days:9,province_level_code:'red',province_reasons:'pr'},
+    {province:'ก',province_code:'14',district_code:'1406',district:'c',level_code:'green',absent_days:3,basis:O,province_level_code:'red'},
+    {province:'ข',district_code:'7101',district:'d',level_code:'red',ddpm_days:11,basis:O,province_level_code:'red'},
+    {province:'ข',district_code:'7102',district:'e',level_code:'yellow',ddpm_days:2,basis:O,province_level_code:'red'},
+    {province:'ค',district_code:'',district:'x',level_code:'red'},{province:'ค',district_code:'2201',district:'y',level_code:'purple'},null];
+  assert.deepEqual(m.waterAmphoeRows(amp).map(r=>r.district_code),['1405','7101','1404','7102','1406']);
+  assert.equal(m.waterAmphoeRows(amp).find(r=>r.district_code==='7101').province_code,'71');   // province code from the district code when blank
+  // province rows rebuilt from the district rows: the level / reasons are the pipeline's, the counts are sums
+  const pvA=m.waterProvincesFromAmphoe(amp);
+  assert.deepEqual(pvA.map(r=>[r.province_code,r.level_code,r.red_districts,r.orange_districts,r.yellow_districts,r.green_districts,r.waterlogged_tambons,r.max_ddpm_days]),
+    [['14','red',1,1,0,1,5,9],['71','red',1,0,1,0,null,11]]);
+  assert.equal(pvA[0].total_tambons,8);assert.equal(pvA[1].total_tambons,null);   // all tambons with water; blank stays null
+  assert.equal(pvA[0].reasons,'pr');assert.equal(pvA[0].plan,m.WATER_2P2R.red.plan);assert.equal(pvA[1].reasons,null);
+  assert.deepEqual(m.waterProvincesFromAmphoe([{province:'ก',district_code:'1001',level_code:'red',province_level_code:'bogus'}]),[]);   // unknown province level: dropped, never guessed
+  assert.deepEqual(m.waterProvincesFromAmphoe(null),[]);
+  // district list: highest level first; within a level satellite rows (most waterlogged tambons first), then DDPM-only rows
+  const mix=[{province:'ก',district:'o1',district_code:'1001',level_code:'red',ddpm_days:7,basis:O},{province:'ก',district:'s1',district_code:'1002',level_code:'red',waterlogged_tambons:0,basis:S2},
+    {province:'ข',district:'o2',district_code:'2001',level_code:'red',ddpm_days:12,basis:O},{province:'ก',district:'s2',district_code:'1003',level_code:'red',waterlogged_tambons:3,basis:S2},
+    {province:'ก',district:'o3',district_code:'1004',level_code:'orange',ddpm_days:5,basis:O},{province:'ก',district:'o4',district_code:'1005',level_code:'yellow',ddpm_days:2,basis:O},
+    {province:'ก',district:'g1',district_code:'1006',level_code:'green',basis:O},{province:'',district:'x',district_code:'1007',level_code:'red'}];
+  assert.deepEqual(m.waterDistricts(mix).map(r=>r.district),['s2','s1','o2','o1','o3','o4','g1']);
+  assert.equal(m.waterDdpmOnlyCount(mix),3);                                   // DDPM-only red / orange only: not yellow, not green
+  assert.equal(m.waterDdpmOnlyCount(null),0);assert.equal(m.waterDdpmOnlyCount([{basis:S2,level_code:'red'}]),0);
+  assert.equal(m.waterIsDdpmLogged({basis:O,level_code:'orange'}),true);assert.equal(m.waterIsDdpmLogged({basis:O,level_code:'yellow'}),false);assert.equal(m.waterIsDdpmLogged({basis:S2,level_code:'red'}),false);
   assert.equal(m.waterIsDdpmOnly({basis:' '+O+' '}),true);assert.equal(m.waterIsDdpmOnly({basis:null}),false);assert.equal(m.waterIsDdpmOnly(null),false);
-  assert.equal(m.waterDdpmDistricts(mix,3),2);                                  // DDPM-only rows count as reported >= 3 days
+  assert.equal(m.waterDdpmDistricts(mix,3),3);                                  // districts the DDPM reports on >= 3 days in a row
+  // one filter scope for every section: province, district code, 2P2R level and search text over tambons and districts
+  {
+    const ampS=[{province:'ก',province_code:'14',district_code:'1401',district:'บางบาล',level_code:'red',province_level_code:'red'},{province:'ก',province_code:'14',district_code:'1402',district:'เสนา',level_code:'orange',province_level_code:'red'},
+      {province:'ข',province_code:'71',district_code:'7101',district:'ไทรโยค',level_code:'orange',basis:O,province_level_code:'orange'},{province:'ข',province_code:'71',district_code:'7102',district:'ทองผาภูมิ',level_code:'green',basis:O,province_level_code:'orange'}];
+    const tamS=[{province:'ก',district:'บางบาล',district_code:1401,subdistrict:'ต1',status:T},{province:'ก',district:'เสนา',district_code:'1402',subdistrict:'ต2',status:W},
+      {province:'ก',district:'อื่น',district_code:'1409',subdistrict:'ต3',status:T}];   // 1409 has no district row
+    const sc=(o)=>{const s=m.waterScope(tamS,ampS,o);return [s.tambons.map(r=>r.subdistrict).join(','),s.amps.map(r=>r.district_code).join(','),s.active]};
+    assert.deepEqual(sc({}),['ต1,ต2,ต3','1401,1402,7101,7102',false]);
+    assert.deepEqual(sc({province:'ก'}),['ต1,ต2,ต3','1401,1402',true]);
+    assert.deepEqual(sc({districtCode:1402}),['ต2','1402',true]);                         // numeric code matches the padded one
+    assert.deepEqual(sc({level:'orange'}),['ต2','1402,7101',true]);                       // a tambon takes its district's level; no row = no level
+    assert.deepEqual(sc({level:'orange',province:'ข'}),['','7101',true]);
+    assert.deepEqual(sc({query:'ต1'}),['ต1','1401',true]);                                // a district matches through a matching tambon
+    assert.deepEqual(sc({query:'ไทรโยค'}),['','7101',true]);                              // or through its own name
+    assert.deepEqual(sc({province:'ก',level:'green'}),['','',true]);
+    assert.deepEqual(m.waterScope(null,null,{}),{tambons:[],amps:[],active:false});
+    // health region: only the listed provinces (and the scope counts as filtered)
+    assert.deepEqual(sc({provinces:['ข']}),['','7101,7102',true]);
+    assert.deepEqual(sc({provinces:new Set(['ก']),level:'orange'}),['ต2','1402',true]);
+    // province scale: the level filter reads the province's level, so a province's districts and tambons stay together
+    assert.deepEqual(sc({level:'red',levelBy:'province'}),['ต1,ต2,ต3','1401,1402',true]);
+    assert.deepEqual(sc({level:'orange',levelBy:'province'}),['','7101,7102',true]);
+  }
 }
 
 // Missing or unusable BMA comparisons must never inflate the steady count.

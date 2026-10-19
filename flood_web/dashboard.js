@@ -22,6 +22,7 @@ if(!DATA.sourceStatus)throw new Error(DATA.error||'รูปแบบข้อ�
     window.BKK_DISTRICTS_GEOJSON=districtResponse.ok?await districtResponse.json():null;
   } catch(e) { window.BKK_DISTRICTS_GEOJSON=null; }
   try{const res=await fetch('/regions.geojson');window.HEALTH_REGIONS_GEOJSON=res.ok?await res.json():null}catch(e){window.HEALTH_REGIONS_GEOJSON=null}
+  try{const res=await fetch('/amphoe.geojson');window.AMPHOE_GEOJSON=res.ok?await res.json():null}catch(e){window.AMPHOE_GEOJSON=null}
 
 const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),fmt=v=>typeof v==='number'&&Number.isFinite(v)?v.toLocaleString('th-TH'):'ไม่มีข้อมูล',sum=DashboardModel.sum,uniq=a=>[...new Set(a)],date=v=>!v||String(v).startsWith('undefined')?'ไม่มีวันรายงาน':new Date(v).toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'numeric',timeZone:'Asia/Bangkok'}),time=v=>v?new Date(Number.isFinite(DashboardModel.timestamp(v))?DashboardModel.timestamp(v):v).toLocaleString('th-TH',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Bangkok'}):'ไม่ทราบเวลาข้อมูล';
 const districts='คลองสาน คลองสามวา คลองเตย คันนายาว จตุจักร จอมทอง ดอนเมือง ดินแดง ดุสิต ตลิ่งชัน ทวีวัฒนา ทุ่งครุ ธนบุรี บางกอกน้อย บางกอกใหญ่ บางกะปิ บางขุนเทียน บางคอแหลม บางซื่อ บางนา บางบอน บางพลัด บางรัก บางเขน บางแค บึงกุ่ม ปทุมวัน ประเวศ ป้อมปราบศัตรูพ่าย พญาไท พระนคร พระโขนง ภาษีเจริญ มีนบุรี ยานนาวา ราชเทวี ราษฎร์บูรณะ ลาดกระบัง ลาดพร้าว วังทองหลาง วัฒนา สวนหลวง สะพานสูง สัมพันธวงศ์ สาทร สายไหม หนองจอก หนองแขม หลักสี่ ห้วยขวาง'.split(' ');
@@ -781,7 +782,7 @@ function fitShelters(pts){if(!shelterMap)return;shelterMap._dashboardBounds=pts.
 function syncMapKey(){const el=nationalLegend?.getContainer();if(!el)return;const target=matchMedia('(max-width:767px)').matches?$('mobileMapKey'):$('map').querySelector('.leaflet-bottom.leaflet-left');if(target&&el.parentElement!==target)target.append(el)}
 const tablePages=new Map(),tableFilters=new Map(),originalTableRows=new WeakMap();
 function paginateTables(){
- for(const id of ['areaTable','stationTable','vulTable','allSheltersBody','shelterSideBody','sideBody','waterTable','waterDistrictTable']){
+ for(const id of ['areaTable','stationTable','vulTable','allSheltersBody','shelterSideBody','sideBody','waterTable','waterDistrictTable','waterSideList']){
   const host=$(id),table=host?.querySelector('table');
   const remove=kind=>host?.parentElement.querySelector(':scope > [data-'+kind+'="'+id+'"]')?.remove();
   if(!table){remove('pager');remove('table-filters');tablePages.delete(id);continue}
@@ -823,7 +824,7 @@ function paginateTables(){
   matches.forEach(({r})=>table.tBodies[0].append(r));
   let result=toolbar.querySelector('.table-result');if(!result){result=document.createElement('div');result.className='table-result';result.setAttribute('aria-live','polite');toolbar.append(result)}result.textContent=`พบ ${matches.length} จาก ${rows.length} รายการ`;
   const pageKey=signature+'|'+JSON.stringify(filter);let entry=tablePages.get(id);if(!entry||entry.signature!==pageKey){entry={signature:pageKey,page:0};tablePages.set(id,entry)}entry.rowIndices=matches.map(x=>x.i);
-  const pageSize=state.tab==='bkk'&&(id==='sideBody'||id==='shelterSideBody')?7:id==='sideBody'?(state.tab==='ops'?12:10):20;const pages=Math.max(1,Math.ceil(matches.length/pageSize));entry.page=Math.min(entry.page,pages-1);rows.forEach(r=>r.hidden=true);matches.slice(entry.page*pageSize,entry.page*pageSize+pageSize).forEach(({r})=>r.hidden=false);
+  const pageSize=id==='waterSideList'?13:state.tab==='bkk'&&(id==='sideBody'||id==='shelterSideBody')?7:id==='sideBody'?(state.tab==='ops'?12:10):20;const pages=Math.max(1,Math.ceil(matches.length/pageSize));entry.page=Math.min(entry.page,pages-1);rows.forEach(r=>r.hidden=true);matches.slice(entry.page*pageSize,entry.page*pageSize+pageSize).forEach(({r})=>r.hidden=false);
   remove('pager');const nav=document.createElement('div');nav.className='pagination';nav.dataset.pager=id;nav.setAttribute('aria-live','polite');
   const count=document.createElement('span');count.textContent=matches.length?`พบ ${matches.length} จาก ${rows.length} รายการ · หน้า ${entry.page+1}/${pages}`:'ไม่พบข้อมูลตามตัวกรอง';
   for(const [label,step] of [['ก่อนหน้า',-1],['ถัดไป',1]]){if(pages<=1)break;const button=document.createElement('button');button.className='lightbtn';button.textContent=label;button.disabled=step<0?entry.page===0:entry.page===pages-1;button.onclick=()=>{entry.page+=step;paginateTables()};nav.append(button)}

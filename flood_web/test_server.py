@@ -53,7 +53,7 @@ class FloodTabTests(unittest.TestCase):
         self.assertEqual(server.normalize('forecast_fetched_at','2026-10-07 15:03'),'2026-10-07T15:03:00+07:00')
 
     def test_flood_tabs_are_optional_and_transformed(self):
-        self.assertEqual(server.OPTIONAL,{'flood_risk','flood_wl_critical','flood_waterlogged','flood_waterlogged_district','flood_2p2r_province'})
+        self.assertEqual(server.OPTIONAL,{'flood_risk','flood_wl_critical','flood_waterlogged','flood_waterlogged_amphoe'})
         self.assertTrue(server.OPTIONAL<=set(server.SHEETS))
         raw={name:[] for name in server.SHEETS}
         raw['flood_risk']=[{'province':'ระนอง','risk_level':'สูง','forecast_daily_mm':'1.9|19.3||69.6','tmd_warning_title':'t'},{'province':'','risk_level':'สูง'}]
@@ -85,10 +85,12 @@ class WaterloggedTabTests(unittest.TestCase):
 
     def test_contract_columns(self):
         self.assertEqual(len(server.REQUIRED['flood_waterlogged']), 21)
-        self.assertEqual(len(server.REQUIRED['flood_waterlogged_district']), 16)
-        self.assertEqual(server.REQUIRED['flood_waterlogged_district'][-1], 'basis')
+        self.assertEqual(len(server.REQUIRED['flood_waterlogged_amphoe']), 22)
+        self.assertEqual(server.REQUIRED['flood_waterlogged_amphoe'][-2:], ['province_level_code', 'province_reasons'])
         self.assertEqual(server.SHEETS['flood_waterlogged'], None)   # read by tab name: no gid was given
-        self.assertTrue({'flood_waterlogged', 'flood_waterlogged_district'} <= server.OPTIONAL)
+        self.assertIsNone(server.SHEETS['flood_waterlogged_amphoe'])
+        self.assertTrue({'flood_waterlogged', 'flood_waterlogged_amphoe'} <= server.OPTIONAL)
+        self.assertFalse({'flood_waterlogged_district', 'flood_2p2r_province'} & set(server.SHEETS))   # replaced by the amphoe tab
 
     def test_typed_rows_blank_is_null_not_zero(self):
         text = self.csv('flood_waterlogged', [dict(run_at='2026-10-09 07:30', status='น้ำขัง', province='ชัยนาท', district='เมืองชัยนาท', subdistrict='บ้านกล้วย',
@@ -102,15 +104,28 @@ class WaterloggedTabTests(unittest.TestCase):
         self.assertEqual(row['ddpm_report_date'], '2026-10-09T00:00:00+07:00')
         raw = {name: [] for name in server.SHEETS}
         raw['flood_waterlogged'] = [row, dict(status='น้ำขัง', province=''), dict(status='', province='ก')]
-        raw['flood_waterlogged_district'] = [dict(province='ก', district='ข', waterlogged_tambons=2, confirmed_tambons=None, basis='ภาพดาวเทียม + ปภ.'), dict(province='ก', district='ค', ddpm_days=12, basis='ปภ. (ไม่มีภาพดาวเทียม)'), dict(province='ก', district='')]
         out = server.transform(raw)
         self.assertEqual(len(out['floodWaterlogged']), 1)
         self.assertEqual(list(out['floodWaterlogged'][0]), server.REQUIRED['flood_waterlogged'])
-        self.assertEqual(len(out['floodWaterloggedDistrict']), 2)
-        self.assertEqual(list(out['floodWaterloggedDistrict'][0]), server.REQUIRED['flood_waterlogged_district'])
-        self.assertIsNone(out['floodWaterloggedDistrict'][0]['confirmed_tambons'])
-        ddpm_only = out['floodWaterloggedDistrict'][1]
-        self.assertEqual(ddpm_only['basis'], 'ปภ. (ไม่มีภาพดาวเทียม)'); self.assertIsNone(ddpm_only['waterlogged_tambons']); self.assertIsNone(ddpm_only['latest_area_km2'])
+
+    def test_amphoe_tab(self):
+        text = self.csv('flood_waterlogged_amphoe', [
+            dict(run_at='2026-10-19 09:30', province_code='14', province='พระนครศรีอยุธยา', district_code='1404', district='บางไทร', level_code='red', basis='ภาพดาวเทียม + ปภ.',
+                 reasons='r', waterlogged_tambons='12', confirmed_tambons='', total_tambons='19', latest_area_km2='135.75', in_ddpm='ใช่', ddpm_days='19', province_level_code='red', province_reasons='pr'),
+            dict(run_at='2026-10-19 09:30', province_code='71', province='กาญจนบุรี', district_code='7101', district='เมืองกาญจนบุรี', level_code='green', basis='ปภ. (ไม่มีภาพดาวเทียม)',
+                 absent_days='3', province_level_code='green'),
+            dict(province='ก', district_code='', level_code='red'), dict(province='ก', district_code='1001', level_code='')])
+        rows = server.parse_sheet('flood_waterlogged_amphoe', text)
+        raw = {name: [] for name in server.SHEETS}
+        raw['flood_waterlogged_amphoe'] = rows
+        out = server.transform(raw)['floodWaterloggedAmphoe']
+        self.assertEqual([r['district_code'] for r in out], ['1404', '7101'])   # rows without a code or a level are dropped
+        self.assertEqual(list(out[0]), server.REQUIRED['flood_waterlogged_amphoe'])
+        self.assertEqual((out[0]['waterlogged_tambons'], out[0]['latest_area_km2'], out[0]['ddpm_days']), (12, 135.75, 19))
+        self.assertIsNone(out[0]['confirmed_tambons'])   # blank is null, never 0
+        self.assertEqual(out[0]['run_at'], '2026-10-19T09:30:00+07:00')
+        self.assertEqual(out[1]['absent_days'], 3); self.assertIsNone(out[1]['waterlogged_tambons']); self.assertIsNone(out[1]['ddpm_days'])
+        with self.assertRaises(ValueError): server.parse_sheet('flood_waterlogged_amphoe', 'a,b' + chr(10) + '1,2')
 
     def test_wrong_header_and_bad_date_are_errors(self):
         with self.assertRaises(ValueError): server.parse_sheet('flood_waterlogged', 'a,b' + chr(10) + '1,2')
@@ -132,23 +147,6 @@ class WaterloggedTabTests(unittest.TestCase):
         self.assertEqual(rows, [])
         self.assertIn('/gviz/tq?', seen[0]); self.assertIn('sheet=flood_waterlogged', seen[0]); self.assertNotIn('gid=', seen[0])
 
-    def test_2p2r_province_tab(self):
-        self.assertEqual(len(server.REQUIRED['flood_2p2r_province']), 14)
-        self.assertIsNone(server.SHEETS['flood_2p2r_province'])
-        text = self.csv('flood_2p2r_province', [dict(run_at='2026-10-12 16:00', province_code='14', province='พระนครศรีอยุธยา', level_code='red', level='แดง', phase='Response', plan='p',
-            red_districts='13', orange_districts='2', yellow_districts='1', green_districts='0', waterlogged_tambons='117', max_ddpm_days='12', reasons='r'),
-            dict(province_code='22', province='จันทบุรี', level_code='green', level='เขียว', green_districts='2', max_ddpm_days=''),
-            dict(province_code='30', province='นครราชสีมา', level_code='normal', level='ปกติ'), dict(province='', level_code='red'), dict(province='ก', level_code='')])
-        rows = server.parse_sheet('flood_2p2r_province', text)
-        raw = {name: [] for name in server.SHEETS}
-        raw['flood_2p2r_province'] = rows
-        out = server.transform(raw)['flood2p2r']
-        self.assertEqual([r['level_code'] for r in out], ['red', 'green', 'normal'])
-        self.assertEqual((out[0]['province_code'], out[0]['red_districts'], out[0]['max_ddpm_days']), ('14', 13, 12))
-        self.assertIsNone(out[1]['max_ddpm_days']); self.assertIsNone(out[2]['red_districts'])   # blank is null, never 0
-        self.assertEqual(list(out[0]), server.REQUIRED['flood_2p2r_province'])
-        with self.assertRaises(ValueError): server.parse_sheet('flood_2p2r_province', 'a,b' + chr(10) + '1,2')
-
     def test_failure_is_isolated(self):
         def fetch(item):
             if item[0] == 'flood_waterlogged': raise RuntimeError('simulated')
@@ -156,7 +154,7 @@ class WaterloggedTabTests(unittest.TestCase):
         with patch.object(server, 'fetch_sheet', side_effect=fetch), patch('traceback.print_exc'):
             result = server.read_data()
         self.assertEqual(result['sourceStatus']['flood_waterlogged']['status'], 'error')
-        self.assertEqual(result['sourceStatus']['flood_waterlogged_district']['status'], 'ok')
+        self.assertEqual(result['sourceStatus']['flood_waterlogged_amphoe']['status'], 'ok')
         self.assertEqual(result['sourceStatus']['Disaster_DB']['status'], 'ok')
         self.assertEqual(result['floodWaterlogged'], [])
 

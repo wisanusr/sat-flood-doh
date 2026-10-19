@@ -71,4 +71,9 @@ out = ROOT / 'docs'
 out.mkdir(exist_ok=True)
 (out / 'index.html').write_text(html, encoding='utf-8')
 (out / '.nojekyll').write_text('', encoding='utf-8')
+# Tambon outlines for the "น้ำขัง" map: one file per province, fetched by the page only when needed (build_tambon.py).
+tambon = out / 'tambon'
+tambon.mkdir(exist_ok=True)
+for f in (ROOT / 'flood_web' / 'tambon').glob('*.json'):
+    (tambon / f.name).write_bytes(f.read_bytes())
 print('Built', out / 'index.html', round(len(html) / 1e6, 2), 'MB')

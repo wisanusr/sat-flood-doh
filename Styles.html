@@ -254,6 +254,14 @@ body,button,input,select,textarea,table,.leaflet-container,.leaflet-tooltip,.lea
 .ic-trend{border:1px solid #94a3b8;background:linear-gradient(90deg,#082f6b 0 33.3%,#3b82f6 33.3% 66.6%,#93c5fd 66.6%)}
 .ic-hh{height:13px;background:linear-gradient(#dc2626,#dc2626) 0 0/100% 3px no-repeat,linear-gradient(#f97316,#f97316) 0 5px/100% 3px no-repeat,linear-gradient(#22c55e,#22c55e) 0 10px/100% 3px no-repeat}
 .ic-regions{height:0;border-top:1.5px solid #111;margin:6px 0}
+.ic-region-thick{height:0;border-top:3px solid #111827;margin:5px 0}
+.ic-province{height:0;border-top:1.5px solid #64748b;margin:6px 0}
+.ic-amphoe{height:0;border-top:1px solid #475569;margin:6px 0}
+.ic-tambon{height:0;border-top:1px dashed #64748b;margin:6px 0}
+.ic-label{position:relative;height:16px}.ic-label::after{content:"กข";position:absolute;inset:0;display:grid;place-items:center;font:700 11px/1 var(--dashboard-font,inherit);color:#0f172a}
+.water-prov-name{background:none;border:0;pointer-events:none}
+.water-prov-name span{display:inline-block;transform:translate(-50%,-50%);font:600 11px/1.2 var(--dashboard-font,inherit);color:#0f172a;white-space:nowrap;text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 3px #fff,0 0 4px #fff}
+.ic-p2r{border:1px solid #94a3b8;background:linear-gradient(90deg,#E24B4A 0 25%,#EF9F27 25% 50%,#F2D43D 50% 75%,#4CAF50 75%)}
 .ic-pins{width:12px;height:12px;margin:1px 6px;border-radius:50%;background:#2563eb;border:2px solid #fff;box-shadow:0 0 0 1px #64748b}
 .chip-text{font-size:13px;line-height:1.3}
 .chip-check{width:16px;text-align:center;color:var(--teal);font-weight:700;opacity:0}
@@ -415,17 +423,17 @@ details.risk-all[open]>summary::before{content:"▾"}
 /* Operations summary table: the filter button sits at the top right of the panel, level with the title */
 .panel:has(#sideBody.ops-summary){position:relative}
 .panel:has(#sideBody.ops-summary) [data-table-filters="sideBody"] [data-filter-toggle]{position:absolute;top:16px;right:20px;z-index:2}
-/* Operations tab: layer menu as one compact box of check boxes (colours of the icons match the map) */
-#layerPop.ops-layers:not([hidden]){display:flex;flex-direction:column;gap:0;padding:6px 4px;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 4px 16px #0002;min-width:230px}
-#layerPop.ops-layers .layer-chip{display:flex;width:100%;min-height:32px;padding:3px 10px;border:0;border-radius:6px;background:none;gap:8px;font-weight:400;color:var(--ink)}
-#layerPop.ops-layers .layer-chip:hover{background:#f1f6f7}
-#layerPop.ops-layers .layer-chip:has(input:checked),#layerPop.ops-layers .layer-chip[aria-pressed="true"]{background:none;font-weight:400}
-#layerPop.ops-layers .layer-chip .chip-check{display:none}
-#layerPop.ops-layers .layer-chip input{position:static;opacity:1;flex:none;width:16px;height:16px;min-width:0;margin:0;padding:0;accent-color:var(--teal);pointer-events:auto}
-#layerPop.ops-layers .chip-button::before{content:"";flex:none;width:16px;height:16px;box-sizing:border-box;border:1.5px solid #64748b;border-radius:3px;background:#fff}
-#layerPop.ops-layers .chip-button[aria-pressed="true"]::before{background:var(--teal) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.5l3 3 6-7' fill='none' stroke='white' stroke-width='2'/%3E%3C/svg%3E") center/12px no-repeat;border-color:var(--teal)}
-#layerPop.ops-layers .chip-button{border:0;text-align:left;font:inherit;min-height:32px}
-#layerPop.ops-layers .chip-icon{opacity:1;filter:none;order:2;margin-left:auto}
+/* Layer menu of every map: one compact box of check boxes (the Operations tab also recolours some icons, below) */
+.layer-pop:not([hidden]){display:flex;flex-direction:column;gap:0;padding:6px 4px;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 4px 16px #0002;min-width:230px}
+.layer-pop .layer-chip{display:flex;width:100%;min-height:32px;padding:3px 10px;border:0;border-radius:6px;background:none;gap:8px;font-weight:400;color:var(--ink)}
+.layer-pop .layer-chip:hover{background:#f1f6f7}
+.layer-pop .layer-chip:has(input:checked),.layer-pop .layer-chip[aria-pressed="true"]{background:none;font-weight:400}
+.layer-pop .layer-chip .chip-check{display:none}
+.layer-pop .layer-chip input{position:static;opacity:1;flex:none;width:16px;height:16px;min-width:0;margin:0;padding:0;accent-color:var(--teal);pointer-events:auto}
+.layer-pop .chip-button::before{content:"";flex:none;width:16px;height:16px;box-sizing:border-box;border:1.5px solid #64748b;border-radius:3px;background:#fff}
+.layer-pop .chip-button[aria-pressed="true"]::before{background:var(--teal) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.5l3 3 6-7' fill='none' stroke='white' stroke-width='2'/%3E%3C/svg%3E") center/12px no-repeat;border-color:var(--teal)}
+.layer-pop .chip-button{border:0;text-align:left;font:inherit;min-height:32px}
+.layer-pop .chip-icon{opacity:1;filter:none;order:2;margin-left:auto}
 /* icons follow the map colours on this tab */
 #layerPop.ops-layers .ic-trend{background:linear-gradient(90deg,#dc2626 0 33.3%,#facc15 33.3% 66.6%,#22c55e 66.6%)}
 #layerPop.ops-layers .ic-hh{background:linear-gradient(#93c5fd,#93c5fd) 0 0/100% 3px no-repeat,linear-gradient(#3b82f6,#3b82f6) 0 5px/100% 3px no-repeat,linear-gradient(#082f6b,#082f6b) 0 10px/100% 3px no-repeat}
@@ -477,14 +485,50 @@ details.risk-all[open]>summary::before{content:"▾"}
 .water-badge.water-conf{font-size:11px;padding:1px 7px;margin-left:4px;white-space:nowrap}
 .water-conf-image{background:#e6f4f3;border-color:#9fd3cf;color:#075a56}
 .water-conf-ddpm{background:#fff3e6;border:1px dashed #d98a3b;color:#7a4a05}
-.dot.dot-dashed{outline:1px dashed #7f1d1d;outline-offset:1px}
+.dot.dot-dashed{outline:1px dashed #042C53;outline-offset:1px}
 .water-prov-legend{gap:6px 16px;padding-bottom:4px}
 .water-prov-key{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
+.water-level-key{background:none;border:1px solid transparent;border-radius:6px;padding:2px 8px;margin:0;font:inherit;color:inherit;cursor:pointer}
+.water-level-key:hover{background:#f1f6f7}
+.water-level-key[aria-pressed="true"]{border-color:var(--teal);background:#e6f4f3;font-weight:600}
+.water-level-key:focus-visible{outline:3px solid #7cc4c0;outline-offset:2px}
 .swatch{display:inline-block;width:14px;height:14px;border-radius:3px;border:1px solid #94a3b8;flex:0 0 auto}
 .swatch-none{background:#f1f5f9}
 .water-prov-note{margin:0 20px 12px;font-size:12px}
 .water-prov-none{margin:0 20px 12px}
 .water-plan{margin:0 0 10px;font-size:14px}
+#waterCards.water-stage-cards{grid-template-columns:repeat(4,minmax(0,1fr))}
+.water-stage-card{cursor:pointer;box-shadow:inset 0 4px 0 var(--stage)}
+.water-stage-card:hover{background:#f8fafb}
+.water-stage-card[aria-pressed="true"]{outline:2px solid var(--teal);outline-offset:-2px;background:#f1f8f7}
+.water-stage-card:focus-visible{outline:3px solid #7cc4c0;outline-offset:2px}
+.water-stage-card .eyebrow{display:flex;align-items:center;gap:8px}
+@media(max-width:720px){#waterCards.water-stage-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.water-tip-status{display:inline-flex;align-items:center;gap:6px;font-weight:600}
+.water-tip-none{font-weight:400;color:#627880}
+/* The 2P2R side list scrolls inside its own box so the header can stay on top (the panel body around it must not scroll) */
+/* The 2P2R side list pages like the other tables (13 rows per page), so its panel body must not scroll or clip */
+#waterDetail>.panel-body.water-side-body{max-height:none;overflow:visible}
+.water-stage-name{display:inline-flex;align-items:center;gap:8px}
+#waterSideList td{white-space:nowrap!important}   /* beats .unified-table td{white-space:normal!important} */
+#waterDetail{position:relative}
+#waterDetail [data-table-filters="waterSideList"] [data-filter-toggle]{position:absolute;top:16px;right:20px;z-index:2}
+#waterDetail:has(#waterSideList) .panel-head{padding-right:110px}
+/* Tambon and district tables follow the 2P2R list: title inside the panel, table filter button top-right, names on one line */
+#waterPane .water-table-panel{position:relative}
+#waterPane .water-table-panel>.panel-head{padding-top:16px;padding-right:130px;align-items:flex-start;gap:12px}   /* top padding = the filter button's top, so both buttons line up */
+#waterPane .table-result{display:none}   /* the pager under the table already gives the count */
+#waterPane .water-table-panel [data-filter-toggle]{position:absolute;top:16px;right:20px;z-index:2}
+/* Filter bar: one row of equal fields (wraps to 3 then 2 columns), buttons grouped at the end */
+#waterFilters{display:grid;grid-template-columns:repeat(6,minmax(0,1fr)) auto;gap:12px 16px;align-items:end}
+#waterFilters .field{min-width:0}
+#waterFilters .field select,#waterFilters .field input{width:100%;min-width:0;box-sizing:border-box}
+#waterFilters .water-filter-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+#waterFilters .water-filter-actions .filter-note:empty{display:none}
+@media(max-width:1279px){#waterFilters{grid-template-columns:repeat(3,minmax(0,1fr))}#waterFilters .water-filter-actions{grid-column:1/-1;justify-content:flex-end}}
+@media(max-width:720px){#waterFilters{grid-template-columns:repeat(2,minmax(0,1fr))}}
+#waterTable td:nth-child(-n+3),#waterDistrictTable td:nth-child(-n+2){white-space:nowrap!important}
+
 .water-level-note{margin:0 0 10px}
 /* Waterlogging tab layout follows the national tab: heading + date, data-age bar, .filters bar, .cards, .grid (map | detail), situation box, section titles. */
 #waterPane .grid{margin:18px 0}
@@ -494,7 +538,8 @@ details.risk-all[open]>summary::before{content:"▾"}
 #waterPane .situation{margin:18px 0}
 .water-map{height:520px}
 @media(max-width:767px){.water-map{height:380px}}
-@media(min-width:1024px){#waterPane .grid.water-grid{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr)}}
+/* two equal columns, so the map / side panel edges line up with the 4 stage cards above */
+@media(min-width:1024px){#waterPane .grid.water-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .water-status-cards{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
 .water-status-card{background:#f8fafc;border:1px solid var(--line);color:var(--ink);text-align:left;cursor:pointer;font:inherit;font-weight:700}
 .water-status-card .tc-label{white-space:normal;font-size:13px}
@@ -523,7 +568,7 @@ details.risk-all[open]>summary::before{content:"▾"}
  .doh-trend-label{overflow-wrap:anywhere}
  .doh-trend-num{font-size:28px}
  .field select,.field input,.table-tools input,.table-tools select,.local-table-filters input,.local-table-filters select{min-height:44px;font-size:16px}
- .province-chip,.heat-name,#layerPop.ops-layers .layer-chip,#layerPop.ops-layers .chip-button{min-height:44px}
+ .province-chip,.heat-name,.layer-pop .layer-chip,.layer-pop .chip-button{min-height:44px}
  #workspace:not(.national-layout) #map,#workspace #map.map,#workspace #shelterMap,
  #workspace.ops-layout .grid>.panel:first-child #map.map,#workspace .doh-map,#workspace .risk-map{height:clamp(300px,50svh,440px)!important;min-height:300px!important;flex:none!important}
  #workspace .map-expanded #map.map,#workspace .map-expanded #shelterMap,

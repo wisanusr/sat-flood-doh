@@ -25,24 +25,21 @@ def fixture(scenario, retry=None):
                 in_ddpm='ใช่' if i%3 else 'ไม่ใช่',ddpm_days=(i%9)+1 if i%3 else None,ddpm_report_date='2026-10-09T00:00:00+07:00',
                 latitude=None if i==7 else la+((i*7)%40)/100-0.2,longitude=None if i==7 else lo+((i*13)%40)/100-0.2,reasons='พบน้ำต่อเนื่อง %d วัน; อยู่ในอำเภอที่ ปภ. รายงาน'%(i%7)))
         result['floodWaterlogged']=rows
-        result['floodWaterloggedDistrict']=[dict(run_at=STAMP,province=pn,district_code=pc+'0'+str(j),district='อำเภอ'+str(j),waterlogged_tambons=j,confirmed_tambons=j-1,watch_tambons=1,new_tambons=1,nodata_tambons=0,stale_tambons=3,total_tambons=10,latest_area_km2=2.5*j,max_run_days=j+0.5,in_ddpm='ใช่',ddpm_days=j+2) for pn,pc,_,_ in provs for j in (1,2,3)]
-        # Province with no satellite water: DDPM-only districts, count / area columns blank (null)
-        result['floodWaterloggedDistrict']+=[dict(run_at=STAMP,province='กาญจนบุรี',district_code='710'+str(j),district='อำเภอปภ'+str(j),waterlogged_tambons=None,confirmed_tambons=None,watch_tambons=None,new_tambons=None,nodata_tambons=None,stale_tambons=None,total_tambons=None,latest_area_km2=None,max_run_days=None,in_ddpm='ใช่',ddpm_days=12-j,basis='ปภ. (ไม่มีภาพดาวเทียม)') for j in (1,2)]
-        for r in result['floodWaterloggedDistrict']: r.setdefault('basis','ภาพดาวเทียม + ปภ.')
-    if scenario not in ('empty','wlempty','prempty'):
-        # 2P2R province colours: all 5 levels, one province code that is not in the map (99) and blank max_ddpm_days
-        def pr(code,name,lv,label,phase,plan,r,o,y,g,wl,dd,why):
-            return dict(run_at=STAMP,province_code=code,province=name,level_code=lv,level=label,phase=phase,plan=plan,red_districts=r,orange_districts=o,yellow_districts=y,green_districts=g,waterlogged_tambons=wl,max_ddpm_days=dd,reasons=why)
-        result['flood2p2r']=[
-            pr('14','พระนครศรีอยุธยา','red','แดง','Response','แก้ไขทันที: จัดการน้ำเสีย ขยะ ส้วม น้ำสะอาด และคุ้มครองประชาชน',13,2,1,0,117,12,'น้ำขังต่อเนื่อง: 13 อำเภอที่ ปภ. รายงาน ≥ 7 วัน'),
-            pr('60','นครสวรรค์','orange','ส้ม','Preparedness → Response','ตรวจเชิงรุก: ลงสำรวจคุณภาพน้ำ ส้วม ขยะ น้ำใช้ และกลุ่มเปราะบาง',0,3,1,0,54,5,'น้ำขังที่ ปภ. รายงานต่อเนื่อง 3–6 วัน'),
-            pr('18','ชัยนาท','yellow','เหลือง','Preparedness','เตรียมทีม อุปกรณ์ คลอรีน PPE ทะเบียนกลุ่มเปราะบาง และติดตามสถานการณ์',0,0,2,0,0,None,'มีรายงาน/พบน้ำ แต่ยังไม่เข้าเงื่อนไขน้ำขัง'),
-            pr('22','จันทบุรี','green','เขียว','Recovery','ฟื้นฟู: Big Cleaning ล้าง–ฆ่าเชื้อ ฟื้นระบบน้ำและสุขาภิบาล ตรวจความปลอดภัย และติดตามกลุ่มเปราะบาง',0,0,0,2,0,None,'น้ำน่าจะลด: 2 อำเภอเคยอยู่ใน ปภ. ต่อเนื่อง ≥ 3 วัน แล้วไม่อยู่ในรายงาน ≥ 2 วัน (ประมาณจาก ปภ. ไม่ใช่การยืนยัน)'),
-            pr('30','นครราชสีมา','normal','ปกติ','','ไม่พบสถานการณ์',0,0,0,0,0,None,'ไม่พบสถานการณ์'),
-            pr('99','จังหวัดไม่มีในแผนที่','red','แดง','Response','แก้ไขทันที',1,0,0,0,0,9,'ทดสอบรหัสจังหวัดที่ไม่ตรงกับ GeoJSON'),
-        ]
-    failures=list(server.SHEETS) if scenario=='allfailed' else ['BKK_water_DB'] if scenario=='partial' else ['flood_waterlogged','flood_waterlogged_district'] if scenario=='wlerror' else ['flood_2p2r_province'] if scenario=='prerror' else []
-    keys={'Disaster_DB':'disasters','Vulnerable_group':'vulnerable','thai_water_DB':'stations','BKK_water_DB':'bkkStations','shelter_DB':'shelters','flood_risk':'floodRisk','flood_wl_critical':'floodCritical','flood_waterlogged':'floodWaterlogged','flood_waterlogged_district':'floodWaterloggedDistrict','flood_2p2r_province':'flood2p2r'}
+        # District rows (flood_waterlogged_amphoe): real district codes so the map fills them. Satellite-based districts in the
+        # 4 test provinces; a province with no satellite water (Kanchanaburi) whose districts come from the DDPM alone (count /
+        # area blank); 2 green districts; a district code that is not in the map (9901).
+        def amp(pc,pn,code,name,lv,plv,dd=None,tamb=True,j=1,absent=None,why=''):
+            sat=dict(waterlogged_tambons=j,confirmed_tambons=j-1,watch_tambons=1,new_tambons=1,nodata_tambons=0,stale_tambons=3,total_tambons=10,latest_area_km2=2.5*j,max_run_days=j+0.5) if tamb else {k:None for k in 'waterlogged_tambons confirmed_tambons watch_tambons new_tambons nodata_tambons stale_tambons total_tambons latest_area_km2 max_run_days'.split()}
+            return dict(run_at=STAMP,province_code=pc,province=pn,district_code=code,district=name,level_code=lv,basis='ภาพดาวเทียม + ปภ.' if tamb else 'ปภ. (ไม่มีภาพดาวเทียม)',
+                reasons=why or 'ทดสอบระดับ '+lv,**sat,in_ddpm='ใช่' if dd else 'ไม่ใช่',ddpm_days=dd,absent_days=absent,province_level_code=plv,province_reasons='ทดสอบเหตุผลจังหวัด '+pn)
+        levels={'14':('red',9),'60':('orange',5),'18':('yellow',2),'24':('yellow',None)}
+        rows_amp=[amp(pc,pn,pc+'0'+str(j),'อำเภอ'+str(j),levels[pc][0],levels[pc][0],levels[pc][1] and levels[pc][1]+j,j=j) for pn,pc,_,_ in provs for j in (1,2,3)]
+        rows_amp+=[amp('71','กาญจนบุรี','7101','อำเภอปภ1','red','red',11,False),amp('71','กาญจนบุรี','7102','อำเภอปภ2','orange','red',5,False),amp('71','กาญจนบุรี','7103','อำเภอปภ3','yellow','red',2,False)]
+        rows_amp+=[amp('22','จันทบุรี','220'+str(j),'อำเภอฟื้น'+str(j),'green','green',None,False,absent=j+1,why='เคยอยู่ใน ปภ. ต่อเนื่อง 5 วัน แล้วไม่อยู่ในรายงาน %d วัน (ประมาณว่าน้ำลด ไม่ใช่การยืนยัน)'%(j+1)) for j in (1,2)]
+        rows_amp+=[amp('99','จังหวัดไม่มีในแผนที่','9901','อำเภอไม่มีในแผนที่','red','red',9,False)]
+        result['floodWaterloggedAmphoe']=[] if scenario=='prempty' else rows_amp
+    failures=list(server.SHEETS) if scenario=='allfailed' else ['BKK_water_DB'] if scenario=='partial' else ['flood_waterlogged','flood_waterlogged_amphoe'] if scenario=='wlerror' else ['flood_waterlogged_amphoe'] if scenario=='prerror' else []
+    keys={'Disaster_DB':'disasters','Vulnerable_group':'vulnerable','thai_water_DB':'stations','BKK_water_DB':'bkkStations','shelter_DB':'shelters','flood_risk':'floodRisk','flood_wl_critical':'floodCritical','flood_waterlogged':'floodWaterlogged','flood_waterlogged_amphoe':'floodWaterloggedAmphoe'}
     for name in failures:
         if name==retry: continue
         result[keys[name]]=[]

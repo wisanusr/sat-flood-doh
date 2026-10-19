@@ -26,8 +26,7 @@
 | flood_risk (optional) | ความเสี่ยงรายจังหวัด จาก pipeline เตรียมรับน้ำท่วม | floodRisk |
 | flood_wl_critical (optional) | สถานีน้ำระดับ 4-5 พร้อมพิกัด | floodCritical |
 | flood_waterlogged (optional) | น้ำขังรายตำบล จาก pipeline น้ำขัง | floodWaterlogged |
-| flood_2p2r_province (optional) | สีจังหวัดตามกรอบ 2P2R (14 คอลัมน์ 1 แถว/จังหวัด) | flood2p2r |
-| flood_waterlogged_district (optional) | สรุปน้ำขังรายอำเภอ (16 คอลัมน์ รวม basis) | floodWaterloggedDistrict |
+| flood_waterlogged_amphoe (optional) | สรุปน้ำขังรายอำเภอพร้อมระดับ 2P2R ของอำเภอและจังหวัด (22 คอลัมน์ แทน flood_waterlogged_district และ flood_2p2r_province) | floodWaterloggedAmphoe |
 
 schema.json และ Config.gs ระบุหัวคอลัมน์ที่จำเป็น คอลัมน์ตัวเลข และคอลัมน์วันที่ตาม backend ปัจจุบัน หัวตารางอยู่แถวแรก ไม่รวมเซลล์ในตารางข้อมูล แถวว่างถูกข้าม ค่าว่างเป็น null ไม่แปลงเป็นศูนย์ ตัวเลขรับคอมมาได้ วันที่รับ Date ของ Sheets, ISO และวัน/เดือน/ปี พ.ศ. หรือ ค.ศ. โดยส่งกลับเป็นข้อความเวลาไทยเพื่อใช้กับ google.script.run
 
@@ -36,7 +35,7 @@ schema.json และ Config.gs ระบุหัวคอลัมน์ที
 ขอบเขตจังหวัด เขต กทม. และเขตสุขภาพรวมอยู่ใน HTML ไม่ต้องมีเซิร์ฟเวอร์ไฟล์ JSON ส่วน Leaflet/Chart.js/Heatmap ยังโหลดผ่าน HTTPS จึงต้องใช้อินเทอร์เน็ต
 
 ## ตรวจรับหลัง Deploy
-- sourceStatus ของ 5 ชีตหลักเป็น ok (ชีต flood_risk, flood_wl_critical, flood_waterlogged, flood_waterlogged_district และ flood_2p2r_province เป็น ok เมื่อ pipeline เขียนแล้ว); เทียบจำนวนแถวกับชีตต้นทาง
+- sourceStatus ของ 5 ชีตหลักเป็น ok (ชีต flood_risk, flood_wl_critical, flood_waterlogged และ flood_waterlogged_amphoe เป็น ok เมื่อ pipeline เขียนแล้ว); เทียบจำนวนแถวกับชีตต้นทาง
 - เลือกวันรายงานล่าสุดและย้อนหลังได้; ตัวเลข ปภ. ตรงกับวันและจังหวัดที่เลือก
 - รายละเอียดสถานีแสดงเฉพาะวันล่าสุด; ตรวจเวลาไทยไม่คลาด 7 ชั่วโมง
 - แท็บ กทม. แสดง 50 เขต หมุดศูนย์สีตามสถานะ ไม่มีการรวมกลุ่ม
