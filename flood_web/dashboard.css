@@ -256,6 +256,7 @@ body,button,input,select,textarea,table,.leaflet-container,.leaflet-tooltip,.lea
 .ic-region-thick{height:0;border-top:3px solid #111827;margin:5px 0}
 .ic-province{height:0;border-top:1.5px solid #64748b;margin:6px 0}
 .ic-amphoe{height:0;border-top:1px solid #475569;margin:6px 0}
+.ic-tambon{height:0;border-top:1px dashed #64748b;margin:6px 0}
 .ic-label{position:relative;height:16px}.ic-label::after{content:"กข";position:absolute;inset:0;display:grid;place-items:center;font:700 11px/1 var(--dashboard-font,inherit);color:#0f172a}
 .water-prov-name{background:none;border:0;pointer-events:none}
 .water-prov-name span{display:inline-block;transform:translate(-50%,-50%);font:600 11px/1.2 var(--dashboard-font,inherit);color:#0f172a;white-space:nowrap;text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 3px #fff,0 0 4px #fff}
@@ -483,7 +484,7 @@ details.risk-all[open]>summary::before{content:"▾"}
 .water-badge.water-conf{font-size:11px;padding:1px 7px;margin-left:4px;white-space:nowrap}
 .water-conf-image{background:#e6f4f3;border-color:#9fd3cf;color:#075a56}
 .water-conf-ddpm{background:#fff3e6;border:1px dashed #d98a3b;color:#7a4a05}
-.dot.dot-dashed{outline:1px dashed #7f1d1d;outline-offset:1px}
+.dot.dot-dashed{outline:1px dashed #042C53;outline-offset:1px}
 .water-prov-legend{gap:6px 16px;padding-bottom:4px}
 .water-prov-key{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
 .water-level-key{background:none;border:1px solid transparent;border-radius:6px;padding:2px 8px;margin:0;font:inherit;color:inherit;cursor:pointer}
@@ -495,7 +496,38 @@ details.risk-all[open]>summary::before{content:"▾"}
 .water-prov-note{margin:0 20px 12px;font-size:12px}
 .water-prov-none{margin:0 20px 12px}
 .water-plan{margin:0 0 10px;font-size:14px}
-.water-reason-cell{min-width:220px;max-width:360px;white-space:normal;font-size:13px}
+#waterCards.water-stage-cards{grid-template-columns:repeat(4,minmax(0,1fr))}
+.water-stage-card{cursor:pointer;box-shadow:inset 0 4px 0 var(--stage)}
+.water-stage-card:hover{background:#f8fafb}
+.water-stage-card[aria-pressed="true"]{outline:2px solid var(--teal);outline-offset:-2px;background:#f1f8f7}
+.water-stage-card:focus-visible{outline:3px solid #7cc4c0;outline-offset:2px}
+.water-stage-card .eyebrow{display:flex;align-items:center;gap:8px}
+@media(max-width:720px){#waterCards.water-stage-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.water-tip-status{display:inline-flex;align-items:center;gap:6px;font-weight:600}
+.water-tip-none{font-weight:400;color:#627880}
+/* The 2P2R side list scrolls inside its own box so the header can stay on top (the panel body around it must not scroll) */
+/* The 2P2R side list pages like the other tables (13 rows per page), so its panel body must not scroll or clip */
+#waterDetail>.panel-body.water-side-body{max-height:none;overflow:visible}
+.water-stage-name{display:inline-flex;align-items:center;gap:8px}
+#waterSideList td{white-space:nowrap!important}   /* beats .unified-table td{white-space:normal!important} */
+#waterDetail{position:relative}
+#waterDetail [data-table-filters="waterSideList"] [data-filter-toggle]{position:absolute;top:16px;right:20px;z-index:2}
+#waterDetail:has(#waterSideList) .panel-head{padding-right:110px}
+/* Tambon and district tables follow the 2P2R list: title inside the panel, table filter button top-right, names on one line */
+#waterPane .water-table-panel{position:relative}
+#waterPane .water-table-panel>.panel-head{padding-top:16px;padding-right:130px;align-items:flex-start;gap:12px}   /* top padding = the filter button's top, so both buttons line up */
+#waterPane .table-result{display:none}   /* the pager under the table already gives the count */
+#waterPane .water-table-panel [data-filter-toggle]{position:absolute;top:16px;right:20px;z-index:2}
+/* Filter bar: one row of equal fields (wraps to 3 then 2 columns), buttons grouped at the end */
+#waterFilters{display:grid;grid-template-columns:repeat(6,minmax(0,1fr)) auto;gap:12px 16px;align-items:end}
+#waterFilters .field{min-width:0}
+#waterFilters .field select,#waterFilters .field input{width:100%;min-width:0;box-sizing:border-box}
+#waterFilters .water-filter-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+#waterFilters .water-filter-actions .filter-note:empty{display:none}
+@media(max-width:1279px){#waterFilters{grid-template-columns:repeat(3,minmax(0,1fr))}#waterFilters .water-filter-actions{grid-column:1/-1;justify-content:flex-end}}
+@media(max-width:720px){#waterFilters{grid-template-columns:repeat(2,minmax(0,1fr))}}
+#waterTable td:nth-child(-n+3),#waterDistrictTable td:nth-child(-n+2){white-space:nowrap!important}
+
 .water-level-note{margin:0 0 10px}
 /* Waterlogging tab layout follows the national tab: heading + date, data-age bar, .filters bar, .cards, .grid (map | detail), situation box, section titles. */
 #waterPane .grid{margin:18px 0}
@@ -505,7 +537,8 @@ details.risk-all[open]>summary::before{content:"▾"}
 #waterPane .situation{margin:18px 0}
 .water-map{height:520px}
 @media(max-width:767px){.water-map{height:380px}}
-@media(min-width:1024px){#waterPane .grid.water-grid{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr)}}
+/* two equal columns, so the map / side panel edges line up with the 4 stage cards above */
+@media(min-width:1024px){#waterPane .grid.water-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .water-status-cards{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
 .water-status-card{background:#f8fafc;border:1px solid var(--line);color:var(--ink);text-align:left;cursor:pointer;font:inherit;font-weight:700}
 .water-status-card .tc-label{white-space:normal;font-size:13px}

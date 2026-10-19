@@ -274,12 +274,15 @@
   // Display order of the tambon list, and the colour/group of each of the 5 labels. There is no separate "pending" status:
   // 'น้ำขัง' is one label for every tambon and the evidence level is the `confidence` column (see WATER_CONFIDENCE).
   const WATER_LOG_STATUS={
-    'น้ำขัง':{rank:0,group:'logged',color:'#D85A30',short:'น้ำขัง'},
-    'เฝ้าระวัง':{rank:1,group:'watch',color:'#1D9E75',short:'เฝ้าระวัง'},
-    'พบน้ำใหม่':{rank:2,group:'new',color:'#378ADD',short:'พบน้ำใหม่'},
-    'ข้อมูลไม่พอ':{rank:3,group:'watch',color:'#888780',short:'ข้อมูลไม่พอ'},
-    'พบน้ำล่าสุด (ไม่มีภาพใหม่)':{rank:4,group:'stale',color:'#EF9F27',short:'พบน้ำล่าสุด'},
+    // Cool "water" colours so the points never match the warm 2P2R fill under them (red / orange / yellow / green).
+    'น้ำขัง':{rank:0,group:'logged',color:'#0C447C',short:'น้ำขัง'},
+    'เฝ้าระวัง':{rank:1,group:'watch',color:'#7F77DD',short:'เฝ้าระวัง'},
+    'พบน้ำใหม่':{rank:2,group:'new',color:'#85B7EB',short:'พบน้ำใหม่'},
+    'ข้อมูลไม่พอ':{rank:3,group:'watch',color:'#B4B2A9',short:'ข้อมูลไม่พอ'},
+    'พบน้ำล่าสุด (ไม่มีภาพใหม่)':{rank:4,group:'stale',color:'#5F5E5A',hollow:true,short:'เคยพบน้ำ',label:'เคยพบน้ำ'},
   };
+  // Name shown on the page; the key stays the pipeline's own label (it is what the sheet holds and what the filters match).
+  const waterStatusLabel=s=>{const k=String(s??'').trim();return WATER_LOG_STATUS[k]?.label||k};
   // Evidence level of a 'น้ำขัง' tambon: สูง = satellite water over several days + DDPM; กลาง = latest image + DDPM report >= 3 days.
   const WATER_CONFIDENCE={'สูง':{key:'image',rank:0,label:'ยืนยันด้วยภาพ'},'กลาง':{key:'ddpm',rank:1,label:'ตาม ปภ.'}};
   const waterConfidence=r=>WATER_CONFIDENCE[String(r&&r.confidence!=null?r.confidence:'').trim()]||null;
@@ -343,11 +346,12 @@
       if(!p){
         const lv=WATER_2P2R[String(r.province_level_code??'').trim()]?String(r.province_level_code).trim():null;
         p={run_at:r.run_at,province_code:r.province_code,province:r.province,level_code:lv,level:lv?WATER_2P2R[lv].label:null,phase:lv?WATER_2P2R[lv].phase:null,plan:lv?WATER_2P2R[lv].plan:null,
-          red_districts:0,orange_districts:0,yellow_districts:0,green_districts:0,waterlogged_tambons:null,max_ddpm_days:null,reasons:r.province_reasons??null};
+          red_districts:0,orange_districts:0,yellow_districts:0,green_districts:0,waterlogged_tambons:null,total_tambons:null,max_ddpm_days:null,reasons:r.province_reasons??null};
         by.set(r.province_code,p);
       }
       p[String(r.level_code).trim()+'_districts']++;
       if(finite(r.waterlogged_tambons))p.waterlogged_tambons=(p.waterlogged_tambons||0)+r.waterlogged_tambons;
+      if(finite(r.total_tambons))p.total_tambons=(p.total_tambons||0)+r.total_tambons;   // all tambons with water (any status)
       if(finite(r.ddpm_days))p.max_ddpm_days=Math.max(p.max_ddpm_days??0,r.ddpm_days);
     }
     return [...by.values()].filter(p=>p.level_code);
@@ -388,18 +392,25 @@
   const waterHasPoint=r=>!!r&&finite(r.latitude)&&finite(r.longitude)&&Math.abs(r.latitude)<=90&&Math.abs(r.longitude)<=180&&!(r.latitude===0&&r.longitude===0);
   // One filter scope for the whole waterlogging tab, so the cards, map, legend, province list, tables and summary agree:
   // tambon rows and district rows (flood_waterlogged_amphoe) that match the province, district code, 2P2R level and search
-  // text. A tambon has the level of its district's row (no row = no level, so it drops out under a level filter). A district
-  // matches the search through its own / its province's name or through a matching tambon.
-  function waterScope(tambons,amps,{province,districtCode,level,query}={}){
+  // text. levelBy decides which level the level filter reads: 'district' (default) = the district's own level_code, and a
+  // tambon takes its district's level (no row = no level, so it drops out); 'province' = the province's level
+  // (province_level_code), so a whole province and all its districts / tambons stay together. A district matches the search
+  // through its own / its province's name or through a matching tambon. provinces (array / Set of names, e.g. the provinces
+  // of a health region) limits everything to those provinces.
+  function waterScope(tambons,amps,{province,districtCode,level,query,levelBy,provinces}={}){
+    const inSet=provinces?new Set(provinces):null,okProv=p=>(!province||p===province)&&(!inSet||inSet.has(p));
     const code=districtCode?waterAmpCode(districtCode):'',lv=String(level??'').trim(),q=String(query??'').trim().toLowerCase();
     const has=(r,keys)=>keys.some(k=>String(r[k]??'').toLowerCase().includes(q));
-    const all=waterAmphoeRows(amps),lvOf=new Map(all.map(r=>[r.district_code,String(r.level_code).trim()]));
-    const t=(tambons||[]).filter(r=>r&&(!province||r.province===province)&&(!code||waterAmpCode(r.district_code)===code)
-      &&(!lv||lvOf.get(waterAmpCode(r.district_code))===lv)&&(!q||has(r,['subdistrict','district','province'])));
+    const all=waterAmphoeRows(amps),byProv=levelBy==='province';
+    const lvOf=new Map(all.map(r=>[r.district_code,String(r.level_code).trim()]));
+    const provLv=new Map(all.map(r=>[r.province,String(r.province_level_code??'').trim()]));
+    const inLevel=(code,prov)=>!lv||(byProv?provLv.get(prov)===lv:lvOf.get(code)===lv);
+    const t=(tambons||[]).filter(r=>r&&okProv(r.province)&&(!code||waterAmpCode(r.district_code)===code)
+      &&inLevel(waterAmpCode(r.district_code),r.province)&&(!q||has(r,['subdistrict','district','province'])));
     const tCodes=new Set(t.map(r=>waterAmpCode(r.district_code)));
-    const a=all.filter(r=>(!province||r.province===province)&&(!code||r.district_code===code)&&(!lv||lvOf.get(r.district_code)===lv)
+    const a=all.filter(r=>okProv(r.province)&&(!code||r.district_code===code)&&inLevel(r.district_code,r.province)
       &&(!q||has(r,['district','province'])||tCodes.has(r.district_code)));
-    return {tambons:t,amps:a,active:!!(province||code||lv||q)};
+    return {tambons:t,amps:a,active:!!(province||code||lv||q||inSet)};
   }
   // Filter by status label set, province, district code and a free-text search on tambon / district / province.
   function waterFilter(rows,{statuses,province,districtCode,query}={}){
@@ -437,6 +448,6 @@
   }
   const waterDdpmOnlyCount=rows=>new Set((rows||[]).filter(r=>waterIsDdpmLogged(r)).map(r=>r.district_code||(r.province+'|'+r.district))).size;
   const reasonList=s=>String(s??'').split(';').map(x=>x.trim()).filter(Boolean);
-  const model={bkkTrendDistricts,bkkDistrictTrend,bkkTrend,WATER_2P2R,water2p2rLevel,waterProvCode,waterAmpCode,waterAmphoeRows,waterProvincesFromAmphoe,waterIsDdpmLogged,waterScope,waterProvinceRows,waterProvinceSummary,waterProvinceIndex,waterProvinceUnmatched,WATER_CONFIDENCE,waterConfidence,waterIsLogged,waterIsDashed,WATER_BASIS_DDPM_ONLY,waterIsDdpmOnly,waterDdpmOnlyCount,WATERLOGGED_SOURCES,WATER_LOG_STATUS,waterStatusRank,waterRows,waterSummary,waterDdpmDistricts,waterHasPoint,waterFilter,waterFreshness,waterDistricts,latestPerKey,disasterTime,latestTime,parseSeries,RAIN_CLASSES,rainClass,seriesDates,exposure,reasonList,RISK_SOURCES,RISK_LEVELS,riskRank,parseBool,riskRows,riskSummary,waterTrend,overbankM,riskFreshness,dataAge,vulnerableTotals,trendKind,provinceLevel,situationGroups,regionNumber,timelineDaily,termWindows,lifecycle,trendLevel,newsRising,newsTopRegions,newsTopByCount,sourceInitial,growthValue,newsArticles,newsProvinces,newsUrgencyCounts,newsWords,ageLabel,safeUrl,URGENCY,NEWS_CATEGORIES,HEALTH_NEED_CATEGORIES,healthNeedMapData,healthNeedColor,latestStationDay,SOURCES,WATER_STATUS,canonicalWaterStatus,timestamp,sum,quality,householdBorderColor,validCoordinates,districtSummary};
+  const model={bkkTrendDistricts,bkkDistrictTrend,bkkTrend,WATER_2P2R,water2p2rLevel,waterProvCode,waterAmpCode,waterAmphoeRows,waterProvincesFromAmphoe,waterIsDdpmLogged,waterScope,waterStatusLabel,waterProvinceRows,waterProvinceSummary,waterProvinceIndex,waterProvinceUnmatched,WATER_CONFIDENCE,waterConfidence,waterIsLogged,waterIsDashed,WATER_BASIS_DDPM_ONLY,waterIsDdpmOnly,waterDdpmOnlyCount,WATERLOGGED_SOURCES,WATER_LOG_STATUS,waterStatusRank,waterRows,waterSummary,waterDdpmDistricts,waterHasPoint,waterFilter,waterFreshness,waterDistricts,latestPerKey,disasterTime,latestTime,parseSeries,RAIN_CLASSES,rainClass,seriesDates,exposure,reasonList,RISK_SOURCES,RISK_LEVELS,riskRank,parseBool,riskRows,riskSummary,waterTrend,overbankM,riskFreshness,dataAge,vulnerableTotals,trendKind,provinceLevel,situationGroups,regionNumber,timelineDaily,termWindows,lifecycle,trendLevel,newsRising,newsTopRegions,newsTopByCount,sourceInitial,growthValue,newsArticles,newsProvinces,newsUrgencyCounts,newsWords,ageLabel,safeUrl,URGENCY,NEWS_CATEGORIES,HEALTH_NEED_CATEGORIES,healthNeedMapData,healthNeedColor,latestStationDay,SOURCES,WATER_STATUS,canonicalWaterStatus,timestamp,sum,quality,householdBorderColor,validCoordinates,districtSummary};
   if(typeof module!=='undefined')module.exports=model;else root.DashboardModel=model;
 })(typeof window!=='undefined'?window:globalThis);

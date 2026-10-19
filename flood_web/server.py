@@ -191,6 +191,9 @@ class Handler(SimpleHTTPRequestHandler):
             # template.html is the single source of the page (build.py reads it too); no separate index.html copy.
             if route in ('/', '/index.html'): self.path = '/template.html'
             super().do_GET()
+        elif re.fullmatch(r'/tambon/\d{2}\.json', route):
+            # Tambon outlines, one file per province, fetched by the "น้ำขัง" map on demand (build_tambon.py).
+            super().do_GET()
         elif route in DOCS_FILES:
             # Pages-only data written by CI scripts into docs/ (run the news/ and doh_shelter/ scripts to refresh).
             f = DOCS_DIR / DOCS_FILES[route]
