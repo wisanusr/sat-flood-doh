@@ -26,26 +26,29 @@ if hasattr(sys.stdout, 'reconfigure'):  # Windows console encoding
 DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parent.parent / "docs" / "news_data"
 TZ_BKK = timezone(timedelta(hours=7))
 
-KEYWORDS = ["น้ำท่วม", "หลังน้ำท่วม", "ระดับน้ำ", "ฝนตกหนัก", "อุทกภัย"]
-# pytrends compares at most 5 terms and each related_queries call is rate limited, so ask for the first two.
-QUERY_KEYWORDS = KEYWORDS[:2]
+KEYWORDS = [
+    "น้ำท่วม", "หลังน้ำท่วม", "ระดับน้ำ", "ฝนตกหนัก", "อุทกภัย",
+    "น้ำขัง", "น้ำเน่า", "ถุงยังชีพ", "เงินเยียวยา", "ศูนย์พักพิง"
+]
+# pytrends compares at most 5 terms in related_queries
+QUERY_KEYWORDS = ["น้ำท่วม", "หลังน้ำท่วม", "น้ำเน่า", "น้ำขัง", "ระดับน้ำ"]
 
 # What people are searching for, grouped by intent. A query lands in the first group that matches.
 CATEGORIES = [
-    ("financial", "เงินเยียวยา/ลงทะเบียน", ["เยียวยา", "ลงทะเบียน", "เงิน", "ทางรัฐ", "จ่าย", "ยื่น", "เช็ค"]),
-    ("surveillance", "ติดตามสถานการณ์", ["ระดับน้ำ", "เรดาร์", "ฝน", "เขื่อน", "คลอง", "วัด", "ปิง", "นครสวรรค์"]),
-    ("relief_traffic", "ช่วยเหลือ/ทรัพย์สิน", ["ทะเบียน", "ป้าย", "กั้นน้ำ", "กล้อง", "ถุงยังชีพ", "อพยพ", "ตามหา", "หลังน้ำท่วม", "ฟื้นฟู", "ซ่อม"]),
-    ("howto_relief", "วิธีการ/ติดต่อ", ["วิธี", "ขั้นตอน", "เบอร์", "ติดต่อ", "เอกสาร", "ขอรับ", "ศูนย์พักพิง", "แจ้ง", "สิทธิ", "สายด่วน", "หลังน้ำลด"]),
+    ("financial", "เงินเยียวยา/ลงทะเบียน", ["เยียวยา", "ลงทะเบียน", "เงิน", "ทางรัฐ", "จ่าย", "ยื่น", "เช็ค", "ชดเชย", "ช่วยเหลือน้ำท่วม"]),
+    ("surveillance", "ติดตามสถานการณ์", ["ระดับน้ำ", "เรดาร์", "ฝน", "เขื่อน", "คลอง", "วัด", "ปิง", "นครสวรรค์", "น้ำขัง", "น้ำท่วมขัง", "น้ำหลาก", "ล้นตลิ่ง"]),
+    ("relief_traffic", "ช่วยเหลือ/ทรัพย์สิน", ["ทะเบียน", "ป้าย", "กั้นน้ำ", "กล้อง", "ถุงยังชีพ", "อพยพ", "ตามหา", "หลังน้ำท่วม", "ฟื้นฟู", "ซ่อม", "น้ำเน่า", "น้ำเน่าเสีย", "ตัดไฟ", "เรือ"]),
+    ("howto_relief", "วิธีการ/ติดต่อ", ["วิธี", "ขั้นตอน", "เบอร์", "ติดต่อ", "เอกสาร", "ขอรับ", "ศูนย์พักพิง", "แจ้ง", "สิทธิ", "สายด่วน", "หลังน้ำลด", "น้ำกัดเท้า", "โรคฉี่หนู"]),
 ]
 
 # One representative search term per intent, fetched together so Google scales them against each other (0-100).
-TIMELINE_TERMS = ["ระดับน้ำ", "เรดาร์ฝน", "ศูนย์พักพิง", "เงินเยียวยา", "ลงทะเบียนเยียวยา"]
+TIMELINE_TERMS = ["ระดับน้ำ", "น้ำขัง", "ศูนย์พักพิง", "น้ำเน่า", "เงินเยียวยา"]
 # Which terms and which query groups describe each stage of a flood. The page averages the terms' recent interest
 # per stage and lists the rising queries of the stage's groups; no number here is made up.
 PHASES = [
-    {"key": "watch", "label": "ระยะ 1: เฝ้าระวัง & เตรียมรับมือ", "terms": ["ระดับน้ำ", "เรดาร์ฝน"], "categories": ["surveillance"]},
-    {"key": "crisis", "label": "ระยะ 2: วิกฤต & ช่วยเหลือเร่งด่วน", "terms": ["ศูนย์พักพิง"], "categories": ["relief_traffic", "howto_relief"]},
-    {"key": "recovery", "label": "ระยะ 3: ฟื้นฟู & ยื่นเยียวยา", "terms": ["เงินเยียวยา", "ลงทะเบียนเยียวยา"], "categories": ["financial"]},
+    {"key": "watch", "label": "ระยะ 1: เฝ้าระวัง & เตรียมรับมือ", "terms": ["ระดับน้ำ", "น้ำขัง"], "categories": ["surveillance"]},
+    {"key": "crisis", "label": "ระยะ 2: วิกฤต & ช่วยเหลือเร่งด่วน", "terms": ["ศูนย์พักพิง", "น้ำเน่า"], "categories": ["relief_traffic", "howto_relief"]},
+    {"key": "recovery", "label": "ระยะ 3: ฟื้นฟู & ยื่นเยียวยา", "terms": ["เงินเยียวยา"], "categories": ["financial"]},
 ]
 TOP_REGION_QUERIES = 5     # provinces for which the top related query is looked up (one Google call each)
 CALL_PAUSE_SECONDS = 2.0   # pause between Google calls; pytrends is unofficial and easily rate limited
@@ -109,6 +112,7 @@ def fetch_trends(trend_request=None, sleep=time.sleep, pause=CALL_PAUSE_SECONDS)
         "rising_queries": [],
         "top_queries": [],
         "interest_by_region": [],
+        "health_need_by_province": {},
         "region_top_query": {},
         "timeline": None,
         "phases": PHASES,
@@ -159,6 +163,19 @@ def fetch_trends(trend_request=None, sleep=time.sleep, pause=CALL_PAUSE_SECONDS)
             for name, row in region_df.sort_values(by=column, ascending=False).head(15).iterrows():
                 if int(row[column]) > 0:
                     doc["interest_by_region"].append({"region": str(name), "score": int(row[column])})
+            # Also capture provincial breakdown for health & need dimensions across all provinces
+            hn = {}
+            for name, row in region_df.iterrows():
+                p_name = str(name).strip()
+                water_terms = [k for k in ["น้ำขัง", "น้ำเน่า"] if k in region_df.columns]
+                water_sc = max([int(row[k]) for k in water_terms] or [0])
+                all_sc = int(row[column]) if column in region_df.columns else 0
+                hn[p_name] = {
+                    "flood_general": all_sc,
+                    "stagnant_water": water_sc,
+                    "recovery": int(row["หลังน้ำท่วม"]) if "หลังน้ำท่วม" in region_df.columns else 0
+                }
+            doc["health_need_by_province"] = hn
 
     def timeline():
         trend_request.build_payload(kw_list=TIMELINE_TERMS, timeframe=doc["timeframe"], geo="TH")

@@ -9,10 +9,10 @@
   const $=id=>document.getElementById(id);
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const fmt=n=>Number.isFinite(n)?n.toLocaleString('th-TH'):'-';
-  const state={lang:'th',category:'',limit:60,urgency:'',province:'',query:'',pageSize:10,phase:''};
+  const state={lang:'th',category:'',limit:60,urgency:'',province:'',query:'',pageSize:10,phase:'',healthNeedCat:'stagnant_water',healthNeedProv:''};
   const CATEGORY_TABS=[['','ทั้งหมด'],['monitoring','เฝ้าระวัง & สถานการณ์น้ำ'],['relief','การช่วยเหลือ & ศูนย์พักพิง'],['post_flood','ฟื้นฟูหลังน้ำท่วม'],['location','พื้นที่ & จังหวัด']];
   const URGENCY_TABS=[['','ทั้งหมด'],['critical','เร่งด่วน'],['warning','เฝ้าระวัง'],['recovery','ฟื้นฟู']];
-  let news=null,trends=null,loaded=false,loading=null,chart=null,trendChart=null,fetchedAt=null,refreshing=false;
+  let news=null,trends=null,loaded=false,loading=null,chart=null,trendChart=null,healthMap=null,healthRo=null,healthLayers=new Map(),fetchedAt=null,refreshing=false;
 
   async function getJson(name){
     const r=await fetch('news_data/'+name,{cache:'no-store'});
@@ -88,7 +88,22 @@
     const cls=a.urgency==='critical'?'bad':a.urgency==='recovery'?'good':'warn';
     const href=M.safeUrl(a.url);
     const title=href?'<a href="'+esc(href)+'" target="_blank" rel="noopener noreferrer">'+esc(a.title)+'</a>':esc(a.title);
-    return '<li class="news-card"><span class="src-mark" aria-hidden="true">'+esc(M.sourceInitial(a.source))+'</span><div class="news-card-body"><div class="news-badges"><span class="badge '+cls+'">'+esc(u.label)+'</span><span class="badge">'+esc(a.province)+'</span></div><div class="news-title">'+title+'</div><div class="news-meta"><span>'+esc(a.source)+'</span><span>'+esc(stamp(a.published_at))+'</span><span>'+esc(M.ageLabel(a.age_hours))+'</span></div></div></li>';
+    return '<li class="news-card">'
+      +'<span class="src-mark" aria-hidden="true" title="'+esc(a.source)+'">📰</span>'
+      +'<div class="news-card-body">'
+      +'<div class="news-badges">'
+      +'<span class="badge '+cls+'">'+esc(u.label)+'</span>'
+      +'<span class="badge news-prov-badge">📍 '+esc(a.province)+'</span>'
+      +'<span class="badge news-src-badge">📰 '+esc(a.source)+'</span>'
+      +'</div>'
+      +'<div class="news-title">'+title+'</div>'
+      +'<div class="news-meta">'
+      +'<span>สำนักข่าว: <b>'+esc(a.source)+'</b></span>'
+      +'<span>🕒 '+esc(stamp(a.published_at))+'</span>'
+      +'<span class="muted">('+esc(M.ageLabel(a.age_hours))+')</span>'
+      +'</div>'
+      +'</div>'
+      +'</li>';
   }
 
   function trendsHeader(){
@@ -142,6 +157,86 @@
       +'<div class="panel-body"><div class="phase-title"><b>'+esc(ph.label)+'</b>'+(ph.index==null?'<span class="badge">ไม่มีข้อมูล</span>':'<span class="badge '+lvlCls(ph.level)+'">ดัชนี '+fmt(ph.index)+'/100 · '+esc(ph.level)+'</span>')+'</div>'
       +'<div class="news-words"><div><h3>ดัชนีของแต่ละคำ</h3>'+bars+'</div><div><h3>คำค้นหาเด่นช่วงนี้</h3>'+qtable+'</div></div>'+formula+'</div></section>';
   }
+  function healthNeedHtml(){
+    const cats=Object.values(M.HEALTH_NEED_CATEGORIES);
+    const currCat=M.HEALTH_NEED_CATEGORIES[state.healthNeedCat]||cats[0];
+    const mapInfo=M.healthNeedMapData(trends,currCat.key);
+    const sortedProvs=Object.entries(mapInfo.data).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
+    const selProv=state.healthNeedProv||(sortedProvs[0]?[sortedProvs[0][0]]:'');
+    const selScore=mapInfo.data[selProv]||0;
+    
+    // News articles mentioning selected province
+    const provArts=(news?.articles||[]).filter(a=>a.province===selProv);
+    const stagnantArts=provArts.filter(a=>/(น้ำขัง|น้ำเน่า|ขยะ|กลิ่น)/.test(a.title));
+    
+    const catTabs=cats.map(c=>'<button type="button" class="health-cat-tab" data-hn-cat="'+esc(c.key)+'" aria-pressed="'+String(c.key===currCat.key)+'"><span class="tab-dot" style="background:'+c.baseColor+'"></span>'+esc(c.label)+'</button>').join('');
+    
+    const legendSwatches=currCat.colorScale.map(c=>'<span style="background:'+c+'"></span>').join('');
+    
+    return '<section class="health-heatmap-panel">'
+      +'<div class="health-panel-head">'
+      +'<div class="health-title-group">'
+      +'<div class="health-title-icon" aria-hidden="true">🗺️</div>'
+      +'<div><h2>แผนที่ความต้องการสุขอนามัยและสุขภาพรายจังหวัด</h2>'
+      +'<p class="sub">Early Warning Health & Sanitation Needs — ประมวลผลดัชนีความสนใจ Google Trends รายจังหวัด</p></div>'
+      +'</div>'
+      +'</div>'
+      +'<div class="health-cat-nav" role="tablist" aria-label="หมวดความต้องการสุขอนามัย">'+catTabs+'</div>'
+      +'<div class="health-banner-desc">'
+      +'<span class="ic">ℹ️</span>'
+      +'<div><b>'+esc(currCat.label)+'</b>: '+esc(currCat.desc)+' <span class="muted">(คะแนน 0–'+fmt(mapInfo.max)+')</span></div>'
+      +'</div>'
+      +'<div class="health-layout-grid">'
+      // Left: Map Card
+      +'<div class="health-map-card">'
+      +'<div id="healthTrendMap" role="img" aria-label="แผนที่ความต้องการสุขอนามัยรายจังหวัด"></div>'
+      +'<div class="health-map-foot-legend">'
+      +'<div class="health-legend-track">'
+      +'<span>ต่ำ</span>'
+      +'<div class="health-color-bars">'+legendSwatches+'</div>'
+      +'<span>สูง</span>'
+      +'</div>'
+      +'<div>ดัชนีสูงสุด: <b>'+fmt(mapInfo.max)+'</b></div>'
+      +'</div>'
+      +'</div>'
+      // Right: Sidebar Card
+      +'<div class="health-sidebar-card">'
+      // Selected Province Card
+      +'<div class="health-active-stat">'
+      +'<div class="health-active-head">'
+      +'<div class="health-active-prov"><span class="prov-pin">📍</span><span>'+esc(selProv||'เลือกจังหวัดบนแผนที่')+'</span></div>'
+      +'<div><span class="health-score-val">'+fmt(selScore)+'</span><span class="health-score-sub">/'+fmt(mapInfo.max)+'</span></div>'
+      +'</div>'
+      +'<div class="health-meter-box">'
+      +'<div class="health-meter-track"><div class="health-meter-fill" style="width:'+Math.max(4,Math.min(100,(selScore/mapInfo.max)*100))+'%;background:'+currCat.baseColor+'"></div></div>'
+      +'</div>'
+      +'<div class="health-news-match">'
+      +'<span class="match-ic">📰</span>'
+      +'<span>ข่าวในพื้นที่: <b>'+fmt(provArts.length)+' ข่าว</b>'+(stagnantArts.length?' (ประเด็นน้ำขัง/น้ำเน่า '+fmt(stagnantArts.length)+' ข่าว)':'')+'</span>'
+      +'</div>'
+      +'</div>'
+      // Ranked Table Card
+      +'<div class="health-table-card">'
+      +'<div class="health-table-head">'
+      +'<h3>อันดับจังหวัดที่พบความต้องการสูงสุด</h3>'
+      +'<span class="table-sub">คลิกเพื่อเลือกดูจังหวัด</span>'
+      +'</div>'
+      +'<table class="health-rank-table"><thead><tr><th style="width:36px">#</th><th>จังหวัด</th><th class="num">ดัชนี Google Trends</th></tr></thead><tbody>'
+      +(sortedProvs.length?sortedProvs.slice(0,8).map(([p,s],i)=>{
+        const isAct=p===selProv;
+        return '<tr class="'+(isAct?'active-row':'')+'" data-hn-prov="'+esc(p)+'">'
+          +'<td class="rank-num">'+(i+1)+'</td>'
+          +'<td><div class="prov-cell"><b>'+esc(p)+'</b></div></td>'
+          +'<td class="num"><span class="rank-badge" style="background:'+(isAct?'#087873':currCat.baseColor)+';color:#fff">'+fmt(s)+'</span></td>'
+          +'</tr>';
+      }).join(''):'<tr><td colspan="3" class="empty" style="padding:18px;text-align:center">ไม่มีข้อมูลคะแนนรายจังหวัดในหมวดนี้</td></tr>')
+      +'</tbody></table>'
+      +'</div>'
+      +'</div>'
+      +'</div>'
+      +'</section>';
+  }
+
   function trendsHtml(){
     const head='<section class="panel trend-panel">'+trendsHeader()+'</section>';
     if(!trends)return head+'<div class="alert news-alert">ยังไม่มีข้อมูล Google Trends (ไฟล์ trends.json ไม่พร้อมใช้งาน)</div>';
@@ -150,7 +245,7 @@
     return head
       +(failed.length?'<div class="alert news-alert">Google Trends ส่งข้อมูลมาไม่ครบในรอบนี้ ส่วนที่ว่าง: '+failed.map(esc).join(', ')+' (Google จำกัดอัตราการเรียก จะลองใหม่รอบถัดไป)</div>':'')
       +'<div class="info-note">ข้อมูลเทรนด์คำค้นหาดึงตรงจาก Google Trends ประเทศไทย (geo=TH) ช่วง '+esc(String(trends.timeframe||'').replace('now 7-d','7 วันล่าสุด'))+' เป็นสัญญาณความสนใจของประชาชน ไม่ใช่ข้อเท็จจริงเรื่องสถานการณ์น้ำ</div>'
-      +timelineHtml()+lifecycleHtml()+'<div class="trend-grid">'+risingHtml()+regionsHtml()+'</div>';
+      +healthNeedHtml()+timelineHtml()+lifecycleHtml()+'<div class="trend-grid">'+risingHtml()+regionsHtml()+'</div>';
   }
 
   function render(){
@@ -188,7 +283,7 @@
       +'<div class="mini-note" style="padding:0 22px 16px">แหล่งข้อมูล: '+(news.sources||[]).map(s=>esc(s.name)+(s.status==='ok'?' ('+s.count+')':' (ผิดพลาด)')).join(' · ')+'</div></section>'
       // trends
       +trendsHtml();
-    bind();drawChart(top15);drawTrendChart();
+    bind();drawChart(top15);drawTrendChart();drawHealthMap();
     if(focusId&&$(focusId)){$(focusId).focus();if(sel&&$(focusId).setSelectionRange)try{$(focusId).setSelectionRange(sel[0],sel[1])}catch(e){}}
   }
   function bind(){
@@ -197,7 +292,54 @@
     pane.querySelectorAll('[data-cat]').forEach(b=>b.addEventListener('click',()=>{state.category=b.dataset.cat;render()}));
     pane.querySelectorAll('[data-urg]').forEach(b=>b.addEventListener('click',()=>{state.urgency=b.dataset.urg;render()}));
     pane.querySelectorAll('[data-phase]').forEach(b=>b.addEventListener('click',()=>{state.phase=b.dataset.phase;render()}));
+    pane.querySelectorAll('[data-hn-cat]').forEach(b=>b.addEventListener('click',()=>{state.healthNeedCat=b.dataset.hnCat;render()}));
+    pane.querySelectorAll('[data-hn-prov]').forEach(tr=>tr.addEventListener('click',()=>{state.healthNeedProv=tr.dataset.hnProv;render()}));
     const r=$('newsRefresh');if(r)r.addEventListener('click',refresh);
+  }
+  function destroyHealthMap(){
+    if(healthRo){healthRo.disconnect();healthRo=null}
+    if(healthMap){healthMap.remove();healthMap=null}
+    healthLayers=new Map();
+  }
+  function drawHealthMap(){
+    destroyHealthMap();
+    const el=$('healthTrendMap');if(!el||!window.L)return;
+    const currCat=M.HEALTH_NEED_CATEGORIES[state.healthNeedCat]||M.HEALTH_NEED_CATEGORIES.stagnant_water;
+    const mapInfo=M.healthNeedMapData(trends,currCat.key);
+    const m=healthMap=L.map(el,{scrollWheelZoom:false,zoomSnap:0.25}).setView([13.8,101.0],6.0);
+    const layer=L.layerGroup().addTo(m),bounds=[];
+    
+    if(window.PROVINCES_GEOJSON){
+      L.geoJSON(window.PROVINCES_GEOJSON,{
+        style:f=>{
+          const name=f.properties.pro_th;
+          const score=mapInfo.data[name]||0;
+          const isSel=name===state.healthNeedProv;
+          return {
+            color:isSel?'#0f172a':'#ffffff',
+            weight:isSel?2.5:0.75,
+            fillColor:M.healthNeedColor(score,mapInfo.max,currCat.colorScale),
+            fillOpacity:score>0?0.88:0.25
+          };
+        },
+        onEachFeature:(f,l)=>{
+          const name=f.properties.pro_th;
+          const score=mapInfo.data[name]||0;
+          l.bindTooltip('<div style="font-family:\'Google Sans\',sans-serif;font-size:12px;line-height:1.4"><b>'+esc(name)+'</b><br><span style="color:#64748b">ดัชนี '+esc(currCat.shortLabel)+':</span> <b style="color:'+currCat.baseColor+'">'+fmt(score)+'/100</b></div>',{sticky:true,className:'health-map-tt'});
+          bounds.push(l.getBounds());
+          healthLayers.set(name,l);
+          l.on('click',()=>{
+            state.healthNeedProv=name;
+            render();
+          });
+        }
+      }).addTo(layer);
+    }
+    
+    const all=bounds.length?bounds.reduce((a,b)=>a.extend(b)):null;
+    const fit=()=>{if(healthMap!==m)return;m.invalidateSize();const s=m.getSize();if(!all||s.x<50||s.y<50)return;m.fitBounds(all,{padding:[15,15],maxZoom:6.75,animate:false})};
+    fit();
+    if(typeof ResizeObserver!=='undefined'){healthRo=new ResizeObserver(fit);healthRo.observe(el)}else{requestAnimationFrame(fit);setTimeout(fit,250)}
   }
   function drawChart(top){
     if(chart){chart.destroy();chart=null}

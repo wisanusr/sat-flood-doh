@@ -35,9 +35,9 @@ DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parent.parent / "docs" / "news_dat
 TZ_BKK = timezone(timedelta(hours=7))
 
 # Keep only items published within this many hours
-HOURS_WINDOW = 30
-MAX_ENTRIES_PER_FEED = 50
-MAX_ARTICLES_OUT = 100
+HOURS_WINDOW = 48
+MAX_ENTRIES_PER_FEED = 60
+MAX_ARTICLES_OUT = 300
 
 # ──────────────────────────────────────────────
 # คำค้นหาที่ใช้ search — ห้ามแสดงใน Word Cloud
@@ -127,7 +127,8 @@ COMPOUND_WORDS_TH = [
     "ปริมาณฝน", "ระดับน้ำ", "ปริมาณน้ำ", "ล้นตลิ่ง", "น้ำหลาก", "ทะเลหนุน",
     "ถนนสายหลัก", "การระบายน้ำ", "แจ้งเตือนภัย", "เฝ้าระวังพิเศษ", "ยกของขึ้นที่สูง",
     "หลังน้ำท่วม", "หลังน้ำลด", "ฟื้นฟูหลังน้ำท่วม", "เยียวยาหลังน้ำท่วม", "โรคหลังน้ำท่วม",
-    "ขยะหลังน้ำท่วม", "ซ่อมแซมบ้าน", "ทำความสะอาดบ้าน",
+    "ขยะหลังน้ำท่วม", "ซ่อมแซมบ้าน", "ทำความสะอาดบ้าน", "น้ำเน่า", "น้ำเน่าเสีย",
+    "น้ำเน่าเหม็น", "น้ำขัง", "น้ำขังรอการระบาย",
 ]
 
 # ──────────────────────────────────────────────
@@ -137,7 +138,7 @@ MONITORING_KEYWORDS = {
     # สภาพน้ำ / ระดับน้ำ / การระบาย
     "ระดับน้ำ", "ปริมาณน้ำ", "ล้นตลิ่ง", "ทะลัก", "น้ำหลาก", "ทะเลหนุน", "ทุ่งรับน้ำ",
     "น้ำเอ่อ", "ระดับ", "ระบายน้ำ", "ผันน้ำ", "แก้มลิง", "ทางน้ำ", "ตลิ่ง", "มวลน้ำ",
-    "น้ำขัง", "ท่วมขัง", "ไหลหลาก", "ระบาย", "เอ่อล้น",
+    "น้ำขัง", "ท่วมขัง", "ไหลหลาก", "ระบาย", "เอ่อล้น", "น้ำเน่า", "น้ำเน่าเสีย", "น้ำเน่าเหม็น", "น้ำขังรอการระบาย",
     # เขื่อน / สถานี / โครงสร้าง
     "เขื่อน", "ประตูระบายน้ำ", "เครื่องสูบน้ำ", "พนังกั้นน้ำ", "คันกั้นน้ำ", "ขุดลอก",
     "สถานีสูบน้ำ", "อ่างเก็บน้ำ", "ท้ายเขื่อน", "เจ้าพระยา", "ป่าสัก", "ป่าสักชลสิทธิ์",
@@ -156,7 +157,7 @@ RELIEF_KEYWORDS = {
 POST_FLOOD_KEYWORDS = {
     "หลังน้ำท่วม", "หลังน้ำลด", "ฟื้นฟู", "ทำความสะอาด", "ซ่อมแซม", "ขยะ",
     "ฟื้นฟูหลังน้ำท่วม", "เยียวยาหลังน้ำท่วม", "โรคหลังน้ำท่วม", "ขยะหลังน้ำท่วม",
-    "ล้างบ้าน", "เชื้อรา", "ซ่อมบ้าน",
+    "ล้างบ้าน", "เชื้อรา", "ซ่อมบ้าน", "น้ำเน่า", "น้ำเน่าเสีย", "น้ำเน่าเหม็น", "น้ำขัง",
 }
 
 LOCATION_KEYWORDS = {
@@ -220,14 +221,33 @@ ENG_STOPWORDS = {
 # RSS FEEDS
 # ──────────────────────────────────────────────
 RSS_FEEDS = [
+    # ค้นหาข่าวสถานการณ์น้ำท่วมทั่วไป & อุทกภัย
     "https://news.google.com/rss/search?q=น้ำท่วม&hl=th&gl=TH&ceid=TH:th",
-    "https://news.google.com/rss/search?q=หลังน้ำท่วม&hl=th&gl=TH&ceid=TH:th",
     "https://news.google.com/rss/search?q=อุทกภัย&hl=th&gl=TH&ceid=TH:th",
+    "https://news.google.com/rss/search?q=เตือนภัย+น้ำท่วม&hl=th&gl=TH&ceid=TH:th",
+    # ระดับน้ำ / เขื่อน / แม่น้ำ / น้ำล้นตลิ่ง / น้ำหลาก
+    "https://news.google.com/rss/search?q=ระดับน้ำ+แม่น้ำ&hl=th&gl=TH&ceid=TH:th",
+    "https://news.google.com/rss/search?q=เขื่อน+ระบายน้ำ+น้ำหลาก&hl=th&gl=TH&ceid=TH:th",
+    # ช่วยเหลือ / อพยพ / ถุงยังชีพ / ศูนย์พักพิง
+    "https://news.google.com/rss/search?q=ช่วยเหลือ+ถุงยังชีพ+น้ำท่วม&hl=th&gl=TH&ceid=TH:th",
+    "https://news.google.com/rss/search?q=อพยพ+ศูนย์พักพิง+น้ำท่วม&hl=th&gl=TH&ceid=TH:th",
+    # สาธารณสุข / โรคระบาด / สุขาภิบาล / น้ำกัดเท้า / ฉี่หนู / น้ำเน่า / น้ำขัง
+    "https://news.google.com/rss/search?q=โรคฉี่หนู+น้ำกัดเท้า+น้ำท่วม&hl=th&gl=TH&ceid=TH:th",
+    "https://news.google.com/rss/search?q=น้ำเน่า+น้ำขัง&hl=th&gl=TH&ceid=TH:th",
+    "https://news.google.com/rss/search?q=น้ำท่วมขัง+น้ำเน่าเสีย&hl=th&gl=TH&ceid=TH:th",
+    # การฟื้นฟู / เยียวยา / หลังน้ำท่วม / หลังน้ำลด
+    "https://news.google.com/rss/search?q=หลังน้ำท่วม&hl=th&gl=TH&ceid=TH:th",
     "https://news.google.com/rss/search?q=ฟื้นฟู+น้ำท่วม&hl=th&gl=TH&ceid=TH:th",
+    "https://news.google.com/rss/search?q=เงินเยียวยา+น้ำท่วม&hl=th&gl=TH&ceid=TH:th",
+    # ข่าวภาษาอังกฤษ
     "https://news.google.com/rss/search?q=flood+Thailand&hl=en&gl=TH&ceid=TH:en",
+    # Direct Feeds สำนักข่าวหลัก
     "https://www.matichon.co.th/feed",
     "https://news.thaipbs.or.th/rss/news",
     "https://www.thairath.co.th/rss/news",
+    "https://www.khaosod.co.th/feed",
+    "https://www.prachachat.net/feed",
+    "https://www.innnews.co.th/feed",
 ]
 
 # HTML pages scraped for headlines: [{"url", "name", "selector"}]. Empty on purpose: the old
@@ -245,6 +265,9 @@ FLOOD_KEYWORDS_TH = [
     "น้ำท่วม","อุทกภัย","น้ำล้น","ระดับน้ำ","น้ำหลาก","น้ำท่วมขัง",
     "น้ำเอ่อ","น้ำท่วมสูง","ฝนตกหนัก","พายุ","ดินถล่ม","เขื่อน",
     "ระบายน้ำ","อพยพ","ผู้ประสบภัย","ภัยพิบัติ","ท่วม","หลังน้ำท่วม","หลังน้ำลด","ฟื้นฟู",
+    "ล้นตลิ่ง","น้ำเหนือ","ทะเลหนุน","ถุงยังชีพ","เงินเยียวยา","ศูนย์พักพิง","น้ำกัดเท้า",
+    "โรคฉี่หนู","สุขาเคลื่อนที่","โรงครัว","ซ่อมแซมบ้าน","ล้างบ้าน","ขยะน้ำท่วม","ติดเกาะ","ตัดไฟ",
+    "น้ำขัง","น้ำเน่า","น้ำเน่าเสีย","น้ำเน่าเหม็น","น้ำขังรอการระบาย",
 ]
 FLOOD_KEYWORDS_EN = [
     "flood","flooding","inundation","storm","rainfall","water level",
