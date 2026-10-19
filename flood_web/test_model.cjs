@@ -39,6 +39,22 @@ assert.equal(m.validCoordinates({latitude:91,longitude:100}),false);
   assert.deepEqual(m.newsTopRegions(reg,2).map(r=>r.region),['ก','ค']);assert.equal(m.newsTopRegions(reg,0).length,3);assert.deepEqual(m.newsTopRegions(null,5),[]);
   const wc=[{word:'x',count:3,tfidf:1},{word:'y',count:9,tfidf:0.5},{word:'z',count:3,tfidf:2}];
   assert.deepEqual(m.newsTopByCount(wc,2).map(r=>r.word),['y','z']);assert.equal(m.newsTopByCount(wc,0).length,3);assert.deepEqual(m.newsTopByCount(null,3),[]);
+  // Health Need Map helper tests
+  const fakeHn = {
+    health_need_by_province: {
+      'เชียงใหม่': { flood_general: 80, stagnant_water: 45, recovery: 20 },
+      'พระนครศรีอยุธยา': { flood_general: 90, stagnant_water: 15, recovery: 60 }
+    }
+  };
+  const mapData = m.healthNeedMapData(fakeHn, 'stagnant_water');
+  assert.equal(typeof mapData.data['เชียงใหม่'], 'number');
+  assert.equal(mapData.data['เชียงใหม่'] > mapData.data['พระนครศรีอยุธยา'], true);
+  assert.equal(mapData.max, 100);
+  assert.equal(mapData.category.key, 'stagnant_water');
+  const recData = m.healthNeedMapData(fakeHn, 'recovery');
+  assert.equal(typeof recData.data['พระนครศรีอยุธยา'], 'number');
+  assert.equal(m.healthNeedColor(0, 100, ['#fff', '#f00']), '#f8fafc');
+  assert.equal(m.healthNeedColor(100, 100, ['#fff', '#f00']), '#f00');
   assert.equal(m.sourceInitial('matichon.co.th'),'M');assert.equal(m.sourceInitial('ไทยรัฐ'),'ไ');assert.equal(m.sourceInitial('  '),'?');assert.equal(m.sourceInitial(null),'?');
   // Trends timeline: daily means, 24 h windows, phase index
   const pt=(h,v)=>({t:'2026-10-0'+(5+Math.floor(h/24))+'T'+String(h%24).padStart(2,'0')+':00+07:00',v});
