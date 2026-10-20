@@ -877,7 +877,7 @@ function allowedProvinces(){const scoped=state.tab==='national'&&(state.national
 function shelterStatusKey(r){const s=String(r.status_source||'').trim();return SHELTER_COLORS[s]?s:'ไม่ทราบสถานะ'}
 function fitShelters(pts){if(!shelterMap)return;shelterMap._dashboardBounds=pts.length?L.latLngBounds(pts):window.BKK_DISTRICTS_GEOJSON?L.geoJSON(window.BKK_DISTRICTS_GEOJSON).getBounds():L.latLngBounds([[13.4,100.3],[14,100.9]]);shelterMap.invalidateSize({pan:true,animate:false});shelterMap.fitBounds(shelterMap._dashboardBounds,{padding:[28,28],maxZoom:13,animate:false})}
 function syncMapKey(){const el=nationalLegend?.getContainer();if(!el)return;const target=matchMedia('(max-width:767px)').matches?$('mobileMapKey'):$('map').querySelector('.leaflet-bottom.leaflet-left');if(target&&el.parentElement!==target)target.append(el)}
-const tablePages=new Map(),tableFilters=new Map(),originalTableRows=new WeakMap();
+const tablePages=new Map(),tableFilters=new Map(),originalTableRows=new WeakMap(),tablePageSizes=new Map();   // tablePageSizes: rows per page set by a tab (e.g. to fill its panel)
 function paginateTables(){
  for(const id of ['areaTable','stationTable','vulTable','allSheltersBody','shelterSideBody','sideBody','waterTable','waterDistrictTable','waterSideList']){
   const host=$(id),table=host?.querySelector('table');
@@ -933,7 +933,7 @@ function paginateTables(){
   matches.forEach(({r})=>table.tBodies[0].append(r));
   let result=toolbar.querySelector('.table-result');if(!result){result=document.createElement('div');result.className='table-result';result.setAttribute('aria-live','polite');toolbar.append(result)}result.textContent=`พบ ${matches.length} จาก ${rows.length} รายการ`;
   const pageKey=signature+'|'+JSON.stringify(filter);let entry=tablePages.get(id);if(!entry||entry.signature!==pageKey){entry={signature:pageKey,page:0};tablePages.set(id,entry)}entry.rowIndices=matches.map(x=>x.i);
-  const pageSize=id==='waterSideList'?13:state.tab==='bkk'&&(id==='sideBody'||id==='shelterSideBody')?7:id==='sideBody'?(state.tab==='ops'?12:10):20;const pages=Math.max(1,Math.ceil(matches.length/pageSize));entry.page=Math.min(entry.page,pages-1);rows.forEach(r=>r.hidden=true);matches.slice(entry.page*pageSize,entry.page*pageSize+pageSize).forEach(({r})=>r.hidden=false);
+  const pageSize=tablePageSizes.get(id)||(id==='waterSideList'?13:state.tab==='bkk'&&(id==='sideBody'||id==='shelterSideBody')?7:id==='sideBody'?(state.tab==='ops'?12:10):20);const pages=Math.max(1,Math.ceil(matches.length/pageSize));entry.page=Math.min(entry.page,pages-1);rows.forEach(r=>r.hidden=true);matches.slice(entry.page*pageSize,entry.page*pageSize+pageSize).forEach(({r})=>r.hidden=false);
   remove('pager');const nav=document.createElement('div');nav.className='pagination';nav.dataset.pager=id;nav.setAttribute('aria-live','polite');
   const count=document.createElement('span');count.textContent=matches.length?`พบ ${matches.length} จาก ${rows.length} รายการ · หน้า ${entry.page+1}/${pages}`:'ไม่พบข้อมูลตามตัวกรอง';
   for(const [label,step] of [['ก่อนหน้า',-1],['ถัดไป',1]]){if(pages<=1)break;const button=document.createElement('button');button.className='lightbtn';button.textContent=label;button.disabled=step<0?entry.page===0:entry.page===pages-1;button.onclick=()=>{entry.page+=step;paginateTables()};nav.append(button)}
@@ -941,7 +941,7 @@ function paginateTables(){
  }
 }
 // Table helpers for the external tab panes (waterlogged-view.js): same table(), paging and column filters as the built-in tabs.
-window.DashboardTables={table,paginate:paginateTables,hints:()=>requestAnimationFrame(updateTableHints),visibleIndices:id=>tablePages.get(id)?.rowIndices};
+window.DashboardTables={table,paginate:paginateTables,setPageSize:(id,n)=>{if(n>0)tablePageSizes.set(id,n);else tablePageSizes.delete(id)},pageSize:id=>tablePageSizes.get(id),hints:()=>requestAnimationFrame(updateTableHints),visibleIndices:id=>tablePages.get(id)?.rowIndices};
 function filteredExportRows(){const indices=tablePages.get('areaTable')?.rowIndices;return indices?[csvRows[0],...indices.map(i=>csvRows[i+1]).filter(Boolean)]:csvRows}
 const sourceLabels={Disaster_DB:'รายงานภัย ปภ.',Vulnerable_group:'ฐานประชากรกลุ่มเปราะบาง',thai_water_DB:'สถานีน้ำทั่วประเทศ',BKK_water_DB:'สถานีน้ำ กทม.',shelter_DB:'ศูนย์พักพิง'};
 function renderSourceStatus(){const failed=Object.entries(DATA.sourceStatus).filter(([name,s])=>s.status==='error'&&sourceLabels[name]&&(state.tab!=='ops'||name==='Disaster_DB'));$('sourceStatus').innerHTML=failed.map(([name,s])=>`<div class="alert source-error"><span><b>${sourceLabels[name]}</b> — ${esc(s.message)}</span><button class="lightbtn" data-retry-source="${name}">ลองใหม่</button></div>`).join('');$('sourceStatus').classList.toggle('hidden',!failed.length)}

@@ -108,8 +108,8 @@
     }else for(const r of amps){const x=c[String(r.level_code).trim()];if(!x)continue;x.n++;x.provs.add(r.province_code);x.tambons+=Number.isFinite(r.waterlogged_tambons)?r.waterlogged_tambons:0}
     const unit=byProv?'จังหวัด':'อำเภอ';
     const stageCard=k=>{const l=M.WATER_2P2R[k],x=c[k];
-      const note=byProv?'จังหวัด · รวม '+fmt(x.districts)+' อำเภอที่มีระยะ 2P2R':'อำเภอ ใน '+fmt(x.provs.size)+' จังหวัด';
-      const extra=k==='green'?' · ประมาณว่าน้ำลด':x.tambons?' · ตำบลน้ำขัง '+fmt(x.tambons):'';
+      // How the pipeline gives a district this colour (a province takes its highest district colour).
+      const note=esc(l.meaning)+(byProv?' · จังหวัด = ระยะสูงสุดของอำเภอ':''),extra='';
       return '<article class="card water-stage-card" style="--stage:'+l.color+'" data-water-level="'+k+'" role="button" tabindex="0" aria-pressed="'+(state.level===k)+'" title="กดเพื่อกรองระยะนี้ · '+esc(l.label+' · '+l.phase)+'">'
         +'<div class="eyebrow"><i class="swatch" style="background:'+l.color+'"></i>'+esc(l.stage)+'</div><div class="number">'+fmt(x.n)+'</div><div class="card-note">'+note+extra+'</div></article>'};
     return '<div class="cards water-stage-cards" id="waterCards" aria-live="polite" aria-label="จำนวน'+unit+'ตามระยะ 2P2R">'+LEVELS.map(stageCard).join('')+'</div>';
@@ -503,8 +503,27 @@
     const d=$('waterDetail');if(!d)return null;
     d.innerHTML=detailHtml();
     if(window.DashboardTables)window.DashboardTables.paginate();
+    requestAnimationFrame(fitSideList);
     return d;
   }
+  // The 2P2R list sits beside the map: as many rows per page as fill the map panel's height (which depends on the screen
+  // width), so neither panel is left with empty space. Stacked (one column) it keeps the default 13.
+  const SIDE_DEFAULT=13;
+  function fitSideList(){
+    const T=window.DashboardTables,det=$('waterDetail'),mp=$('waterMapPanel'),pager=det&&det.querySelector('[data-pager="waterSideList"]');
+    if(!T||!T.setPageSize||!det||!mp||!pager)return;
+    if(matchMedia('(max-width:1023px)').matches){if(T.pageSize('waterSideList')!==SIDE_DEFAULT){T.setPageSize('waterSideList',SIDE_DEFAULT);T.paginate()}return}
+    const row=det.querySelector('#waterSideList tbody tr:not([hidden])');if(!row)return;
+    const rowH=row.getBoundingClientRect().height;if(!(rowH>0))return;
+    const pad=parseFloat(getComputedStyle(det).paddingBottom)||0;
+    const natural=el=>{const last=el.lastElementChild;return last?last.getBoundingClientRect().bottom-el.getBoundingClientRect().top:0};
+    const diff=natural(mp)-(pager.getBoundingClientRect().bottom-det.getBoundingClientRect().top)-pad;
+    const cur=T.pageSize('waterSideList')||SIDE_DEFAULT,delta=diff>=0?Math.floor(diff/rowH):-Math.ceil(-diff/rowH);
+    const next=Math.max(5,Math.min(40,cur+delta));
+    if(next!==cur){T.setPageSize('waterSideList',next);T.paginate()}
+  }
+  let fitTimer=null;
+  window.addEventListener('resize',()=>{if(!isOpen)return;clearTimeout(fitTimer);fitTimer=setTimeout(fitSideList,150)});
   function detailHtml(){
     const r=state.sel&&rowsAll().find(x=>key(x)===state.sel);
     const prov=districtDetailHtml()+provinceDetailHtml();
@@ -640,6 +659,7 @@
       +districtPanel(districts);
     bind();
     drawMap();
+    requestAnimationFrame(()=>requestAnimationFrame(fitSideList));
     renderTable();
     if(window.DashboardTables&&$('waterDistrictTable'))window.DashboardTables.paginate();
   }
