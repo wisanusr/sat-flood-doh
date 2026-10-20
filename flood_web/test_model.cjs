@@ -342,3 +342,41 @@ assert(m.compareNationalTableValues('–','0','asc')>0);
 assert.equal(m.compareNationalTableValues('–','–','desc'),0);
 assert(m.compareNationalTableValues('เขต 10','เขต 2','desc')<0);
 console.log('PASS: national table numeric sorting and missing values');
+// Executive report tab: raw CSV rows (strings) from Disaster_DB, Vulnerable_group, flood_waterlogged_amphoe and tmd_rain_level
+{
+  assert.equal(m.execNum('4,419'),4419);assert.equal(m.execNum(' - '),null);assert.equal(m.execNum(''),null);assert.equal(m.execNum('0'),0);
+  assert.equal(m.execTime('2026-10-19 7:02:09'),Date.parse('2026-10-19T07:02:00+07:00'));   // single-digit hour
+  const d=(day,p,hh,at)=>({Report_Date:day,Province:p,Affected_Households:hh,Ingested_At:at,Remarks:''});
+  const rows=[d('2026-10-18','ก','1,000','2026-10-18 7:00'),d('2026-10-18','ก','1,000','2026-10-18 9:00'),d('2026-10-18','ข','50','2026-10-18 7:00'),
+    d('2026-10-18','ค','5','2026-10-18 7:00'),d('2026-10-19','ก','900','2026-10-19 7:00'),d('2026-10-19','ก','950','2026-10-19 8:00'),d('2026-10-19','ข','70','2026-10-19 7:00'),
+    d('2026-10-10','ง','3','2026-10-10 7:00')];
+  const s=m.execDdpm(rows);
+  assert.equal(s.day,'2026-10-19');assert.equal(s.prevDay,'2026-10-18');
+  assert.equal(s.hh,1020);                        // newest snapshot per province (950), never both snapshots
+  assert.equal(s.dHh,1020-1055);assert.equal(s.dProv,-1);assert.deepEqual(s.recovered,['ค']);
+  assert.deepEqual(s.cur.map(x=>x.province),['ก','ข']);
+  const onlyD=m.execDdpm(rows,p=>p==='ง');        // a filter never falls back to an older report day of its own
+  assert.equal(onlyD.day,'2026-10-19');assert.equal(onlyD.provinces,0);assert.equal(onlyD.hh,0);
+  const empty=m.execDdpm([]);assert.equal(empty.day,'');assert.equal(empty.dHh,null);
+  const vul=m.execVulnerable([{'เขตสุขภาพ':'เขตสุขภาพที่ 4','จังหวัด':'ก','จำนวนเด็ก 0-4 ปีทั้งหมด (คน)':'1,200','จำนวนหญิงตั้งครรภ์ทั้งหมด (คน)':'','จำนวนผู้สูงอายุ 60 ปีขึ้นไปทั้งหมด (คน)':'30'},{'จังหวัด':'รวมทั้งหมด'}]);
+  assert.deepEqual(vul,[{province:'ก',region:4,children:1200,pregnant:null,elderly:30}]);
+  const reg=m.execRegionOf(vul);assert.equal(reg.get('ก'),4);assert.equal(reg.get('กรุงเทพมหานคร'),13);
+  const lv=m.execProvinceLevels([{province:'ก',province_level_code:'yellow'},{province:'ก',province_level_code:'red'},{province:'ข',province_level_code:'red'},{province:'จ',province_level_code:'normal'}]);
+  assert.deepEqual([...lv],[['ก','yellow'],['ข','red']]);   // first row per province; "normal" is not a level
+  const list=m.execProvinceList(lv,[{province:'ก',hh:5},{province:'ฉ',hh:9}]);
+  assert.deepEqual(list.map(x=>x.province),['ข','ก','ฉ']);  // by level, then households; DDPM-only provinces kept
+  assert.equal(list[0].hh,null);
+  const groups=m.execByRegion(list,new Map([['ก',4],['ข',2]]));
+  assert.deepEqual(groups.map(g=>[g.region,g.items.map(x=>x.province)]),[[2,['ข']],[4,['ก']],[null,['ฉ']]]);
+  const r=(run,day,p,level,heavy)=>({run_at:run,forecast_date:day,province:p,rain_max_amphoe_level:level,amphoe_heavy_count:heavy});
+  const rain=[r('2026-10-20 11:55','2026-10-20','ก','0-35 มม.','0'),r('2026-10-20 14:55','2026-10-21','ก','35.1-65 มม.','2'),r('2026-10-20 14:55','2026-10-20','ก','0-35 มม.','0'),
+    r('2026-10-20 14:55','2026-10-20','ข','65.1-125 มม.','1'),r('2026-10-20 14:55','2026-10-22','ข','0-35 มม.','')];
+  const days=m.execRainDays(rain,2);
+  assert.deepEqual(days.map(x=>[x.date,x.heavy]),[['2026-10-20',1],['2026-10-21',1]]);   // latest run only, first n days
+  assert.equal(days[0].levels.get('ข'),'65.1-125 มม.');
+  assert.deepEqual(m.execRainDays(rain,3,p=>p==='ก').map(x=>x.heavy),[0,1]);
+  assert.ok(m.EXEC_RAIN.every(b=>/มม\.$/.test(b.level)));
+  assert.equal(m.execReportDay('2026-10-19',[{run_at:'2026-10-20 14:55'}],[{run_at:''}]),'2026-10-20');
+  assert.equal(m.execReportDay('',[]),'');
+}
+console.log('PASS: executive report');
