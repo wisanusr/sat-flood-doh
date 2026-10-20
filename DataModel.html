@@ -449,7 +449,51 @@
   }
   const waterDdpmOnlyCount=rows=>new Set((rows||[]).filter(r=>waterIsDdpmLogged(r)).map(r=>r.district_code||(r.province+'|'+r.district))).size;
   const reasonList=s=>String(s??'').split(';').map(x=>x.trim()).filter(Boolean);
-  const model={bkkTrendDistricts,bkkDistrictTrend,bkkTrend,WATER_2P2R,water2p2rLevel,waterProvCode,waterAmpCode,waterAmphoeRows,waterProvincesFromAmphoe,waterIsDdpmLogged,waterScope,waterStatusLabel,waterProvinceRows,waterProvinceSummary,waterProvinceIndex,waterProvinceUnmatched,WATER_CONFIDENCE,waterConfidence,waterIsLogged,waterIsDashed,WATER_BASIS_DDPM_ONLY,waterIsDdpmOnly,waterDdpmOnlyCount,WATERLOGGED_SOURCES,WATER_LOG_STATUS,waterStatusRank,waterRows,waterSummary,waterDdpmDistricts,waterHasPoint,waterFilter,waterFreshness,waterDistricts,latestPerKey,disasterTime,latestTime,parseSeries,RAIN_CLASSES,rainClass,seriesDates,exposure,reasonList,RISK_SOURCES,RISK_LEVELS,riskRank,parseBool,riskRows,riskSummary,waterTrend,overbankM,riskFreshness,dataAge,vulnerableTotals,trendKind,provinceLevel,situationGroups,regionNumber,timelineDaily,termWindows,lifecycle,trendLevel,newsRising,newsTopRegions,newsTopByCount,sourceInitial,growthValue,newsArticles,newsProvinces,newsUrgencyCounts,newsWords,ageLabel,safeUrl,URGENCY,NEWS_CATEGORIES,HEALTH_NEED_CATEGORIES,healthNeedMapData,healthNeedColor,latestStationDay,SOURCES,WATER_STATUS,canonicalWaterStatus,timestamp,sum,quality,householdBorderColor,validCoordinates,districtSummary};
+  // Names in DDPM are province-level report fields, not district-level totals.
+  function nationalDistrictNames(value,province=''){return String(value??'').split(/(?:อำเภอ|อ\.|เขต)|[,;\n]+/u).map(s=>s.trim()).filter(Boolean).map(s=>s==='เมืองฯ'&&province?'เมือง'+province:s);}
+  function nationalPointInGeometry(x,y,geometry){
+    if(!Number.isFinite(x)||!Number.isFinite(y)||!geometry)return false;
+    const ringContains=ring=>{let inside=false;for(let i=0,j=ring.length-1;i<ring.length;j=i++){const [a,b]=ring[i],[c,d]=ring[j];if((b>y)!==(d>y)&&x<(c-a)*(y-b)/(d-b)+a)inside=!inside;}return inside;};
+    const polygons=geometry.type==='Polygon'?[geometry.coordinates]:geometry.type==='MultiPolygon'?geometry.coordinates:[];
+    return polygons.some(p=>p.length&&ringContains(p[0])&&!p.slice(1).some(ringContains));
+  }
+  // One row per reported district. Provincial counts are deliberately not copied to each district.
+  function nationalDistrictSummary(reports,features){
+    const byProvince=new Map();
+    for(const r of reports||[]){if(!byProvince.has(r.Province))byProvince.set(r.Province,[]);byProvince.get(r.Province).push(r);}
+    const seen=new Set(),rows=[];
+    for(const f of features||[]){
+      const p=f.properties,code=String(p.amp_code);
+      if(seen.has(code))continue;
+      const matching=(byProvince.get(p.pro_th)||[]).filter(r=>nationalDistrictNames(r.District_Names,r.Province).includes(p.amp_th));
+      if(!matching.length)continue;
+      seen.add(code);
+      const kinds=new Set(matching.map(r=>trendKind(r.Water_Level_Trend)).filter(Boolean));
+      const kind=kinds.size===1?[...kinds][0]:null;
+      rows.push({code,district:p.amp_th,province:p.pro_th,trend:kind,mixed:kinds.size>1});
+    }
+    return rows.sort((a,b)=>a.province.localeCompare(b.province,'th')||a.district.localeCompare(b.district,'th'));
+  }
+  // Area centroid of the largest polygon, following the waterlogging map's label placement.
+  function nationalLabelPoint(geometry){
+    const polys=geometry?.type==='Polygon'?[geometry.coordinates]:geometry?.type==='MultiPolygon'?geometry.coordinates:[];
+    let best=null;
+    for(const poly of polys){const ring=poly[0];let a=0,x=0,y=0;
+      for(let i=0,j=ring.length-1;i<ring.length;j=i++){const [x0,y0]=ring[j],[x1,y1]=ring[i],f=x0*y1-x1*y0;a+=f;x+=(x0+x1)*f;y+=(y0+y1)*f;}
+      if(a&&(!best||Math.abs(a)>best.area))best={area:Math.abs(a),lat:y/(3*a),lng:x/(3*a)};
+    }
+    return best?[best.lat,best.lng]:null;
+  }
+  // Missing values stay last in either direction; commas must not turn numbers into text ordering.
+  function compareNationalTableValues(a,b,direction='desc'){
+    const missing=v=>/^(?:|[-–—]|ไม่มีข้อมูล|ไม่ระบุ|ไม่แยกรายอำเภอ)$/.test(String(v).trim());
+    if(missing(a)||missing(b))return Number(missing(a))-Number(missing(b));
+    const numeric=v=>/^-?[\d,]+(?:\.\d+)?$/.test(v)?Number(v.replace(/,/g,'')):null;
+    const an=numeric(a),bn=numeric(b);
+    const result=an!==null&&bn!==null?an-bn:String(a).localeCompare(String(b),'th',{numeric:true});
+    return result*(direction==='asc'?1:-1);
+  }
+  const model={compareNationalTableValues,nationalDistrictSummary,nationalLabelPoint,nationalDistrictNames,nationalPointInGeometry,bkkTrendDistricts,bkkDistrictTrend,bkkTrend,WATER_2P2R,water2p2rLevel,waterProvCode,waterAmpCode,waterAmphoeRows,waterProvincesFromAmphoe,waterIsDdpmLogged,waterScope,waterStatusLabel,waterProvinceRows,waterProvinceSummary,waterProvinceIndex,waterProvinceUnmatched,WATER_CONFIDENCE,waterConfidence,waterIsLogged,waterIsDashed,WATER_BASIS_DDPM_ONLY,waterIsDdpmOnly,waterDdpmOnlyCount,WATERLOGGED_SOURCES,WATER_LOG_STATUS,waterStatusRank,waterRows,waterSummary,waterDdpmDistricts,waterHasPoint,waterFilter,waterFreshness,waterDistricts,latestPerKey,disasterTime,latestTime,parseSeries,RAIN_CLASSES,rainClass,seriesDates,exposure,reasonList,RISK_SOURCES,RISK_LEVELS,riskRank,parseBool,riskRows,riskSummary,waterTrend,overbankM,riskFreshness,dataAge,vulnerableTotals,trendKind,provinceLevel,situationGroups,regionNumber,timelineDaily,termWindows,lifecycle,trendLevel,newsRising,newsTopRegions,newsTopByCount,sourceInitial,growthValue,newsArticles,newsProvinces,newsUrgencyCounts,newsWords,ageLabel,safeUrl,URGENCY,NEWS_CATEGORIES,HEALTH_NEED_CATEGORIES,healthNeedMapData,healthNeedColor,latestStationDay,SOURCES,WATER_STATUS,canonicalWaterStatus,timestamp,sum,quality,householdBorderColor,validCoordinates,districtSummary};
   if(typeof module!=='undefined')module.exports=model;else root.DashboardModel=model;
 })(typeof window!=='undefined'?window:globalThis);
 
