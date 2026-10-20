@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler

@@ -308,3 +308,37 @@ assert.equal(m.validCoordinates({latitude:91,longitude:100}),false);
 }
 
 console.log('PASS: data model, waterlogging and BKK district trends');
+
+// National overview: DDPM district names must not confuse similarly named districts.
+assert.deepEqual(m.nationalDistrictNames('อ.อ่าวลึก อ.คลองท่อม อ.เขาพนม'),['อ่าวลึก','คลองท่อม','เขาพนม']);
+assert.deepEqual(m.nationalDistrictNames('เขตลาดกระบัง เขตหนองจอก'),['ลาดกระบัง','หนองจอก']);
+assert.deepEqual(m.nationalDistrictNames('อ.เมืองฯ อ.ชุมแสง','นครสวรรค์'),['เมืองนครสวรรค์','ชุมแสง']);
+assert.deepEqual(m.nationalDistrictNames(null),[]);
+assert(!m.nationalDistrictNames('อ.เมืองนครสวรรค์').includes('เมือง'));
+const nationalPolygon={type:'Polygon',coordinates:[[[0,0],[10,0],[10,10],[0,10],[0,0]],[[4,4],[6,4],[6,6],[4,6],[4,4]]]};
+assert(m.nationalPointInGeometry(2,2,nationalPolygon));
+assert(!m.nationalPointInGeometry(5,5,nationalPolygon));
+assert(!m.nationalPointInGeometry(12,2,nationalPolygon));
+assert(!m.nationalPointInGeometry(null,2,nationalPolygon));
+assert(m.nationalPointInGeometry(2,2,{type:'MultiPolygon',coordinates:[nationalPolygon.coordinates]}));
+console.log('PASS: national district names and geographic station scope');
+
+// District summary cannot multiply province totals across districts.
+const districtFeatures=[{properties:{amp_code:'8105',amp_th:'อ่าวลึก',pro_th:'กระบี่'}},{properties:{amp_code:'8104',amp_th:'คลองท่อม',pro_th:'กระบี่'}}];
+const districtReport={Province:'กระบี่',District_Names:'อ.อ่าวลึก อ.คลองท่อม',Water_Level_Trend:'ลดลง',Affected_Households:21};
+const districtSummaryRows=m.nationalDistrictSummary([districtReport,districtReport],districtFeatures);
+assert.equal(districtSummaryRows.length,2);
+assert(districtSummaryRows.every(r=>r.trend==='down'&&!('Affected_Households' in r)));
+assert.equal(m.nationalDistrictSummary([districtReport],districtFeatures.slice(0,1)).length,1);
+assert.equal(m.nationalDistrictSummary([],districtFeatures).length,0);
+assert.deepEqual(m.nationalLabelPoint({type:'Polygon',coordinates:[[[0,0],[4,0],[4,2],[0,2],[0,0]]]}),[1,2]);
+assert.equal(m.nationalLabelPoint(null),null);
+console.log('PASS: national district summaries and map label placement');
+
+assert(m.compareNationalTableValues('1,200','900','desc')<0);
+assert(m.compareNationalTableValues('1,200','900','asc')>0);
+assert(m.compareNationalTableValues('–','0','desc')>0);
+assert(m.compareNationalTableValues('–','0','asc')>0);
+assert.equal(m.compareNationalTableValues('–','–','desc'),0);
+assert(m.compareNationalTableValues('เขต 10','เขต 2','desc')<0);
+console.log('PASS: national table numeric sorting and missing values');
