@@ -64,6 +64,10 @@ DOH_TAG = '<script src="/shelter-doh-view.js"></script>'
 assert html.count(DOH_TAG) == 1
 doh_js = (ROOT / 'flood_web' / 'shelter-doh-view.js').read_text(encoding='utf-8').replace('</', '<\\/')
 html = html.replace(DOH_TAG, '<script>\n' + doh_js + '\n</script>')
+EXEC_TAG = '<script src="/executive-view.js"></script>'
+assert html.count(EXEC_TAG) == 1
+exec_js = (ROOT / 'flood_web' / 'executive-view.js').read_text(encoding='utf-8').replace('</', '<\\/')
+html = html.replace(EXEC_TAG, '<script>\n' + exec_js + '\n</script>')
 html = html.replace('id="refreshData" type="button">', 'id="refreshData" type="button" title="อ่านข้อมูลสดจากชีตอีกครั้ง (ถ้าอ่านไม่ได้จะใช้ไฟล์ที่เผยแพร่)">', 1)
 assert '<?!=' not in html and 'google.script.run.with' not in html, 'Unconverted Apps Script code'
 assert 'function requestData' in html and 'requestDashboard' not in html, 'Request bridge not converted'
@@ -71,4 +75,6 @@ out = ROOT / 'docs'
 out.mkdir(exist_ok=True)
 (out / 'index.html').write_text(html, encoding='utf-8')
 (out / '.nojekyll').write_text('', encoding='utf-8')
+# The executive report tab shows the DOH logo in its poster header (executive-view.js reads it as doh_logo_w.svg).
+(out / 'doh_logo_w.svg').write_bytes((ROOT / 'flood_web' / 'doh_logo_w.svg').read_bytes())
 print('Built', out / 'index.html', round(len(html) / 1e6, 2), 'MB')
