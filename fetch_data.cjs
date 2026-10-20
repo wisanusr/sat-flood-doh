@@ -50,9 +50,12 @@ async function main() {
   // Optional tabs (the flood-prep pipeline's) must never stop the build: if one stays unreadable after the retries it is
   // simply left out, Code.gs reports it as an error for that tab only, and the flood tab shows a notice.
   const optional = new Set(config.optional || []);
+  // The waterlogging tabs are rewritten (cleared, then filled) by the pipeline, so one retry covers the short empty window
+  // and an optional tab never holds the deploy for the full retry budget of the core tabs.
+  const attemptsFor = name => (name.startsWith('flood_waterlogged') ? 2 : 4);
   for (const name of Object.keys(config.required)) {
     const url = `https://docs.google.com/spreadsheets/d/${config.spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(name)}`;
-    try { sheets[name] = await fetchSheetRows(name, url); }
+    try { sheets[name] = await fetchSheetRows(name, url, { attempts: attemptsFor(name) }); }
     catch (e) { if (!optional.has(name)) throw e; console.warn(`optional tab skipped: ${e.message}`); }
   }
   ctx.__sheets = sheets;
@@ -62,7 +65,7 @@ async function main() {
   if (bad.length) throw new Error('Sheet read failed: ' + bad.map(([k]) => k).join(', '));
   fs.mkdirSync(path.join(__dirname, 'docs'), { recursive: true });
   fs.writeFileSync(path.join(__dirname, 'docs', 'data.json'), JSON.stringify(data));
-  console.log('Wrote docs/data.json', Object.fromEntries(['disasters', 'vulnerable', 'stations', 'bkkStations', 'shelters', 'floodRisk', 'floodCritical'].map(k => [k, data[k].length])));
+  console.log('Wrote docs/data.json', Object.fromEntries(['disasters', 'vulnerable', 'stations', 'bkkStations', 'shelters', 'floodRisk', 'floodCritical', 'floodWaterlogged', 'floodWaterloggedAmphoe'].map(k => [k, data[k].length])));
 }
 module.exports = { parseCsv, fetchSheetRows };
 if (require.main === module) main().catch(e => { console.error(e.message); process.exit(1); });
