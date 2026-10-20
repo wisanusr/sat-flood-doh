@@ -108,8 +108,8 @@
     }else for(const r of amps){const x=c[String(r.level_code).trim()];if(!x)continue;x.n++;x.provs.add(r.province_code);x.tambons+=Number.isFinite(r.waterlogged_tambons)?r.waterlogged_tambons:0}
     const unit=byProv?'จังหวัด':'อำเภอ';
     const stageCard=k=>{const l=M.WATER_2P2R[k],x=c[k];
-      const note=byProv?'จังหวัด · รวม '+fmt(x.districts)+' อำเภอที่มีระยะ 2P2R':'อำเภอ ใน '+fmt(x.provs.size)+' จังหวัด';
-      const extra=k==='green'?' · ประมาณว่าน้ำลด':x.tambons?' · ตำบลน้ำขัง '+fmt(x.tambons):'';
+      // How the pipeline gives a district this colour (a province takes its highest district colour).
+      const note=esc(l.meaning)+(byProv?' · จังหวัด = ระยะสูงสุดของอำเภอ':''),extra='';
       return '<article class="card water-stage-card" style="--stage:'+l.color+'" data-water-level="'+k+'" role="button" tabindex="0" aria-pressed="'+(state.level===k)+'" title="กดเพื่อกรองระยะนี้ · '+esc(l.label+' · '+l.phase)+'">'
         +'<div class="eyebrow"><i class="swatch" style="background:'+l.color+'"></i>'+esc(l.stage)+'</div><div class="number">'+fmt(x.n)+'</div><div class="card-note">'+note+extra+'</div></article>'};
     return '<div class="cards water-stage-cards" id="waterCards" aria-live="polite" aria-label="จำนวน'+unit+'ตามระยะ 2P2R">'+LEVELS.map(stageCard).join('')+'</div>';

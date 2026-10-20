@@ -313,17 +313,19 @@
     }
     return out;
   }
+  // `meaning` = how the pipeline gives a district that level (geeks_project_google district_levels, 2026-10-20 criteria:
+  // P2R_LONG_DDPM_DAYS 3, NEWS_ROTTEN_DAYS 7, P2R_RAIN_HEAVY_MM 35, green 2–4 days after DDPM); keep in step with it.
   // ── 2P2R levels (flood_waterlogged_amphoe: one row per district, with its province's level repeated on each row).
   // Both levels are the pipeline's: nothing here recomputes them. `plan` is the pipeline's wording per level (P2R in
   // geeks_project_google transform/flood_waterlogged_trans.py); keep the two in step. ──
   // `note` is the caveat the page must show with the colour: red means long-standing water (risk of foul water), not a
   // confirmed water-quality finding; green is an estimate from DDPM reports, not a confirmation. normal = no fill.
   const WATER_2P2R={
-    red:{rank:4,color:'#E24B4A',stage:'ตอบโต้ทันที',label:'แดง',phase:'Response',meaning:'น้ำขังนาน เสี่ยงน้ำเน่าเสีย',plan:'แก้ไขทันที: จัดการน้ำเสีย ขยะ ส้วม น้ำสะอาด และคุ้มครองประชาชน',note:'สีแดงหมายถึงน้ำขังนาน เสี่ยงน้ำเน่าเสีย ไม่ใช่การยืนยันคุณภาพน้ำ'},
-    orange:{rank:3,color:'#EF9F27',stage:'ตรวจเชิงรุก',label:'ส้ม',phase:'Preparedness → Response',meaning:'น้ำขังที่ ปภ. รายงานต่อเนื่อง 3 วัน (แดงเมื่อ ≥ 4 วัน)',plan:'ตรวจเชิงรุก: สำรวจคุณภาพน้ำ ส้วม ขยะ น้ำใช้ กลุ่มเปราะบาง และป้องกันไม่ให้รุนแรงขึ้น',note:null},
-    yellow:{rank:2,color:'#F2D43D',stage:'เตรียมพร้อม',label:'เหลือง',phase:'Preparedness',meaning:'มีรายงาน ปภ. หรือพบน้ำ แต่ยังไม่เข้าเงื่อนไขน้ำขัง',plan:'เตรียมทีม อุปกรณ์ คลอรีน PPE ทะเบียนกลุ่มเปราะบาง และติดตามสถานการณ์',note:null},
-    green:{rank:1,color:'#4CAF50',stage:'ฟื้นฟู',label:'เขียว',phase:'Recovery',meaning:'ประมาณว่าน้ำลด',plan:'ฟื้นฟู: Big Cleaning ล้าง–ฆ่าเชื้อ ฟื้นระบบน้ำและสุขาภิบาล ตรวจความปลอดภัย และติดตามกลุ่มเปราะบาง',note:'ประมาณว่าน้ำลดจากรายงาน ปภ. ไม่ใช่การยืนยัน (ปภ. อาจหยุดรายงานเฉย ๆ)'},
-    normal:{rank:0,color:null,stage:'ปกติ',label:'ปกติ',phase:'',meaning:'ไม่พบสถานการณ์',plan:'',note:null},
+    red:{rank:4,color:'#E24B4A',stage:'ตอบโต้ทันที',label:'แดง',phase:'Response',meaning:'ปภ. รายงานอำเภอต่อเนื่องเกิน 3 วัน และมีข่าวน้ำเน่าในจังหวัดภายใน 7 วัน',plan:'แก้ไขทันที: จัดการน้ำเสีย ขยะ ส้วม น้ำสะอาด และคุ้มครองประชาชน',note:'สีแดงหมายถึงน้ำขังนาน เสี่ยงน้ำเน่าเสีย ไม่ใช่การยืนยันคุณภาพน้ำ'},
+    orange:{rank:3,color:'#EF9F27',stage:'ตรวจเชิงรุก',label:'ส้ม',phase:'Preparedness → Response',meaning:'ปภ. รายงานอำเภอต่อเนื่องเกิน 3 วัน ยังไม่มีข่าวน้ำเน่าในจังหวัด',plan:'ตรวจเชิงรุก: สำรวจคุณภาพน้ำ ส้วม ขยะ น้ำใช้ กลุ่มเปราะบาง และป้องกันไม่ให้รุนแรงขึ้น',note:null},
+    yellow:{rank:2,color:'#F2D43D',stage:'เตรียมพร้อม',label:'เหลือง',phase:'Preparedness',meaning:'ปภ. รายงาน 1–3 วัน ภาพดาวเทียมพบน้ำ ฝนพยากรณ์เกิน 35 มม. มีประกาศเตือนภัย หรือเพิ่งหายจากรายงาน',plan:'เตรียมทีม อุปกรณ์ คลอรีน PPE ทะเบียนกลุ่มเปราะบาง และติดตามสถานการณ์',note:null},
+    green:{rank:1,color:'#4CAF50',stage:'ฟื้นฟู',label:'เขียว',phase:'Recovery',meaning:'หายจากรายงาน ปภ. 2–4 วัน ไม่พบน้ำและไม่มีฝนหนัก (ประมาณว่าคลี่คลาย)',plan:'ฟื้นฟู: Big Cleaning ล้าง–ฆ่าเชื้อ ฟื้นระบบน้ำและสุขาภิบาล ตรวจความปลอดภัย และติดตามกลุ่มเปราะบาง',note:'ประมาณว่าน้ำลดจากรายงาน ปภ. ไม่ใช่การยืนยัน (ปภ. อาจหยุดรายงานเฉย ๆ)'},
+    normal:{rank:0,color:null,stage:'ปกติ',label:'ปกติ',phase:'',meaning:'',plan:'',note:null},
   };
   const water2p2rLevel=r=>WATER_2P2R[String(r&&r.level_code!=null?r.level_code:'').trim()]||null;
   // Province codes are 2 digits; a numeric cell (Apps Script) must still match the GeoJSON `pro_code` ("14").
