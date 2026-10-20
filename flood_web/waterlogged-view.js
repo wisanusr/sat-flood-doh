@@ -502,8 +502,27 @@
     const d=$('waterDetail');if(!d)return null;
     d.innerHTML=detailHtml();
     if(window.DashboardTables)window.DashboardTables.paginate();
+    requestAnimationFrame(fitSideList);
     return d;
   }
+  // The 2P2R list sits beside the map: as many rows per page as fill the map panel's height (which depends on the screen
+  // width), so neither panel is left with empty space. Stacked (one column) it keeps the default 13.
+  const SIDE_DEFAULT=13;
+  function fitSideList(){
+    const T=window.DashboardTables,det=$('waterDetail'),mp=$('waterMapPanel'),pager=det&&det.querySelector('[data-pager="waterSideList"]');
+    if(!T||!T.setPageSize||!det||!mp||!pager)return;
+    if(matchMedia('(max-width:1023px)').matches){if(T.pageSize('waterSideList')!==SIDE_DEFAULT){T.setPageSize('waterSideList',SIDE_DEFAULT);T.paginate()}return}
+    const row=det.querySelector('#waterSideList tbody tr:not([hidden])');if(!row)return;
+    const rowH=row.getBoundingClientRect().height;if(!(rowH>0))return;
+    const pad=parseFloat(getComputedStyle(det).paddingBottom)||0;
+    const natural=el=>{const last=el.lastElementChild;return last?last.getBoundingClientRect().bottom-el.getBoundingClientRect().top:0};
+    const diff=natural(mp)-(pager.getBoundingClientRect().bottom-det.getBoundingClientRect().top)-pad;
+    const cur=T.pageSize('waterSideList')||SIDE_DEFAULT,delta=diff>=0?Math.floor(diff/rowH):-Math.ceil(-diff/rowH);
+    const next=Math.max(5,Math.min(40,cur+delta));
+    if(next!==cur){T.setPageSize('waterSideList',next);T.paginate()}
+  }
+  let fitTimer=null;
+  window.addEventListener('resize',()=>{if(!isOpen)return;clearTimeout(fitTimer);fitTimer=setTimeout(fitSideList,150)});
   function detailHtml(){
     const r=state.sel&&rowsAll().find(x=>key(x)===state.sel);
     const prov=districtDetailHtml()+provinceDetailHtml();
@@ -639,6 +658,7 @@
       +districtPanel(districts);
     bind();
     drawMap();
+    requestAnimationFrame(()=>requestAnimationFrame(fitSideList));
     renderTable();
     if(window.DashboardTables&&$('waterDistrictTable'))window.DashboardTables.paginate();
   }
