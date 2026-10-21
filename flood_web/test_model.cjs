@@ -342,6 +342,24 @@ assert(m.compareNationalTableValues('–','0','asc')>0);
 assert.equal(m.compareNationalTableValues('–','–','desc'),0);
 assert(m.compareNationalTableValues('เขต 10','เขต 2','desc')<0);
 console.log('PASS: national table numeric sorting and missing values');
+
+// Operations: DOH counts and map pins use the same province/district scope.
+const opsFeature={properties:{amp_code:'8105',amp_th:'อ่าวลึก',pro_th:'กระบี่'},geometry:{type:'Polygon',coordinates:[[[98,8],[99,8],[99,9],[98,9],[98,8]]]}};
+const opsShelterRows=[
+ {shelter_id:'a',province:'กระบี่',district:'อ.อ่าวลึก',lat:null,lon:null},
+ {shelter_id:'b',province:'กระบี่',district:'คลองท่อม',lat:8.5,lon:98.5},
+ {shelter_id:'c',province:'กระบี่',district:null,lat:8.5,lon:98.5},
+ {shelter_id:'d',province:'กระบี่',district:null,lat:null,lon:null},
+ {shelter_id:'e',province:'ราชบุรี',district:'อ่าวลึก',lat:8.5,lon:98.5}
+];
+assert.deepEqual(m.operationsShelterScope(opsShelterRows,{provinces:['กระบี่']}).map(r=>r.shelter_id),['a','b','c','d']);
+assert.deepEqual(m.operationsShelterScope(opsShelterRows,{provinces:['กระบี่'],features:[opsFeature],narrowed:true}).map(r=>r.shelter_id),['a','c']);
+assert.equal(m.operationsShelterScope(opsShelterRows,{provinces:[],features:[opsFeature],narrowed:true}).length,0);
+assert.equal(m.operationsShelterScope([],{provinces:['กระบี่']}).length,0);
+assert(m.compareNationalTableValues('1 ต.ค. 2569 06:00','30 ก.ย. 2569 12:00','desc')<0);
+assert(m.compareNationalTableValues('1 ม.ค. 2570','31 ธ.ค. 2569','asc')>0);
+assert(m.compareNationalTableValues('20 ต.ค. 2569 06:01','20 ต.ค. 2569 06:00','desc')<0);
+console.log('PASS: operations DOH geographic scope and chronological Thai date sorting');
 // Executive report tab: raw CSV rows (strings) from Disaster_DB, Vulnerable_group, flood_waterlogged_amphoe and tmd_rain_level
 {
   assert.equal(m.execNum('4,419'),4419);assert.equal(m.execNum(' - '),null);assert.equal(m.execNum(''),null);assert.equal(m.execNum('0'),0);
