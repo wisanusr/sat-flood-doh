@@ -211,7 +211,7 @@ assert.equal(m.validCoordinates({latitude:91,longitude:100}),false);
   assert.equal(m.waterFreshness(fr,at(1)).runAt,new Date(Date.parse(run)).toISOString());
   // 2P2R province colours: level lookup, ordering, counts, code matching (leading zeros / numeric cells), unmatched provinces
   assert.deepEqual(Object.keys(m.WATER_2P2R),['red','orange','yellow','green','normal']);
-  assert.deepEqual(['red','orange','yellow','green'].map(k=>m.WATER_2P2R[k].color),['#E24B4A','#EF9F27','#F2D43D','#4CAF50']);
+  assert.deepEqual(['red','orange','yellow','green'].map(k=>m.WATER_2P2R[k].color),['#dc2626','#f97316','#facc15','#22c55e']);
   assert.equal(m.WATER_2P2R.normal.color,null);                                 // normal = no fill
   assert(m.WATER_2P2R.red.note.includes('ไม่ใช่การยืนยัน')&&m.WATER_2P2R.green.note.includes('ไม่ใช่การยืนยัน'));
   assert.equal(m.WATER_2P2R.orange.note,null);
@@ -342,6 +342,24 @@ assert(m.compareNationalTableValues('–','0','asc')>0);
 assert.equal(m.compareNationalTableValues('–','–','desc'),0);
 assert(m.compareNationalTableValues('เขต 10','เขต 2','desc')<0);
 console.log('PASS: national table numeric sorting and missing values');
+
+// Operations: DOH counts and map pins use the same province/district scope.
+const opsFeature={properties:{amp_code:'8105',amp_th:'อ่าวลึก',pro_th:'กระบี่'},geometry:{type:'Polygon',coordinates:[[[98,8],[99,8],[99,9],[98,9],[98,8]]]}};
+const opsShelterRows=[
+ {shelter_id:'a',province:'กระบี่',district:'อ.อ่าวลึก',lat:null,lon:null},
+ {shelter_id:'b',province:'กระบี่',district:'คลองท่อม',lat:8.5,lon:98.5},
+ {shelter_id:'c',province:'กระบี่',district:null,lat:8.5,lon:98.5},
+ {shelter_id:'d',province:'กระบี่',district:null,lat:null,lon:null},
+ {shelter_id:'e',province:'ราชบุรี',district:'อ่าวลึก',lat:8.5,lon:98.5}
+];
+assert.deepEqual(m.operationsShelterScope(opsShelterRows,{provinces:['กระบี่']}).map(r=>r.shelter_id),['a','b','c','d']);
+assert.deepEqual(m.operationsShelterScope(opsShelterRows,{provinces:['กระบี่'],features:[opsFeature],narrowed:true}).map(r=>r.shelter_id),['a','c']);
+assert.equal(m.operationsShelterScope(opsShelterRows,{provinces:[],features:[opsFeature],narrowed:true}).length,0);
+assert.equal(m.operationsShelterScope([],{provinces:['กระบี่']}).length,0);
+assert(m.compareNationalTableValues('1 ต.ค. 2569 06:00','30 ก.ย. 2569 12:00','desc')<0);
+assert(m.compareNationalTableValues('1 ม.ค. 2570','31 ธ.ค. 2569','asc')>0);
+assert(m.compareNationalTableValues('20 ต.ค. 2569 06:01','20 ต.ค. 2569 06:00','desc')<0);
+console.log('PASS: operations DOH geographic scope and chronological Thai date sorting');
 // Executive report tab: raw CSV rows (strings) from Disaster_DB, Vulnerable_group, flood_waterlogged_amphoe and tmd_rain_level
 {
   assert.equal(m.execNum('4,419'),4419);assert.equal(m.execNum(' - '),null);assert.equal(m.execNum(''),null);assert.equal(m.execNum('0'),0);

@@ -62,14 +62,17 @@ const qualityBadge=r=>badge(quality(r),quality(r)==='ภายใน 24 ชั�
 const statusBadge=s=>{const c=canonicalWaterStatus(s);const color=WATER_STATUS[c]?.color;return color?`<span class="badge" style="background-color:${color};color:${color==='#facc15'?'#000':'#fff'}">${esc(s)}</span>`:badge(s);};
 const link=(url,text)=>{try{const u=new URL(url);return ['https:','http:'].includes(u.protocol)?`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(text)}</a>`:esc(text)}catch{return esc(text)}};
 let state={tab:'national',date:uniq(DATA.disasters.map(r=>r.Report_Date.slice(0,10))).sort().at(-1),region:'',province:'',district:'',trend:'',nationalUnit:'amp',nationalDistrict:'',nationalQuery:''},currentStations=[],currentShelters=[],csvRows=[],map=null,layers=null,nationalBase=null,nationalLegend=null,healthRegionLayer=null,healthRegionNumbers=null,shelterMap=null,shelterLayers=null;
+const operationsFilters={nationalUnit:'amp',nationalDistrict:'',nationalQuery:''};
+function isAreaView(){return state.tab==='national'||state.tab==='ops';}
+function areaFilters(){return state.tab==='ops'?operationsFilters:state;}
 function opts(id,values,first){$(id).innerHTML=(first?`<option value="">${first}</option>`:'')+values.map(v=>`<option value="${esc(v)}">${id==='reportDate'?date(v+'T00:00:00+07:00'):esc(v)}</option>`).join('')}
 opts('reportDate',uniq(DATA.disasters.map(r=>r.Report_Date.slice(0,10))).sort());$('reportDate').value=state.date;
 opts('region',uniq(DATA.vulnerable.map(r=>r.region).filter(Boolean)).sort((a,b)=>String(a).localeCompare(String(b),'th',{numeric:true})),'ทุกเขตสุขภาพ');opts('province',provinceNames(),'ทุกจังหวัด');opts('district',districts,'ทุกเขต กทม.');
 // Operations tab cards: DOH shelters and vulnerable groups in the provinces that have a DDPM report on the selected day.
 function opsExtraCards(affected){
  const inAff=new Set(affected);
- const shelters=doh.all?doh.all.filter(r=>inAff.has(r.province)).length:null;
- const dohCard=card('ศูนย์พักพิง DOH',shelters,'แห่ง',doh.all?`ในจังหวัดที่มีรายงานภัย จากทั้งหมด ${fmt(doh.all.length)} แห่ง`:doh.failed?'โหลดข้อมูล DOH ไม่สำเร็จ (มีเฉพาะเว็บ GitHub Pages)':'กำลังโหลดข้อมูล DOH…');
+ const shelters=doh.all?opsSheltersFor(affected).length:null;
+ const dohCard=card('ศูนย์พักพิง DOH',shelters,'แห่ง',doh.all?`ตามพื้นที่เลือก · จากทั้งหมด ${fmt(doh.all.length)} แห่ง`:doh.failed?'โหลดข้อมูล DOH ไม่สำเร็จ (มีเฉพาะเว็บ GitHub Pages)':'กำลังโหลดข้อมูล DOH…');
  const t=DashboardModel.vulnerableTotals(DATA.vulnerable.filter(r=>inAff.has(r.province)),inAff),n=['elderly','pregnant','children'].map(k=>t.affected[k]);
  const total=n.some(Number.isFinite)?n.reduce((a,b)=>a+(b||0),0):null;
  const vulCard=card('กลุ่มเปราะบางที่อาจได้รับผลกระทบ',total,'คน',`ผู้สูงอายุ ${fmt(n[0])} · หญิงตั้งครรภ์ ${fmt(n[1])} · เด็กเล็ก ${fmt(n[2])} (ประชากรทั้งจังหวัดที่ประสบภัย)`);
@@ -86,27 +89,27 @@ function card(label,value,unit,note,accent=false){return `<article class="card $
 function metric(label,value){return `<div class="metricline"><span>${label}</span><strong>${value}</strong></div>`}
 function bars(rows){let max=Math.max(...rows.map(r=>r.value),1);return rows.map(r=>{let color='#087873';if(r.value>=100000)color='#dc2626';else if(r.value>=10000)color='#f97316';else if(r.value>=1000)color='#facc15';else if(r.value>=1)color='#22c55e';return `<div class="barrow"><button data-province="${esc(r.name)}" title="ดูจังหวัด ${esc(r.name)}">${esc(r.name)}</button><div class="bartrack"><div class="bar" style="width:${r.value/max*100}%;background:${color}"></div></div><strong>${fmt(r.value)}</strong></div>`}).join('')||'<p class="empty">ไม่มีรายงานในขอบเขตที่เลือก</p>'}
 function table(headers,rows){return `<table><thead><tr>${headers.map((h,i)=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.length?rows.map(row=>`<tr>${row.map((v,i)=>`<td>${v}</td>`).join('')}</tr>`).join(''):`<tr><td colspan="${headers.length}" class="empty">ไม่มีข้อมูลในขอบเขตที่เลือก</td></tr>`}</tbody></table>`}
-// National filters are isolated from BKK, operations and external tabs.
+// Shared area controls for national and operations; BKK and external tabs retain their own controls.
 function nationalDistrictFeatures(){
  const allowed=provinceNames().filter(p=>(!state.province||p===state.province)&&(!state.region||DATA.vulnerable.some(r=>r.province===p&&r.region===state.region)));
  return (window.AMPHOE_GEOJSON?.features||[]).filter(f=>allowed.includes(f.properties.pro_th));
 }
 function nationalScopeFeatures(){
- const q=state.nationalQuery.trim().toLocaleLowerCase('th');
- return nationalDistrictFeatures().filter(f=>(!state.nationalDistrict||String(f.properties.amp_code)===state.nationalDistrict)&&(!q||[f.properties.amp_th,f.properties.pro_th].some(v=>String(v).toLocaleLowerCase('th').includes(q))));
+ const q=areaFilters().nationalQuery.trim().toLocaleLowerCase('th');
+ return nationalDistrictFeatures().filter(f=>(!areaFilters().nationalDistrict||String(f.properties.amp_code)===areaFilters().nationalDistrict)&&(!q||[f.properties.amp_th,f.properties.pro_th].some(v=>String(v).toLocaleLowerCase('th').includes(q))));
 }
 function syncNationalFilters(){
- const national=state.tab==='national';
+ const national=isAreaView();
  $('workspace').classList.toggle('national-filter-layout',national);
  document.querySelectorAll('.national-only-filter').forEach(el=>el.classList.toggle('hidden',!national));
  if(!national)return;
  const features=nationalDistrictFeatures().sort((a,b)=>a.properties.pro_th.localeCompare(b.properties.pro_th,'th')||a.properties.amp_th.localeCompare(b.properties.amp_th,'th'));
- if(state.nationalUnit==='prov'||!features.some(f=>String(f.properties.amp_code)===state.nationalDistrict))state.nationalDistrict='';
- $('nationalUnit').value=state.nationalUnit;
+ if(areaFilters().nationalUnit==='prov'||!features.some(f=>String(f.properties.amp_code)===areaFilters().nationalDistrict))areaFilters().nationalDistrict='';
+ $('nationalUnit').value=areaFilters().nationalUnit;
  $('nationalDistrict').innerHTML='<option value="">ทุกอำเภอ</option>'+features.map(f=>'<option value="'+esc(f.properties.amp_code)+'">'+esc(f.properties.amp_th)+(state.province?'':' (จ.'+esc(f.properties.pro_th)+')')+'</option>').join('');
- $('nationalDistrict').value=state.nationalDistrict;$('nationalDistrict').disabled=state.nationalUnit==='prov';
- $('nationalQuery').value=state.nationalQuery;
- $('selectedFilters').textContent=[state.nationalUnit==='amp'?'ระดับอำเภอ':'ระดับจังหวัด',state.nationalDistrict?$('nationalDistrict').selectedOptions[0].textContent:state.province||state.region||'ทุกพื้นที่',state.nationalQuery.trim()?'ค้นหา: '+state.nationalQuery.trim():''].filter(Boolean).join(' · ');
+ $('nationalDistrict').value=areaFilters().nationalDistrict;$('nationalDistrict').disabled=areaFilters().nationalUnit==='prov';
+ $('nationalQuery').value=areaFilters().nationalQuery;
+ $('selectedFilters').textContent=[areaFilters().nationalUnit==='amp'?'ระดับอำเภอ':'ระดับจังหวัด',areaFilters().nationalDistrict?$('nationalDistrict').selectedOptions[0].textContent:state.province||state.region||'ทุกพื้นที่',areaFilters().nationalQuery.trim()?'ค้นหา: '+areaFilters().nationalQuery.trim():''].filter(Boolean).join(' · ');
  $('filterNote').textContent='ยอดครัวเรือนและแนวโน้มน้ำเป็นข้อมูลระดับจังหวัด · วันรายงานใช้กับ ปภ. เท่านั้น';
 }
 function nationalDistrictTooltip(feature,reports){
@@ -122,13 +125,13 @@ function nationalDistrictTooltip(feature,reports){
   +'<br><span class="quiet">'+(reported?'อำเภออยู่ในรายงานประสบภัย ปภ.':'ไม่พบอำเภอในรายงานประสบภัยตามตัวกรอง')+'</span>';
 }
 function nationalReportMatches(r){
- if(state.tab!=='national'||(!state.nationalDistrict&&!state.nationalQuery.trim()))return true;
+ if(!isAreaView()||(!areaFilters().nationalDistrict&&!areaFilters().nationalQuery.trim()))return true;
  const features=nationalScopeFeatures().filter(f=>f.properties.pro_th===r.Province);
  const names=DashboardModel.nationalDistrictNames(r.District_Names,r.Province);
- return features.some(f=>names.includes(f.properties.amp_th)||(!state.nationalDistrict&&String(r.Province).includes(state.nationalQuery.trim())));
+ return features.some(f=>names.includes(f.properties.amp_th)||(!areaFilters().nationalDistrict&&String(r.Province).includes(areaFilters().nationalQuery.trim())));
 }
 function nationalStationMatches(r){
- if(state.tab!=='national'||(!state.nationalDistrict&&!state.nationalQuery.trim()))return true;
+ if(!isAreaView()||(!areaFilters().nationalDistrict&&!areaFilters().nationalQuery.trim()))return true;
  return nationalScopeFeatures().some(f=>DashboardModel.nationalPointInGeometry(r.longitude,r.latitude,f.geometry));
 }
 function getReports(allTrends){return DATA.disasters.filter(r=>r.Report_Date.slice(0,10)===state.date&&r.Current_Status==='กำลังประสบภัย'&&nationalReportMatches(r)&&(allTrends||!state.trend||DashboardModel.trendKind(r.Water_Level_Trend)===state.trend))}
@@ -136,7 +139,7 @@ function render(){syncNationalFilters();const bkk=state.tab==='bkk',ops=state.ta
 $('shelterCards').classList.toggle('hidden',!bkk);
 $('allSheltersPanel').classList.toggle('hidden',!bkk);
 $('nationalVulPanel').classList.toggle('hidden', bkk||ops);$('vulSummary').classList.toggle('hidden', bkk||ops);$('stationPanel').classList.toggle('hidden',ops);$('opsShelterChip').classList.toggle('hidden',!ops);$('layerPop').classList.toggle('ops-layers',ops);$('workspace').classList.toggle('ops-layout',ops);$('layersBtn').classList.toggle('icon-only',ops);ops?$('layersBtn').setAttribute('aria-label','ชั้นข้อมูล'):$('layersBtn').removeAttribute('aria-label');document.querySelectorAll('#showWaterHeat,#showStationPins').forEach(x=>x.closest('label')?.classList.toggle('hidden',ops));
-$('bkkVulPanel').classList.toggle('hidden', !bkk);$('areaNote').classList.toggle('hidden',!bkk);$('pageTitle').textContent=bkk?'กรุงเทพมหานคร':ops?'ปฏิบัติการ ปภ.':'สถานการณ์น้ำและพื้นที่ได้รับผลกระทบ';$('pageSub').textContent=bkk?'ติดตามระดับน้ำ ความพร้อมศูนย์พักพิง และข้อมูลรายเขต':ops?'ข้อมูลรายงานสถานการณ์ภัยจาก กรมป้องกันและบรรเทาสาธารณภัย (ปภ.) เท่านั้น · เลือกพื้นที่เพื่อดูรายละเอียด':'';$('dateLabel').textContent=bkk?'':'รายงาน ปภ. '+date(state.date+'T00:00:00+07:00');$('filterNote').textContent=state.tab==='national'?'ยอดครัวเรือนและแนวโน้มน้ำเป็นข้อมูลระดับจังหวัด · วันรายงานใช้กับ ปภ. เท่านั้น':'';if($('sourceName'))$('sourceName').textContent=DATA.source;
+$('bkkVulPanel').classList.toggle('hidden', !bkk);$('areaNote').classList.toggle('hidden',!bkk);$('pageTitle').textContent=bkk?'กรุงเทพมหานคร':ops?'ปฏิบัติการ ปภ.':'สถานการณ์น้ำและพื้นที่ได้รับผลกระทบ';$('pageSub').textContent=bkk?'ติดตามระดับน้ำ ความพร้อมศูนย์พักพิง และข้อมูลรายเขต':ops?'ติดตามรายงาน ปภ. และศูนย์พักพิง DOH · เลือกดูระดับอำเภอหรือจังหวัด':'';$('dateLabel').textContent=bkk?'':'รายงาน ปภ. '+date(state.date+'T00:00:00+07:00');$('filterNote').textContent=isAreaView()?'ยอดครัวเรือนและแนวโน้มน้ำเป็นข้อมูลระดับจังหวัด · วันรายงานใช้กับ ปภ. เท่านั้น':'';if($('sourceName'))$('sourceName').textContent=DATA.source;
  const all=getReports(),allowed=allowedProvinces(),reports=all.filter(r=>bkk?r.Province==='กรุงเทพมหานคร':allowed.includes(r.Province));
  currentStations=bkk?DATA.bkkStations.filter(r=>r.province==='กรุงเทพมหานคร'&&(!state.district||r.district_or_area===state.district)):(ops?[]:nationalStations().filter(r=>allowed.includes(r.province)&&nationalStationMatches(r)));const activeShelterFilters=new Set(Array.from(document.querySelectorAll('.shelter-status-filter:checked')).map(el=>el.value)); currentShelters=bkk?DATA.shelters.filter(r=>(!state.district||r.district===state.district)&&activeShelterFilters.has(shelterStatusKey(r))):[];
  const fresh=currentStations.filter(r=>quality(r)==='ภายใน 24 ชั่วโมง'),stale=currentStations.filter(r=>quality(r)==='ข้อมูลเก่าเกิน 24 ชั่วโมง'),future=currentStations.filter(r=>quality(r)==='เวลาอนาคต'),severe=fresh.filter(r=>(WATER_STATUS[canonicalWaterStatus(r.flood_status_source)]?.rank||0)>=4),affected=uniq(reports.map(r=>r.Province)),households=reports.length?sum(reports,'Affected_Households'):null;
@@ -163,7 +166,7 @@ $('bkkVulPanel').classList.toggle('hidden', !bkk);$('areaNote').classList.toggle
    }
    bkkShelterCap=sum(currentShelters,'capacity');bkkShelterOcc=sum(currentShelters,'occupied');
  }
-$('cards').innerHTML=bkk?card('เขตวิกฤต / ล้นตลิ่ง',bkkCriticalDistricts,'เขต','จากข้อมูลสถานีน้ำ 24 ชม.',true)+card('สถานีวิกฤต / ล้นตลิ่ง',bkkCriticalStations,'สถานี',`จากทั้งหมด ${fmt(fresh.length)} สถานีที่ข้อมูลอัปเดต`)+card('ผู้เข้าพักศูนย์พักพิง',bkkShelterOcc,'คน',`รองรับได้ทั้งหมด ${fmt(bkkShelterCap)} คน`)+card('จำนวนศูนย์ที่เต็ม/ใกล้เต็ม',bkkShelterFull,'แห่ง',`จากศูนย์ตามตัวกรองทั้งหมด ${fmt(currentShelters.length)} แห่ง`):card('จังหวัดที่มีรายงานภัย',affected.length,'จังหวัด','',true)+card('ครัวเรือนตามรายงาน',households,'ครัวเรือน','')+(ops?'':card('จังหวัดแนวโน้มน้ำเพิ่มขึ้น',uniq(reports.filter(r=>r.Water_Level_Trend==='เพิ่มขึ้น').map(r=>r.Province)).length,'จังหวัด',''))+(ops?opsExtraCards(affected):card('สถานีวิกฤติ / ล้นตลิ่ง',severe.length,'แห่ง',''));
+$('cards').innerHTML=bkk?card('เขตวิกฤต / ล้นตลิ่ง',bkkCriticalDistricts,'เขต','จากข้อมูลสถานีน้ำ 24 ชม.',true)+card('สถานีวิกฤต / ล้นตลิ่ง',bkkCriticalStations,'สถานี',`จากทั้งหมด ${fmt(fresh.length)} สถานีที่ข้อมูลอัปเดต`)+card('ผู้เข้าพักศูนย์พักพิง',bkkShelterOcc,'คน',`รองรับได้ทั้งหมด ${fmt(bkkShelterCap)} คน`)+card('จำนวนศูนย์ที่เต็ม/ใกล้เต็ม',bkkShelterFull,'แห่ง',`จากศูนย์ตามตัวกรองทั้งหมด ${fmt(currentShelters.length)} แห่ง`):card('จังหวัดที่มีรายงานภัย',affected.length,'จังหวัด',ops&&areaFilters().nationalDistrict?'จังหวัดของอำเภอที่เลือก':'',true)+card('ครัวเรือนตามรายงาน',households,'ครัวเรือน',ops?'ยอดรวมระดับจังหวัด':'')+(ops?'':card('จังหวัดแนวโน้มน้ำเพิ่มขึ้น',uniq(reports.filter(r=>r.Water_Level_Trend==='เพิ่มขึ้น').map(r=>r.Province)).length,'จังหวัด',''))+(ops?opsExtraCards(affected):card('สถานีวิกฤติ / ล้นตลิ่ง',severe.length,'แห่ง',''));
  $('alert').style.display='none';
  $('mapTitle').textContent=bkk?'แนวโน้มระดับน้ำรายเขต กรุงเทพมหานคร':'การเฝ้าระวังน้ำและผลกระทบ';$('mapSubtitle').textContent='';$('mapSource').textContent=bkk?'ที่มา : สำนักการระบายน้ำ กทม., ระบบช่วยเหลือผู้ประสบภัย กรุงเทพมหานคร':'ที่มา : กรมป้องกันและบรรเทาสาธารณะภัย, ThaiWater, HDC';$('mapSubtitle').classList.toggle('hidden',!bkk);$('mapCount').textContent=bkk?(state.district?'เขต'+state.district:'50 เขต')+` · ${fmt(currentStations.length)} สถานี`:ops?`${fmt(affected.length)} จังหวัด`:`${fmt(currentStations.length)} สถานี`;
  $('stationMapLegend').classList.add('hidden');$('householdMapLegend').classList.add('hidden');$('map').classList.toggle('national-view',!bkk);$('bkkMapTools').classList.toggle('hidden',!bkk);$('healthRegionTools').classList.toggle('hidden',bkk);$('districtWaterLegend').classList.toggle('hidden',!bkk);$('districtShelterLegend').classList.toggle('hidden',!bkk);$('districtWaterNote').classList.toggle('hidden',!bkk);$('nationalHeatNote').classList.toggle('hidden',bkk);renderTrendCards(bkk);
@@ -182,8 +185,9 @@ $('cards').innerHTML=bkk?card('เขตวิกฤต / ล้นตลิ่�
   // Operations tab: water trend first (rising, steady, falling, not stated), then households within each group.
   const trendRank=r=>({up:0,steady:1,down:2})[DashboardModel.trendKind(r.Water_Level_Trend)]??3;
   if (ops) { sortedRows.sort((a,b)=>trendRank(a)-trendRank(b)||(b.Affected_Households||0)-(a.Affected_Households||0)); $('sideSub').textContent=(state.province||'เรียงตามสถานะน้ำ (เพิ่มขึ้น → ทรงตัว → ลดลง) แล้วตามจำนวนครัวเรือน'); }
-  if (ops) {
-    loadDoh();
+  if(ops)loadDoh();
+  if (ops&&areaFilters().nationalUnit==='prov') {
+    $('sideTitle').textContent='ตารางสรุปผลกระทบ ปภ. · ระดับจังหวัด';
     // Operations tab: no separate water column; the province name itself carries the water-trend colour.
     $('sideBody').innerHTML = table(['จังหวัด', 'ครัวเรือน', 'ตำบล', 'อำเภอ', 'เสียชีวิต', 'ศูนย์พักพิง DOH (แห่ง)'], sortedRows.map(r => [
       `<button class="province-chip" style="${trendBadgeStyle(r.Water_Level_Trend)}" data-province="${esc(r.Province)}" title="แนวโน้มระดับน้ำ: ${esc(r.Water_Level_Trend||'ไม่ระบุ')}">${esc(r.Province)}</button>`,
@@ -191,19 +195,21 @@ $('cards').innerHTML=bkk?card('เขตวิกฤต / ล้นตลิ่�
       esc(r.Affected_Subdistricts_Count ?? '-'),
       esc(r.Affected_Districts_Count ?? '-'),
       r.Casualties_Deaths == null ? '-' : fmt(r.Casualties_Deaths),
-      doh.all ? fmt(doh.all.filter(x=>x.province===r.Province).length) : doh.failed ? '-' : '…'
+      doh.all ? fmt(opsSheltersFor([r.Province]).length) : doh.failed ? '-' : '…'
     ]));
   } else {
-  if(state.tab==='national'&&state.nationalUnit==='amp'){
+  if(isAreaView()&&areaFilters().nationalUnit==='amp'){
     const rows=DashboardModel.nationalDistrictSummary(reports,nationalScopeFeatures());
     $('sideTitle').textContent='ตารางสรุปผลกระทบ ปภ. · ระดับอำเภอ';
     $('sideSub').textContent='อำเภอในรายงาน ปภ. · แนวโน้มน้ำอ้างอิงจังหวัด · ต้นทางยังไม่แยกยอดครัวเรือน ตำบล และผู้เสียชีวิตรายอำเภอ';
-    $('sideBody').innerHTML=table(['อำเภอ','จังหวัด','ครัวเรือน','ตำบล','เสียชีวิต'],rows.map(r=>{
+    const districtHeaders=['อำเภอ','จังหวัด','ครัวเรือน','ตำบล','เสียชีวิต',...(ops?['ศูนย์พักพิง DOH (แห่ง)']:[])];
+    $('sideBody').innerHTML=table(districtHeaders,rows.map(r=>{
       const trend={up:'เพิ่มขึ้น',steady:'ทรงตัว',down:'ลดลง'}[r.trend];
       const missing='<span class="quiet" title="ข้อมูลต้นทางยังไม่แยกรายอำเภอ">–</span>';
       return [
         '<button class="province-chip" style="'+trendBadgeStyle(trend)+'" data-national-district="'+esc(r.code)+'" title="จ.'+esc(r.province)+' · แนวโน้มระดับจังหวัด: '+esc(trend||(r.mixed?'หลายแนวโน้ม':'ไม่ระบุ'))+'">'+esc(r.district)+'</button>',
-        esc(r.province),missing,missing,missing
+        esc(r.province),missing,missing,missing,
+        ...(ops?[doh.all?fmt(opsSheltersFor([r.province],r.code).length):doh.failed?'อ่านไม่ได้':'…']:[])
       ];
     }));
   }else{
@@ -227,7 +233,7 @@ renderStations();
 renderShelterDetails();renderShelterToolbar();
 renderVulnerable();renderVulSummary();
 renderBkkVulChart();
-$('sideBody').classList.toggle('national-district-summary',state.tab==='national'&&state.nationalUnit==='amp');$('sideBody').classList.toggle('ddpm-summary',state.tab!=='bkk');$('sideBody').classList.toggle('ops-summary',state.tab==='ops');$('sideBody').classList.toggle('nat-summary',state.tab==='national');
+$('sideBody').classList.toggle('national-district-summary',isAreaView()&&areaFilters().nationalUnit==='amp');$('sideBody').classList.toggle('ddpm-summary',state.tab!=='bkk');$('sideBody').classList.toggle('ops-summary',state.tab==='ops');$('sideBody').classList.toggle('nat-summary',state.tab==='national');
 paginateTables();requestAnimationFrame(updateTableHints);
 if(state.tab === 'bkk') $('bkkVulPanel').classList.remove('hidden');
 renderSourceStatus();updateAlert();renderSituation();renderDataAge();
@@ -332,12 +338,29 @@ function renderAreas(){
   } else {
     $('areaTitle').textContent='รายละเอียดจังหวัดตามจำนวนครัวเรือนที่ประสบภัย และแนวโน้มรายจังหวัด';
     if(state.tab==='ops'){
+      $('areaTitle').textContent='รายละเอียดรายงาน ปภ. · ยอดรวมระดับจังหวัด';
       // Operations tab: every column of the DDPM (Disaster_DB) report for the selected day, all statuses, same order as the summary table.
       const allowedSet=new Set(allowed),tr=r=>({up:0,steady:1,down:2})[DashboardModel.trendKind(r.Water_Level_Trend)]??3;
-      const day=DATA.disasters.filter(r=>r.Report_Date.slice(0,10)===state.date&&allowedSet.has(r.Province)).sort((a,b)=>tr(a)-tr(b)||(b.Affected_Households||0)-(a.Affected_Households||0));
+      const day=DATA.disasters.filter(r=>r.Report_Date.slice(0,10)===state.date&&allowedSet.has(r.Province)&&nationalReportMatches(r)&&(!state.trend||DashboardModel.trendKind(r.Water_Level_Trend)===state.trend)).sort((a,b)=>tr(a)-tr(b)||(b.Affected_Households||0)-(a.Affected_Households||0));
       const dash=v=>v==null||v===''?'-':esc(v),num=v=>v==null?'-':fmt(v);
       // The data time is written in Remarks ("ปภ. รายงาน 557/2569 วันที่ 6 ต.ค. 2569 เวลา 06.00 น."); Update_Time / Ingested_At are import times.
       const dataTime=r=>{const m=/วันที่\s*(\d{1,2}\s*\S+\s*\d{4})\s*เวลา\s*(\d{1,2})[.:](\d{2})/.exec(r.Remarks||'');return m?m[1].replace(/\s+/g,' ')+' '+m[2].padStart(2,'0')+':'+m[3]+' น.':''};
+      if(areaFilters().nationalUnit==='amp'){
+        $('areaTitle').textContent='รายละเอียดอำเภอในรายงาน ปภ.';
+        const features=nationalScopeFeatures(),rows=[];
+        for(const f of features)for(const report of day){
+          if(report.Province===f.properties.pro_th&&DashboardModel.nationalDistrictNames(report.District_Names,report.Province).includes(f.properties.amp_th))rows.push({feature:f,report});
+        }
+        const headers=['อำเภอ','จังหวัด','แนวโน้มน้ำ (จังหวัด)','สถานะรายงาน','ประเภทภัย','ศูนย์พักพิง DOH (แห่ง)','เวลาของข้อมูล (ตามรายงาน ปภ.)'];
+        const values=rows.map(({feature:f,report:r})=>[f.properties.amp_th,r.Province,r.Water_Level_Trend||'ไม่ระบุ',r.Current_Status||'ไม่ระบุ',r.Disaster_Type||'ไม่ระบุ',doh.all?opsSheltersFor([r.Province],f.properties.amp_code).length:null,dataTime(r)]);
+        $('areaTable').innerHTML=table(headers,rows.map(({feature:f,report:r},i)=>[
+          '<button class="province-chip" style="'+trendBadgeStyle(r.Water_Level_Trend)+'" data-national-district="'+esc(f.properties.amp_code)+'">'+esc(f.properties.amp_th)+'</button>',
+          esc(r.Province),'<span class="badge" style="'+trendBadgeStyle(r.Water_Level_Trend)+'">'+esc(r.Water_Level_Trend||'ไม่ระบุ')+'</span>',
+          badge(r.Current_Status||'ไม่ระบุ',r.Current_Status==='กำลังประสบภัย'?'warn':''),dash(r.Disaster_Type),doh.all?fmt(values[i][5]):doh.failed?'อ่านไม่ได้':'…',dash(dataTime(r))
+        ]));
+        csvRows=[headers,...values.map(row=>row.map(v=>v??'ไม่มีข้อมูล'))];
+        return;
+      }
       // Column order for flood watch: where, how bad and which way the water is going, then the affected area, then report details.
       const cols=[
         ['จังหวัด',r=>`<button class="province-chip" style="${trendBadgeStyle(r.Water_Level_Trend)}" data-province="${esc(r.Province)}">${esc(r.Province)}</button>`,r=>r.Province],
@@ -408,13 +431,19 @@ function loadDoh(){
  doh.loading=true;
  fetch('doh_shelter.json',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.json()}).then(d=>{doh.all=(d.records||[]).filter(r=>r.is_latest);doh.rows=doh.all.filter(r=>r.lat!=null&&r.lon!=null)}).catch(()=>{doh.failed=true}).finally(()=>{doh.loading=false;if(state.tab==='ops')render()});
 }
+function opsSheltersFor(affected=uniq(getReports().map(r=>r.Province)),districtCode=''){
+ const features=districtCode?nationalScopeFeatures().filter(f=>String(f.properties.amp_code)===String(districtCode)):nationalScopeFeatures();
+ const allowed=new Set(allowedProvinces());
+ return DashboardModel.operationsShelterScope(doh.all||[],{provinces:affected.filter(p=>allowed.has(p)),features,narrowed:!!(districtCode||areaFilters().nationalDistrict||areaFilters().nationalQuery.trim())});
+}
 function addDohShelterPins(){
  if(!doh.rows){loadDoh();$('healthRegionStatus').textContent=doh.failed?'โหลดข้อมูลศูนย์พักพิง DOH ไม่สำเร็จ (มีเฉพาะเว็บ GitHub Pages)':'กำลังโหลดศูนย์พักพิง DOH…';return}
- for(const r of doh.rows){
+ const scopedShelters=opsSheltersFor().filter(r=>Number.isFinite(r.lat)&&Number.isFinite(r.lon));
+ for(const r of scopedShelters){
   const color=r.level?DOH_COLORS[r.level]:'#ffffff';
   L.circleMarker([r.lat,r.lon],{radius:8,color:r.level?'#fff':'#475569',weight:2,fillColor:color,fillOpacity:.95}).bindTooltip(esc(r.name)+' · '+esc(r.province)+' · ระดับ'+(DOH_LABELS[r.level]||'ไม่มีข้อมูล')).addTo(layers);
  }
- $('healthRegionStatus').textContent=($('healthRegionStatus').textContent?$('healthRegionStatus').textContent+' · ':'')+fmt(doh.rows.length)+' ศูนย์พักพิง DOH';
+ $('healthRegionStatus').textContent=($('healthRegionStatus').textContent?$('healthRegionStatus').textContent+' · ':'')+fmt(scopedShelters.length)+' ศูนย์พักพิง DOH ในพื้นที่เลือก';
 }
 function addShelterPins(target,rows){
  const valid=rows.filter(validCoordinates);
@@ -693,7 +722,7 @@ function renderHealthRegions(){
 // Names appear at full opacity at their zoom threshold; labels never intercept map clicks.
 let nationalNamesLayer=null,nationalLabelCandidates=null,nationalDistrictOutline=null;
 function nationalDistrictBorderStyle(feature){
- const selected=state.nationalDistrict===String(feature.properties.amp_code);
+ const selected=areaFilters().nationalDistrict===String(feature.properties.amp_code);
  // Country view stays quiet; district borders fade in between zoom 7 and 8.5.
  const opacity=selected?1:Math.min(1,Math.max(0,(map.getZoom()-7)/1.5))*.65;
  return {color:selected?'#123740':'#64748b',weight:selected?2.5:.6,opacity};
@@ -703,8 +732,8 @@ function updateNationalNames(){
  if(!map||!window.L)return;
  if(!nationalNamesLayer)nationalNamesLayer=L.layerGroup().addTo(map);
  nationalNamesLayer.clearLayers();
- if(state.tab!=='national')return;
- const zoom=map.getZoom(),provinceOpacity=zoom>=6.5?1:0,districtOpacity=state.nationalUnit==='amp'&&zoom>=8.5?1:0;
+ if(!isAreaView())return;
+ const zoom=map.getZoom(),provinceOpacity=zoom>=6.5?1:0,districtOpacity=areaFilters().nationalUnit==='amp'&&zoom>=8.5?1:0;
  if(!provinceOpacity&&!districtOpacity)return;
  if(!nationalLabelCandidates){
   const candidates=(features,kind,name)=>features.map(f=>({f,kind,name:name(f.properties),at:DashboardModel.nationalLabelPoint(f.geometry)})).filter(x=>x.at);
@@ -727,7 +756,7 @@ function syncNationalNames(){
  updateNationalNames();
 }
 let mapScope='',shelterScope='';
-function renderMap(){if(!window.L)return;const scope=[state.tab,state.region,state.province,state.district,state.trend,...(state.tab==='national'?[state.nationalUnit,state.nationalDistrict,state.nationalQuery]:[])].join('|');const fit=!map||scope!==mapScope;mapScope=scope;if(!window.L)return;if(!map){$('map').innerHTML='';map=L.map('map',{scrollWheelZoom:false,zoomSnap:0.5,zoomDelta:0.5,maxZoom:13}).setView([13.7,100.5],6); document.getElementById('map').style.background = '#ffffff';map.createPane('nationalBoundaries');map.getPane('nationalBoundaries').style.zIndex=450;map.createPane('trendFill');map.getPane('trendFill').style.zIndex=390;map.getPane('trendFill').style.pointerEvents='none';map.createPane('healthRegionBoundaries');map.getPane('healthRegionBoundaries').style.zIndex=650;map.getPane('healthRegionBoundaries').style.pointerEvents='none';layers=L.layerGroup().addTo(map)}layers.clearLayers();nationalDistrictOutline=null;syncNationalNames();map.setMaxZoom(state.tab==='bkk'?13:11);
+function renderMap(){if(!window.L)return;const scope=[state.tab,state.region,state.province,state.district,state.trend,...(isAreaView()?[areaFilters().nationalUnit,areaFilters().nationalDistrict,areaFilters().nationalQuery]:[])].join('|');const fit=!map||scope!==mapScope;mapScope=scope;if(!window.L)return;if(!map){$('map').innerHTML='';map=L.map('map',{scrollWheelZoom:false,zoomSnap:0.5,zoomDelta:0.5,maxZoom:13}).setView([13.7,100.5],6); document.getElementById('map').style.background = '#ffffff';map.createPane('nationalBoundaries');map.getPane('nationalBoundaries').style.zIndex=450;map.createPane('trendFill');map.getPane('trendFill').style.zIndex=390;map.getPane('trendFill').style.pointerEvents='none';map.createPane('healthRegionBoundaries');map.getPane('healthRegionBoundaries').style.zIndex=650;map.getPane('healthRegionBoundaries').style.pointerEvents='none';layers=L.layerGroup().addTo(map)}layers.clearLayers();nationalDistrictOutline=null;syncNationalNames();map.setMaxZoom(state.tab==='bkk'?13:11);
 if(state.tab==='bkk'){renderHealthRegions();if(nationalBase&&map.hasLayer(nationalBase))map.removeLayer(nationalBase);if(nationalLegend){nationalLegend.getContainer()?.remove();nationalLegend.remove();nationalLegend=null}$('mobileMapKey').replaceChildren();try{renderDistrictWaterMap(fit);updateBkkMapKey(map,$('showShelterPins').checked);}catch(e){console.error("DIST_ERR:", e)} try{renderShelterMap();}catch(e){console.error("SHELTER_ERR:", e)} return}
 if(nationalBase&&map.hasLayer(nationalBase))map.removeLayer(nationalBase);
 $('map').style.background='#ffffff';
@@ -760,21 +789,21 @@ if (window.PROVINCES_GEOJSON) {
             const prov=feature.properties.pro_th,n=totals.get(prov);
             if(allowed.has(prov)){if(!allBounds)allBounds=L.latLngBounds([]);allBounds.extend(layer.getBounds());if(trends.has(prov)||(state.tab==='ops'&&reported.has(prov))){if(!selectedBounds)selectedBounds=L.latLngBounds([]);selectedBounds.extend(layer.getBounds())}}
             const inScope=state.tab==='bkk'?prov==='กรุงเทพมหานคร':allowed.has(prov);
-            layer.bindTooltip(`<b>${esc(prov)}</b><br>${!inScope?'นอกพื้นที่ที่เลือก':n===undefined?'ไม่มีข้อมูลครัวเรือนในวันที่เลือก':fmt(n)+' ครัวเรือน'}${trends.has(prov)?'<br>แนวโน้มระดับน้ำ: '+TREND_LABEL[trends.get(prov)]:''}<br>${date(state.date+'T00:00:00+07:00')}`,state.tab==='national'?{sticky:true,direction:'top',opacity:1}:{});
+            layer.bindTooltip(`<b>${esc(prov)}</b><br>${!inScope?'นอกพื้นที่ที่เลือก':n===undefined?'ไม่มีข้อมูลครัวเรือนในวันที่เลือก':fmt(n)+' ครัวเรือน'}${trends.has(prov)?'<br>แนวโน้มระดับน้ำ: '+TREND_LABEL[trends.get(prov)]:''}<br>${date(state.date+'T00:00:00+07:00')}`,isAreaView()?{sticky:true,direction:'top',opacity:1}:{});
         }
     }).addTo(layers);
     // Solid, fully opaque colour by water-level trend (rising / steady / falling): the same colours as the trend badges in the tables. Drawn under the heatmap and the outlines; not interactive.
-    if ($('showTrendFill')?.checked && trends.size && !(state.tab==='national'&&state.nationalUnit==='amp')) L.geoJSON(window.PROVINCES_GEOJSON, {pane:'trendFill',interactive:false,filter:f=>trends.has(f.properties.pro_th),style:f=>({stroke:false,fill:true,fillColor:TREND_COLOR[trends.get(f.properties.pro_th)],fillOpacity:1})}).addTo(layers);
+    if ($('showTrendFill')?.checked && trends.size && !(isAreaView()&&areaFilters().nationalUnit==='amp')) L.geoJSON(window.PROVINCES_GEOJSON, {pane:'trendFill',interactive:false,filter:f=>trends.has(f.properties.pro_th),style:f=>({stroke:false,fill:true,fillColor:TREND_COLOR[trends.get(f.properties.pro_th)],fillOpacity:1})}).addTo(layers);
 }
-if(state.tab==='national'&&window.AMPHOE_GEOJSON){
+if(isAreaView()&&window.AMPHOE_GEOJSON){
  const features=nationalScopeFeatures(),reports=getReports(),byProvince=new Map(reports.map(r=>[r.Province,r]));
  const districtReports=new Map(DashboardModel.nationalDistrictSummary(reports,features).map(r=>[r.code,r]));
  const selected=features.filter(f=>districtReports.has(String(f.properties.amp_code)));
- if(state.nationalUnit==='amp')nationalDistrictOutline=L.geoJSON({type:'FeatureCollection',features},{pane:'nationalBoundaries',style:f=>{const active=selected.includes(f),k=active&&districtReports.get(String(f.properties.amp_code))?.trend;return {...nationalDistrictBorderStyle(f),fillColor:k?trendColors()[k]:'#ffffff',fillOpacity:k&&$('showTrendFill').checked ? 0.65 : 0}},onEachFeature:(f,l)=>{l.bindTooltip(()=>nationalDistrictTooltip(f,reports),{sticky:true,direction:'top',opacity:1});l.on('click',()=>{state.nationalDistrict=state.nationalDistrict===String(f.properties.amp_code)?'':String(f.properties.amp_code);render()})}}).addTo(layers);
+ if(areaFilters().nationalUnit==='amp')nationalDistrictOutline=L.geoJSON({type:'FeatureCollection',features},{pane:'nationalBoundaries',style:f=>{const active=selected.includes(f),k=active&&districtReports.get(String(f.properties.amp_code))?.trend;return {...nationalDistrictBorderStyle(f),fillColor:k?trendColors()[k]:'#ffffff',fillOpacity:k&&$('showTrendFill').checked ? 0.65 : 0}},onEachFeature:(f,l)=>{l.bindTooltip(()=>nationalDistrictTooltip(f,reports),{sticky:true,direction:'top',opacity:1});l.on('click',()=>{areaFilters().nationalDistrict=areaFilters().nationalDistrict===String(f.properties.amp_code)?'':String(f.properties.amp_code);render()})}}).addTo(layers);
  // Province scale retains provincial fill and selection; district boundaries are a non-interactive overlay.
- if(state.nationalUnit==='prov')nationalDistrictOutline=L.geoJSON({type:'FeatureCollection',features},{pane:'nationalBoundaries',interactive:false,style:f=>({...nationalDistrictBorderStyle(f),fill:false})}).addTo(layers);
- const zoomFeatures=state.nationalDistrict||state.nationalQuery.trim()||state.province||state.region?features:selected;
- if(zoomFeatures.length&&(state.nationalUnit==='amp'||state.nationalQuery.trim()))selectedBounds=L.geoJSON({type:'FeatureCollection',features:zoomFeatures}).getBounds();
+ if(areaFilters().nationalUnit==='prov')nationalDistrictOutline=L.geoJSON({type:'FeatureCollection',features},{pane:'nationalBoundaries',interactive:false,style:f=>({...nationalDistrictBorderStyle(f),fill:false})}).addTo(layers);
+ const zoomFeatures=areaFilters().nationalDistrict||areaFilters().nationalQuery.trim()||state.province||state.region?features:selected;
+ if(zoomFeatures.length&&(areaFilters().nationalUnit==='amp'||areaFilters().nationalQuery.trim()))selectedBounds=L.geoJSON({type:'FeatureCollection',features:zoomFeatures}).getBounds();
 }
 // Default zoom: provinces that have water-level status data; fall back to the whole selected area when none do.
 if(!selectedBounds)selectedBounds=allBounds;
@@ -848,15 +877,15 @@ const mapResizeObserver=new ResizeObserver(entries=>{
 });
 mapResizeObserver.observe($('map'));mapResizeObserver.observe($('shelterMap'));
 
-// The household-outline layer is remembered per tab: on by default, but off by default on the operations tab.
-const householdPref={ops:false};
+// Remember the household-outline layer separately for each tab; both area views default to on.
+const householdPref={ops:true};
 document.querySelectorAll('.tab:not([data-external])').forEach(x=>x.addEventListener('click',()=>{const hh=$('showHouseholds');if(hh&&state.tab!==x.dataset.tab){householdPref[state.tab]=hh.checked;hh.checked=householdPref[x.dataset.tab]??true}state.tab=x.dataset.tab;render();requestAnimationFrame(()=>window.dispatchEvent(new Event('resize')))}));$('reportDate').addEventListener('change',e=>{state.date=e.target.value;render()});
 $('region').addEventListener('change',e=>{state.region=e.target.value;state.province='';opts('province',DATA.vulnerable.filter(r=>!state.region||r.region===state.region).map(r=>r.province).sort((a,b)=>a.localeCompare(b,'th')),'ทุกจังหวัด');render()});$('province').addEventListener('change',e=>{state.province=e.target.value;render()});$('district').addEventListener('change',e=>{state.district=e.target.value;render()});$('trend').addEventListener('change',e=>{state.trend=e.target.value;render()});
-document.addEventListener('click',e=>{const nd=e.target.closest('[data-national-district]');if(nd&&state.tab==='national'){state.nationalDistrict=nd.dataset.nationalDistrict;state.nationalUnit='amp';render();return}const p=e.target.closest('[data-province]'),d=e.target.closest('[data-district]');if(p){state.province=p.dataset.province;$('province').value=state.province;render();window.scrollTo({top:0,behavior:'smooth'})}if(d){state.district=d.dataset.district;$('district').value=state.district;render();window.scrollTo({top:0,behavior:'smooth'})}});
-$('nationalUnit').addEventListener('change',e=>{state.nationalUnit=e.target.value;if(state.nationalUnit==='prov')state.nationalDistrict='';render()});
-$('nationalDistrict').addEventListener('change',e=>{state.nationalDistrict=e.target.value;render()});
-$('nationalQuery').addEventListener('input',e=>{state.nationalQuery=e.target.value;render()});
-$('reset').addEventListener('click',()=>{if(state.tab==='national'){state.nationalUnit='amp';state.nationalDistrict='';state.nationalQuery='';}tableFilters.clear();document.querySelectorAll('[data-table-filters]').forEach(el=>el.remove());state.region='';state.province='';state.district='';state.trend='';$('trend').value='';$('region').value='';$('district').value='';opts('province',provinceNames(),'ทุกจังหวัด');render()});
+document.addEventListener('click',e=>{const nd=e.target.closest('[data-national-district]');if(nd&&isAreaView()){areaFilters().nationalDistrict=nd.dataset.nationalDistrict;areaFilters().nationalUnit='amp';render();return}const p=e.target.closest('[data-province]'),d=e.target.closest('[data-district]');if(p){state.province=p.dataset.province;$('province').value=state.province;render();window.scrollTo({top:0,behavior:'smooth'})}if(d){state.district=d.dataset.district;$('district').value=state.district;render();window.scrollTo({top:0,behavior:'smooth'})}});
+$('nationalUnit').addEventListener('change',e=>{areaFilters().nationalUnit=e.target.value;if(areaFilters().nationalUnit==='prov')areaFilters().nationalDistrict='';render()});
+$('nationalDistrict').addEventListener('change',e=>{areaFilters().nationalDistrict=e.target.value;render()});
+$('nationalQuery').addEventListener('input',e=>{areaFilters().nationalQuery=e.target.value;render()});
+$('reset').addEventListener('click',()=>{if(isAreaView()){areaFilters().nationalUnit='amp';areaFilters().nationalDistrict='';areaFilters().nationalQuery='';}tableFilters.clear();document.querySelectorAll('[data-table-filters]').forEach(el=>el.remove());state.region='';state.province='';state.district='';state.trend='';$('trend').value='';$('region').value='';$('district').value='';opts('province',provinceNames(),'ทุกจังหวัด');render()});
 // Save the page being looked at (national or BKK) as a PNG: heading, data-age line, cards, map and table.
 // modern-screenshot (loaded on first use) lets the browser itself draw the page, so the Leaflet layers come out as they look on screen.
 let screenshotLib=null;
@@ -885,11 +914,11 @@ async function saveScreenshot(){
 $('shotBtn').addEventListener('click',saveScreenshot);
 $('export')?.addEventListener('click',()=>{const csv='\uFEFF'+filteredExportRows().map(row=>row.map(v=>'"'+String(v??'').replace(/^[=+@-]/,"'$&").replace(/"/g,'""')+'"').join(',')).join('\r\n');const u=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=u;a.download=`flood-${state.tab}-${state.date}.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)});
 function provinceNames(){const names=window.PROVINCES_GEOJSON?.features.map(f=>f.properties.pro_th)||[...DATA.disasters.map(r=>r.Province),...DATA.vulnerable.map(r=>r.province)];return uniq(names.filter(Boolean)).sort((a,b)=>a.localeCompare(b,'th'))}
-function allowedProvinces(){const scoped=state.tab==='national'&&(state.nationalDistrict||state.nationalQuery.trim())?new Set(nationalScopeFeatures().map(f=>f.properties.pro_th)):null;return provinceNames().filter(p=>(!state.province||p===state.province)&&(!state.region||DATA.vulnerable.some(r=>r.province===p&&r.region===state.region))&&(!scoped||scoped.has(p)))}
+function allowedProvinces(){const scoped=isAreaView()&&(areaFilters().nationalDistrict||areaFilters().nationalQuery.trim())?new Set(nationalScopeFeatures().map(f=>f.properties.pro_th)):null;return provinceNames().filter(p=>(!state.province||p===state.province)&&(!state.region||DATA.vulnerable.some(r=>r.province===p&&r.region===state.region))&&(!scoped||scoped.has(p)))}
 function shelterStatusKey(r){const s=String(r.status_source||'').trim();return SHELTER_COLORS[s]?s:'ไม่ทราบสถานะ'}
 function fitShelters(pts){if(!shelterMap)return;shelterMap._dashboardBounds=pts.length?L.latLngBounds(pts):window.BKK_DISTRICTS_GEOJSON?L.geoJSON(window.BKK_DISTRICTS_GEOJSON).getBounds():L.latLngBounds([[13.4,100.3],[14,100.9]]);shelterMap.invalidateSize({pan:true,animate:false});shelterMap.fitBounds(shelterMap._dashboardBounds,{padding:[28,28],maxZoom:13,animate:false})}
 function syncMapKey(){const el=nationalLegend?.getContainer();if(!el)return;const target=matchMedia('(max-width:767px)').matches?$('mobileMapKey'):$('map').querySelector('.leaflet-bottom.leaflet-left');if(target&&el.parentElement!==target)target.append(el)}
-const tablePages=new Map(),tableFilters=new Map(),originalTableRows=new WeakMap();
+const tablePages=new Map(),tableFilters=new Map(),originalTableRows=new WeakMap(),tablePageSizes=new Map();   // tablePageSizes: rows per page set by a tab (e.g. to fill its panel)
 function paginateTables(){
  for(const id of ['areaTable','stationTable','vulTable','allSheltersBody','shelterSideBody','sideBody','waterTable','waterDistrictTable','waterSideList']){
   const host=$(id),table=host?.querySelector('table');
@@ -897,9 +926,9 @@ function paginateTables(){
   if(!table){remove('pager');remove('table-filters');tablePages.delete(id);continue}
   host.classList.add('unified-table');if(table.parentElement!==host){host.append(table);Array.from(host.children).filter(el=>el!==table).forEach(el=>el.remove())}if(!originalTableRows.has(table))originalTableRows.set(table,Array.from(table.tBodies[0]?.rows||[]).filter(r=>r.cells.length>1));const rows=originalTableRows.get(table);
   const headers=Array.from(table.tHead?.rows[0]?.cells||[]).map(c=>c.textContent.trim());
-  const key=state.tab+':'+id+(state.tab==='national'&&id==='sideBody'?':'+state.nationalUnit:'');let filter=tableFilters.get(key);if(!filter){filter={query:'',column:'',value:'',sort:''};tableFilters.set(key,filter)}
+  const key=state.tab+':'+id+((isAreaView()&&id==='sideBody')||(state.tab==='ops'&&id==='areaTable')?':'+areaFilters().nationalUnit:'');let filter=tableFilters.get(key);if(!filter){filter={query:'',column:'',value:'',sort:''};tableFilters.set(key,filter)}
   const signature=key+'|'+headers.join('|')+'|'+rows.map(r=>r.textContent).join('|');
-  if(state.tab==='national'&&['areaTable','stationTable','vulTable','sideBody'].includes(id)){
+  if(isAreaView()&&['areaTable','stationTable','vulTable','sideBody'].includes(id)){
    Array.from(table.tHead?.rows[0]?.cells||[]).forEach((th,index)=>{
     const label=headers[index],active=filter.sort?.split(':')[0]===String(index),direction=active?filter.sort.split(':')[1]:null;
     th.setAttribute('aria-sort',active?(direction==='desc'?'descending':'ascending'):'none');
@@ -941,11 +970,11 @@ function paginateTables(){
   toolbar.querySelector('.filter-summary').textContent=conditions.join(' · ')+(filter.sort?(conditions.length?' · ':'')+'เรียง: '+headers[Number(filter.sort.split(':')[0])]:'');
   const term=filter.query.trim().toLocaleLowerCase('th');
   const matches=rows.map((r,i)=>({r,i})).filter(({r})=>(!term||r.textContent.toLocaleLowerCase('th').includes(term))&&(!filter.value||r.cells[Number(filter.column)]?.textContent.trim()===filter.value));
-  if(filter.sort){const [col,direction]=filter.sort.split(':');const text=r=>r.cells[Number(col)]?.textContent.trim()||'';const numeric=v=>/^-?[\d,]+(?:\.\d+)?$/.test(v)?Number(v.replace(/,/g,'')):null;matches.sort((a,b)=>{const av=text(a.r),bv=text(b.r),an=numeric(av),bn=numeric(bv);return state.tab==='national'?DashboardModel.compareNationalTableValues(av,bv,direction):(an!==null&&bn!==null?an-bn:av.localeCompare(bv,'th',{numeric:true}))*(direction==='desc'?-1:1)})}
+  if(filter.sort){const [col,direction]=filter.sort.split(':');const text=r=>r.cells[Number(col)]?.textContent.trim()||'';const numeric=v=>/^-?[\d,]+(?:\.\d+)?$/.test(v)?Number(v.replace(/,/g,'')):null;matches.sort((a,b)=>{const av=text(a.r),bv=text(b.r),an=numeric(av),bn=numeric(bv);return isAreaView()?DashboardModel.compareNationalTableValues(av,bv,direction):(an!==null&&bn!==null?an-bn:av.localeCompare(bv,'th',{numeric:true}))*(direction==='desc'?-1:1)})}
   matches.forEach(({r})=>table.tBodies[0].append(r));
   let result=toolbar.querySelector('.table-result');if(!result){result=document.createElement('div');result.className='table-result';result.setAttribute('aria-live','polite');toolbar.append(result)}result.textContent=`พบ ${matches.length} จาก ${rows.length} รายการ`;
   const pageKey=signature+'|'+JSON.stringify(filter);let entry=tablePages.get(id);if(!entry||entry.signature!==pageKey){entry={signature:pageKey,page:0};tablePages.set(id,entry)}entry.rowIndices=matches.map(x=>x.i);
-  const pageSize=id==='waterSideList'?13:state.tab==='bkk'&&(id==='sideBody'||id==='shelterSideBody')?7:id==='sideBody'?(state.tab==='ops'?12:10):20;const pages=Math.max(1,Math.ceil(matches.length/pageSize));entry.page=Math.min(entry.page,pages-1);rows.forEach(r=>r.hidden=true);matches.slice(entry.page*pageSize,entry.page*pageSize+pageSize).forEach(({r})=>r.hidden=false);
+  const pageSize=tablePageSizes.get(id)||(id==='waterSideList'?13:state.tab==='bkk'&&(id==='sideBody'||id==='shelterSideBody')?7:id==='sideBody'?(state.tab==='ops'?12:10):20);const pages=Math.max(1,Math.ceil(matches.length/pageSize));entry.page=Math.min(entry.page,pages-1);rows.forEach(r=>r.hidden=true);matches.slice(entry.page*pageSize,entry.page*pageSize+pageSize).forEach(({r})=>r.hidden=false);
   remove('pager');const nav=document.createElement('div');nav.className='pagination';nav.dataset.pager=id;nav.setAttribute('aria-live','polite');
   const count=document.createElement('span');count.textContent=matches.length?`พบ ${matches.length} จาก ${rows.length} รายการ · หน้า ${entry.page+1}/${pages}`:'ไม่พบข้อมูลตามตัวกรอง';
   for(const [label,step] of [['ก่อนหน้า',-1],['ถัดไป',1]]){if(pages<=1)break;const button=document.createElement('button');button.className='lightbtn';button.textContent=label;button.disabled=step<0?entry.page===0:entry.page===pages-1;button.onclick=()=>{entry.page+=step;paginateTables()};nav.append(button)}
@@ -953,7 +982,7 @@ function paginateTables(){
  }
 }
 // Table helpers for the external tab panes (waterlogged-view.js): same table(), paging and column filters as the built-in tabs.
-window.DashboardTables={table,paginate:paginateTables,hints:()=>requestAnimationFrame(updateTableHints),visibleIndices:id=>tablePages.get(id)?.rowIndices};
+window.DashboardTables={table,paginate:paginateTables,setPageSize:(id,n)=>{if(n>0)tablePageSizes.set(id,n);else tablePageSizes.delete(id)},pageSize:id=>tablePageSizes.get(id),hints:()=>requestAnimationFrame(updateTableHints),visibleIndices:id=>tablePages.get(id)?.rowIndices};
 function filteredExportRows(){const indices=tablePages.get('areaTable')?.rowIndices;return indices?[csvRows[0],...indices.map(i=>csvRows[i+1]).filter(Boolean)]:csvRows}
 const sourceLabels={Disaster_DB:'รายงานภัย ปภ.',Vulnerable_group:'ฐานประชากรกลุ่มเปราะบาง',thai_water_DB:'สถานีน้ำทั่วประเทศ',BKK_water_DB:'สถานีน้ำ กทม.',shelter_DB:'ศูนย์พักพิง'};
 function renderSourceStatus(){const failed=Object.entries(DATA.sourceStatus).filter(([name,s])=>s.status==='error'&&sourceLabels[name]&&(state.tab!=='ops'||name==='Disaster_DB'));$('sourceStatus').innerHTML=failed.map(([name,s])=>`<div class="alert source-error"><span><b>${sourceLabels[name]}</b> — ${esc(s.message)}</span><button class="lightbtn" data-retry-source="${name}">ลองใหม่</button></div>`).join('');$('sourceStatus').classList.toggle('hidden',!failed.length)}
@@ -983,8 +1012,8 @@ function finishRender(){
  if(failed('Disaster_DB'))$('vulHouseholds').textContent='อ่านไม่ได้';
  updateAlert();
  $('selectedFilters').textContent=state.tab==='national'&&!state.district&&!state.province&&!state.region?'':[bkk?'กรุงเทพมหานคร':state.tab==='ops'?'ปฏิบัติการ (ปภ.)':'ภาพรวมประเทศ',state.district||state.province||state.region||'ทุกพื้นที่','วันรายงาน ปภ.: '+(state.date?date(state.date+'T00:00:00+07:00'):'ไม่มีวันรายงาน')].join(' · ');
- $('filterNote').textContent=state.tab==='national'?'ยอดครัวเรือนและแนวโน้มน้ำเป็นข้อมูลระดับจังหวัด · วันรายงานใช้กับ ปภ. เท่านั้น':'วันรายงานใช้กับ ปภ. เท่านั้น · สถานีน้ำและศูนย์พักพิงใช้ข้อมูลล่าสุดที่อ่านได้';
- if(state.tab==='national')$('selectedFilters').textContent=[state.nationalUnit==='amp'?'ระดับอำเภอ':'ระดับจังหวัด',$('nationalDistrict').value?$('nationalDistrict').selectedOptions[0].textContent:state.province||state.region||'ทุกพื้นที่',state.nationalQuery.trim()?'ค้นหา: '+state.nationalQuery.trim():''].filter(Boolean).join(' · ');
+ $('filterNote').textContent=isAreaView()?'ยอดครัวเรือนและแนวโน้มน้ำเป็นข้อมูลระดับจังหวัด · วันรายงานใช้กับ ปภ. เท่านั้น':'วันรายงานใช้กับ ปภ. เท่านั้น · สถานีน้ำและศูนย์พักพิงใช้ข้อมูลล่าสุดที่อ่านได้';
+ if(isAreaView())$('selectedFilters').textContent=[areaFilters().nationalUnit==='amp'?'ระดับอำเภอ':'ระดับจังหวัด',$('nationalDistrict').value?$('nationalDistrict').selectedOptions[0].textContent:state.province||state.region||'ทุกพื้นที่',areaFilters().nationalQuery.trim()?'ค้นหา: '+areaFilters().nationalQuery.trim():''].filter(Boolean).join(' · ');
  $('region').disabled=failed('Vulnerable_group');$('reportDate').disabled=!DATA.disasters.length;
  document.querySelector('.foot > span:last-child').textContent=Object.entries(DATA.sourceStatus).filter(([name,s])=>s.status==='ok'&&sourceLabels[name]).map(([name,s])=>sourceLabels[name]+': '+time(s.loadedAt)).join(' · ');
  
