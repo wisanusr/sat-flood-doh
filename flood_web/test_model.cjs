@@ -211,7 +211,7 @@ assert.equal(m.validCoordinates({latitude:91,longitude:100}),false);
   assert.equal(m.waterFreshness(fr,at(1)).runAt,new Date(Date.parse(run)).toISOString());
   // 2P2R province colours: level lookup, ordering, counts, code matching (leading zeros / numeric cells), unmatched provinces
   assert.deepEqual(Object.keys(m.WATER_2P2R),['red','orange','yellow','green','normal']);
-  assert.deepEqual(['red','orange','yellow','green'].map(k=>m.WATER_2P2R[k].color),['#E24B4A','#EF9F27','#F2D43D','#4CAF50']);
+  assert.deepEqual(['red','orange','yellow','green'].map(k=>m.WATER_2P2R[k].color),['#dc2626','#f97316','#facc15','#22c55e']);
   assert.equal(m.WATER_2P2R.normal.color,null);                                 // normal = no fill
   assert(m.WATER_2P2R.red.note.includes('ไม่ใช่การยืนยัน')&&m.WATER_2P2R.green.note.includes('ไม่ใช่การยืนยัน'));
   assert.equal(m.WATER_2P2R.orange.note,null);

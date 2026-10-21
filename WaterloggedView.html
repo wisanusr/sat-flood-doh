@@ -241,7 +241,7 @@
   function provStyle(f){
     const r=provByCode.get(featCode(f)),lv=r&&provFillOn()?M.water2p2rLevel(r):null,sel=!!state.provSel&&featCode(f)===state.provSel;
     const out=lv&&lv.color&&scopeProvs&&!scopeProvs.has(featCode(f));   // filtered out: faded, not hidden
-    return {renderer:canvas,stroke:sel||state.showProvLine,color:sel?'#0f172a':ampFill()?'#64748b':'#94a3b8',weight:sel?2.5:ampFill()?1:0.7,fillColor:lv&&lv.color?lv.color:'#f1f5f9',fillOpacity:lv&&lv.color?(out?0.1:0.45):0.35};
+    return {renderer:canvas,stroke:sel||state.showProvLine,color:sel?'#0f172a':ampFill()?'#64748b':'#94a3b8',weight:sel?2.5:ampFill()?1:0.7,fillColor:lv&&lv.color?lv.color:'#f1f5f9',fillOpacity:lv&&lv.color?(out?0.15:0.75):0.35};
   }
   function provTooltip(f){
     const r=provByCode.get(featCode(f)),name=esc(f.properties.pro_th||'');
@@ -276,7 +276,7 @@
   function ampFillStyle(f){
     const code=M.waterAmpCode(f.properties.amp_code),r=ampIndex().get(code),lv=r&&M.water2p2rLevel(r),on=state.showProv&&unitNow()==='amp'&&!!lv;
     const out=scopeCodes&&!scopeCodes.has(code);   // outside the filters: faded so the chosen area stands out
-    return {renderer:canvas,fill:on,stroke:on&&!out,color:lv?.color||'#94a3b8',weight:0.4,opacity:0.9,fillColor:lv?.color||'#f1f5f9',fillOpacity:out?0.1:0.45};
+    return {renderer:canvas,fill:on,stroke:on&&!out,color:lv?.color||'#94a3b8',weight:0.4,opacity:0.9,fillColor:lv?.color||'#f1f5f9',fillOpacity:out?0.15:0.75};
   }
   function ampTooltip(f){
     const r=ampIndex().get(M.waterAmpCode(f.properties.amp_code));if(!r)return '';

@@ -277,9 +277,9 @@
   const WATER_LOG_STATUS={
     // Cool "water" colours so the points never match the warm 2P2R fill under them (red / orange / yellow / green).
     'น้ำขัง':{rank:0,group:'logged',color:'#0C447C',short:'น้ำขัง'},
-    'เฝ้าระวัง':{rank:1,group:'watch',color:'#7F77DD',short:'เฝ้าระวัง'},
-    'พบน้ำใหม่':{rank:2,group:'new',color:'#85B7EB',short:'พบน้ำใหม่'},
-    'ข้อมูลไม่พอ':{rank:3,group:'watch',color:'#B4B2A9',short:'ข้อมูลไม่พอ'},
+    'เฝ้าระวัง':{rank:1,group:'watch',color:'#7c3aed',short:'เฝ้าระวัง'},
+    'พบน้ำใหม่':{rank:2,group:'new',color:'#0ea5e9',short:'พบน้ำใหม่'},
+    'ข้อมูลไม่พอ':{rank:3,group:'watch',color:'#64748b',short:'ข้อมูลไม่พอ'},
     'พบน้ำล่าสุด (ไม่มีภาพใหม่)':{rank:4,group:'stale',color:'#5F5E5A',hollow:true,short:'เคยพบน้ำ',label:'เคยพบน้ำ'},
   };
   // Name shown on the page; the key stays the pipeline's own label (it is what the sheet holds and what the filters match).
@@ -322,10 +322,10 @@
   // `note` is the caveat the page must show with the colour: red means long-standing water (risk of foul water), not a
   // confirmed water-quality finding; green is an estimate from DDPM reports, not a confirmation. normal = no fill.
   const WATER_2P2R={
-    red:{rank:4,color:'#E24B4A',stage:'ตอบโต้ทันที',label:'แดง',phase:'Response',meaning:'ปภ. รายงานอำเภอต่อเนื่องเกิน 3 วัน และมีข่าวน้ำเน่าในจังหวัดภายใน 7 วัน',plan:'แก้ไขทันที: จัดการน้ำเสีย ขยะ ส้วม น้ำสะอาด และคุ้มครองประชาชน',note:'สีแดงหมายถึงน้ำขังนาน เสี่ยงน้ำเน่าเสีย ไม่ใช่การยืนยันคุณภาพน้ำ'},
-    orange:{rank:3,color:'#EF9F27',stage:'ตรวจเชิงรุก',label:'ส้ม',phase:'Preparedness → Response',meaning:'ปภ. รายงานอำเภอต่อเนื่องเกิน 3 วัน ยังไม่มีข่าวน้ำเน่าในจังหวัด',plan:'ตรวจเชิงรุก: สำรวจคุณภาพน้ำ ส้วม ขยะ น้ำใช้ กลุ่มเปราะบาง และป้องกันไม่ให้รุนแรงขึ้น',note:null},
-    yellow:{rank:2,color:'#F2D43D',stage:'เตรียมพร้อม',label:'เหลือง',phase:'Preparedness',meaning:'ปภ. รายงาน 1–3 วัน ภาพดาวเทียมพบน้ำ ฝนพยากรณ์เกิน 35 มม. มีประกาศเตือนภัย หรือเพิ่งหายจากรายงาน',plan:'เตรียมทีม อุปกรณ์ คลอรีน PPE ทะเบียนกลุ่มเปราะบาง และติดตามสถานการณ์',note:null},
-    green:{rank:1,color:'#4CAF50',stage:'ฟื้นฟู',label:'เขียว',phase:'Recovery',meaning:'หายจากรายงาน ปภ. 2–4 วัน ไม่พบน้ำและไม่มีฝนหนัก (ประมาณว่าคลี่คลาย)',plan:'ฟื้นฟู: Big Cleaning ล้าง–ฆ่าเชื้อ ฟื้นระบบน้ำและสุขาภิบาล ตรวจความปลอดภัย และติดตามกลุ่มเปราะบาง',note:'ประมาณว่าน้ำลดจากรายงาน ปภ. ไม่ใช่การยืนยัน (ปภ. อาจหยุดรายงานเฉย ๆ)'},
+    red:{rank:4,color:'#dc2626',stage:'ตอบโต้ทันที',label:'แดง',phase:'Response',meaning:'ปภ. รายงานอำเภอต่อเนื่องเกิน 3 วัน และมีข่าวน้ำเน่าในจังหวัดภายใน 7 วัน',plan:'แก้ไขทันที: จัดการน้ำเสีย ขยะ ส้วม น้ำสะอาด และคุ้มครองประชาชน',note:'สีแดงหมายถึงน้ำขังนาน เสี่ยงน้ำเน่าเสีย ไม่ใช่การยืนยันคุณภาพน้ำ'},
+    orange:{rank:3,color:'#f97316',stage:'ตรวจเชิงรุก',label:'ส้ม',phase:'Preparedness → Response',meaning:'ปภ. รายงานอำเภอต่อเนื่องเกิน 3 วัน ยังไม่มีข่าวน้ำเน่าในจังหวัด',plan:'ตรวจเชิงรุก: สำรวจคุณภาพน้ำ ส้วม ขยะ น้ำใช้ กลุ่มเปราะบาง และป้องกันไม่ให้รุนแรงขึ้น',note:null},
+    yellow:{rank:2,color:'#facc15',stage:'เตรียมพร้อม',label:'เหลือง',phase:'Preparedness',meaning:'ปภ. รายงาน 1–3 วัน ภาพดาวเทียมพบน้ำ ฝนพยากรณ์เกิน 35 มม. มีประกาศเตือนภัย หรือเพิ่งหายจากรายงาน',plan:'เตรียมทีม อุปกรณ์ คลอรีน PPE ทะเบียนกลุ่มเปราะบาง และติดตามสถานการณ์',note:null},
+    green:{rank:1,color:'#22c55e',stage:'ฟื้นฟู',label:'เขียว',phase:'Recovery',meaning:'หายจากรายงาน ปภ. 2–4 วัน ไม่พบน้ำและไม่มีฝนหนัก (ประมาณว่าคลี่คลาย)',plan:'ฟื้นฟู: Big Cleaning ล้าง–ฆ่าเชื้อ ฟื้นระบบน้ำและสุขาภิบาล ตรวจความปลอดภัย และติดตามกลุ่มเปราะบาง',note:'ประมาณว่าน้ำลดจากรายงาน ปภ. ไม่ใช่การยืนยัน (ปภ. อาจหยุดรายงานเฉย ๆ)'},
     normal:{rank:0,color:null,stage:'ปกติ',label:'ปกติ',phase:'',meaning:'',plan:'',note:null},
   };
   const water2p2rLevel=r=>WATER_2P2R[String(r&&r.level_code!=null?r.level_code:'').trim()]||null;
