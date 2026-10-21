@@ -276,9 +276,9 @@
   const WATER_LOG_STATUS={
     // Cool "water" colours so the points never match the warm 2P2R fill under them (red / orange / yellow / green).
     'น้ำขัง':{rank:0,group:'logged',color:'#0C447C',short:'น้ำขัง'},
-    'เฝ้าระวัง':{rank:1,group:'watch',color:'#7F77DD',short:'เฝ้าระวัง'},
-    'พบน้ำใหม่':{rank:2,group:'new',color:'#85B7EB',short:'พบน้ำใหม่'},
-    'ข้อมูลไม่พอ':{rank:3,group:'watch',color:'#B4B2A9',short:'ข้อมูลไม่พอ'},
+    'เฝ้าระวัง':{rank:1,group:'watch',color:'#7c3aed',short:'เฝ้าระวัง'},
+    'พบน้ำใหม่':{rank:2,group:'new',color:'#0ea5e9',short:'พบน้ำใหม่'},
+    'ข้อมูลไม่พอ':{rank:3,group:'watch',color:'#64748b',short:'ข้อมูลไม่พอ'},
     'พบน้ำล่าสุด (ไม่มีภาพใหม่)':{rank:4,group:'stale',color:'#5F5E5A',hollow:true,short:'เคยพบน้ำ',label:'เคยพบน้ำ'},
   };
   // Name shown on the page; the key stays the pipeline's own label (it is what the sheet holds and what the filters match).
@@ -313,17 +313,19 @@
     }
     return out;
   }
+  // `meaning` = how the pipeline gives a district that level (geeks_project_google district_levels, 2026-10-20 criteria:
+  // P2R_LONG_DDPM_DAYS 3, NEWS_ROTTEN_DAYS 7, P2R_RAIN_HEAVY_MM 35, green 2–4 days after DDPM); keep in step with it.
   // ── 2P2R levels (flood_waterlogged_amphoe: one row per district, with its province's level repeated on each row).
   // Both levels are the pipeline's: nothing here recomputes them. `plan` is the pipeline's wording per level (P2R in
   // geeks_project_google transform/flood_waterlogged_trans.py); keep the two in step. ──
   // `note` is the caveat the page must show with the colour: red means long-standing water (risk of foul water), not a
   // confirmed water-quality finding; green is an estimate from DDPM reports, not a confirmation. normal = no fill.
   const WATER_2P2R={
-    red:{rank:4,color:'#E24B4A',stage:'ตอบโต้ทันที',label:'แดง',phase:'Response',meaning:'น้ำขังนาน เสี่ยงน้ำเน่าเสีย',plan:'แก้ไขทันที: จัดการน้ำเสีย ขยะ ส้วม น้ำสะอาด และคุ้มครองประชาชน',note:'สีแดงหมายถึงน้ำขังนาน เสี่ยงน้ำเน่าเสีย ไม่ใช่การยืนยันคุณภาพน้ำ'},
-    orange:{rank:3,color:'#EF9F27',stage:'ตรวจเชิงรุก',label:'ส้ม',phase:'Preparedness → Response',meaning:'น้ำขังที่ ปภ. รายงานต่อเนื่อง 3 วัน (แดงเมื่อ ≥ 4 วัน)',plan:'ตรวจเชิงรุก: สำรวจคุณภาพน้ำ ส้วม ขยะ น้ำใช้ กลุ่มเปราะบาง และป้องกันไม่ให้รุนแรงขึ้น',note:null},
-    yellow:{rank:2,color:'#F2D43D',stage:'เตรียมพร้อม',label:'เหลือง',phase:'Preparedness',meaning:'มีรายงาน ปภ. หรือพบน้ำ แต่ยังไม่เข้าเงื่อนไขน้ำขัง',plan:'เตรียมทีม อุปกรณ์ คลอรีน PPE ทะเบียนกลุ่มเปราะบาง และติดตามสถานการณ์',note:null},
-    green:{rank:1,color:'#4CAF50',stage:'ฟื้นฟู',label:'เขียว',phase:'Recovery',meaning:'ประมาณว่าน้ำลด',plan:'ฟื้นฟู: Big Cleaning ล้าง–ฆ่าเชื้อ ฟื้นระบบน้ำและสุขาภิบาล ตรวจความปลอดภัย และติดตามกลุ่มเปราะบาง',note:'ประมาณว่าน้ำลดจากรายงาน ปภ. ไม่ใช่การยืนยัน (ปภ. อาจหยุดรายงานเฉย ๆ)'},
-    normal:{rank:0,color:null,stage:'ปกติ',label:'ปกติ',phase:'',meaning:'ไม่พบสถานการณ์',plan:'',note:null},
+    red:{rank:4,color:'#dc2626',stage:'ตอบโต้ทันที',label:'แดง',phase:'Response',meaning:'ปภ. รายงานอำเภอต่อเนื่องเกิน 3 วัน และมีข่าวน้ำเน่าในจังหวัดภายใน 7 วัน',plan:'แก้ไขทันที: จัดการน้ำเสีย ขยะ ส้วม น้ำสะอาด และคุ้มครองประชาชน',note:'สีแดงหมายถึงน้ำขังนาน เสี่ยงน้ำเน่าเสีย ไม่ใช่การยืนยันคุณภาพน้ำ'},
+    orange:{rank:3,color:'#f97316',stage:'ตรวจเชิงรุก',label:'ส้ม',phase:'Preparedness → Response',meaning:'ปภ. รายงานอำเภอต่อเนื่องเกิน 3 วัน ยังไม่มีข่าวน้ำเน่าในจังหวัด',plan:'ตรวจเชิงรุก: สำรวจคุณภาพน้ำ ส้วม ขยะ น้ำใช้ กลุ่มเปราะบาง และป้องกันไม่ให้รุนแรงขึ้น',note:null},
+    yellow:{rank:2,color:'#facc15',stage:'เตรียมพร้อม',label:'เหลือง',phase:'Preparedness',meaning:'ปภ. รายงาน 1–3 วัน ภาพดาวเทียมพบน้ำ ฝนพยากรณ์เกิน 35 มม. มีประกาศเตือนภัย หรือเพิ่งหายจากรายงาน',plan:'เตรียมทีม อุปกรณ์ คลอรีน PPE ทะเบียนกลุ่มเปราะบาง และติดตามสถานการณ์',note:null},
+    green:{rank:1,color:'#22c55e',stage:'ฟื้นฟู',label:'เขียว',phase:'Recovery',meaning:'หายจากรายงาน ปภ. 2–4 วัน ไม่พบน้ำและไม่มีฝนหนัก (ประมาณว่าคลี่คลาย)',plan:'ฟื้นฟู: Big Cleaning ล้าง–ฆ่าเชื้อ ฟื้นระบบน้ำและสุขาภิบาล ตรวจความปลอดภัย และติดตามกลุ่มเปราะบาง',note:'ประมาณว่าน้ำลดจากรายงาน ปภ. ไม่ใช่การยืนยัน (ปภ. อาจหยุดรายงานเฉย ๆ)'},
+    normal:{rank:0,color:null,stage:'ปกติ',label:'ปกติ',phase:'',meaning:'',plan:'',note:null},
   };
   const water2p2rLevel=r=>WATER_2P2R[String(r&&r.level_code!=null?r.level_code:'').trim()]||null;
   // Province codes are 2 digits; a numeric cell (Apps Script) must still match the GeoJSON `pro_code` ("14").
@@ -512,5 +514,62 @@
     });
   }
   const model={operationsShelterScope,compareNationalTableValues,nationalDistrictSummary,nationalLabelPoint,nationalDistrictNames,nationalPointInGeometry,bkkTrendDistricts,bkkDistrictTrend,bkkTrend,WATER_2P2R,water2p2rLevel,waterProvCode,waterAmpCode,waterAmphoeRows,waterProvincesFromAmphoe,waterIsDdpmLogged,waterScope,waterStatusLabel,waterProvinceRows,waterProvinceSummary,waterProvinceIndex,waterProvinceUnmatched,WATER_CONFIDENCE,waterConfidence,waterIsLogged,waterIsDashed,WATER_BASIS_DDPM_ONLY,waterIsDdpmOnly,waterDdpmOnlyCount,WATERLOGGED_SOURCES,WATER_LOG_STATUS,waterStatusRank,waterRows,waterSummary,waterDdpmDistricts,waterHasPoint,waterFilter,waterFreshness,waterDistricts,latestPerKey,disasterTime,latestTime,parseSeries,RAIN_CLASSES,rainClass,seriesDates,exposure,reasonList,RISK_SOURCES,RISK_LEVELS,riskRank,parseBool,riskRows,riskSummary,waterTrend,overbankM,riskFreshness,dataAge,vulnerableTotals,trendKind,provinceLevel,situationGroups,regionNumber,timelineDaily,termWindows,lifecycle,trendLevel,newsRising,newsTopRegions,newsTopByCount,sourceInitial,growthValue,newsArticles,newsProvinces,newsUrgencyCounts,newsWords,ageLabel,safeUrl,URGENCY,NEWS_CATEGORIES,HEALTH_NEED_CATEGORIES,healthNeedMapData,healthNeedColor,latestStationDay,SOURCES,WATER_STATUS,canonicalWaterStatus,timestamp,sum,quality,householdBorderColor,validCoordinates,districtSummary};
+  // ── Executive report tab ("รายงานผู้บริหาร", executive-view.js; GitHub Pages build only). Inputs are raw sheet rows as the
+  // CSV export gives them (every cell a string): Disaster_DB, Vulnerable_group, flood_waterlogged_amphoe and the tmd_* tabs
+  // (geeks_project_google docs/tmd_data_dictionary.md). An empty cell means no data, never 0. ──
+  const execNum=v=>{const s=String(v??'').replace(/,/g,'').trim();return /^-?\d+(\.\d+)?$/.test(s)?Number(s):null};
+  const isoDay=v=>{const m=String(v??'').match(/^\d{4}-\d{2}-\d{2}/);return m?m[0]:''};
+  // "2026-10-19 7:02:09" -> ms; the importer writes single-digit hours. Thai time, as all sheet times are.
+  const execTime=v=>{const m=String(v??'').match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})/);return m?Date.UTC(+m[1],+m[2]-1,+m[3],+m[4]-7,+m[5]):NaN};
+  // One DDPM report day: the newest row per province (a day can hold several snapshots of one province).
+  function execDdpmDay(rows,day){
+    const best=new Map();
+    for(const r of rows||[]){if(isoDay(r.Report_Date)!==day||!r.Province)continue;const t=execTime(r.Ingested_At),cur=best.get(r.Province);if(!cur||!(t<cur.t))best.set(r.Province,{r,t})}
+    return Array.from(best.values(),({r})=>({province:r.Province,hh:execNum(r.Affected_Households),remarks:r.Remarks||''}));
+  }
+  // Latest DDPM report day against the one before. keep(province) limits the provinces counted, but the days always come
+  // from all rows: a health region with no report on the latest day shows nothing, not an older report of its own.
+  function execDdpm(rows,keep){
+    const days=[...new Set((rows||[]).map(r=>isoDay(r.Report_Date)).filter(Boolean))].sort(),ok=x=>!keep||keep(x.province);
+    const day=days.at(-1)||'',prevDay=days.at(-2)||'',cur=day?execDdpmDay(rows,day).filter(ok):[],prev=prevDay?execDdpmDay(rows,prevDay).filter(ok):[];
+    const total=a=>a.reduce((s,x)=>s+(x.hh||0),0),now=new Set(cur.map(x=>x.province));
+    return {day,prevDay,cur:cur.sort((a,b)=>(b.hh??-1)-(a.hh??-1)||a.province.localeCompare(b.province,'th')),provinces:cur.length,hh:total(cur),
+      dProv:prevDay?cur.length-prev.length:null,dHh:prevDay?total(cur)-total(prev):null,recovered:prev.filter(x=>!now.has(x.province)).map(x=>x.province)};
+  }
+  // Vulnerable_group rows (Thai headers) -> {province, region number, children, pregnant, elderly}; the "รวมทั้งหมด" row is dropped.
+  function execVulnerable(rows){
+    return (rows||[]).filter(r=>r['จังหวัด']&&r['จังหวัด']!=='รวมทั้งหมด').map(r=>({province:r['จังหวัด'],region:regionNumber(r['เขตสุขภาพ']),
+      children:execNum(r['จำนวนเด็ก 0-4 ปีทั้งหมด (คน)']),pregnant:execNum(r['จำนวนหญิงตั้งครรภ์ทั้งหมด (คน)']),elderly:execNum(r['จำนวนผู้สูงอายุ 60 ปีขึ้นไปทั้งหมด (คน)'])}));
+  }
+  // province -> health region number. Bangkok is region 13 when the sheet has no row for it.
+  function execRegionOf(vul){const m=new Map();for(const r of vul||[])if(r.region)m.set(r.province,r.region);if(!m.has('กรุงเทพมหานคร'))m.set('กรุงเทพมหานคร',13);return m}
+  // 2P2R province level (flood_waterlogged_amphoe.province_level_code, repeated on each district row), in the waterlogging
+  // tab's colours (WATER_2P2R); the poster's key uses the stage name (ตอบโต้ทันที ...).
+  const EXEC_P2R=Object.fromEntries(['red','orange','yellow','green'].map(k=>[k,{rank:WATER_2P2R[k].rank,color:WATER_2P2R[k].color,label:WATER_2P2R[k].stage,light:k==='yellow'}]));
+  function execProvinceLevels(rows){const out=new Map();for(const r of rows||[]){const k=String(r.province_level_code??'').trim();if(EXEC_P2R[k]&&r.province&&!out.has(r.province))out.set(r.province,k)}return out}
+  // The province list follows the 2P2R map: every province with a level plus any DDPM province without one, highest level
+  // first, then by DDPM households.
+  function execProvinceList(levels,ddpmCur){
+    const hh=new Map((ddpmCur||[]).map(x=>[x.province,x.hh]));
+    return [...new Set([...levels.keys(),...hh.keys()])].map(p=>({province:p,level:levels.get(p)||null,hh:hh.get(p)??null}))
+      .sort((a,b)=>(EXEC_P2R[b.level]?.rank||0)-(EXEC_P2R[a.level]?.rank||0)||(b.hh??-1)-(a.hh??-1)||a.province.localeCompare(b.province,'th'));
+  }
+  // Group a sorted province list by health region (ascending region number; unknown regions last), keeping the order.
+  function execByRegion(items,regionOf){
+    const out=new Map();
+    for(const x of items||[]){const n=regionOf.get(x.province)||null;if(!out.has(n))out.set(n,[]);out.get(n).push(x)}
+    return Array.from(out,([region,list])=>({region,items:list})).sort((a,b)=>(a.region??99)-(b.region??99));
+  }
+  // TMD heavy-rain map bands, keyed by the pipeline's label (rain_max_amphoe_level): white, yellow, orange, red, purple.
+  const EXEC_RAIN=[{level:'0-35 มม.',color:'#ffffff',label:'≤35'},{level:'35.1-65 มม.',color:'#FFE600',label:'≤65'},{level:'65.1-125 มม.',color:'#FF9800',label:'≤125'},{level:'125.1-250 มม.',color:'#E53935',label:'≤250'},{level:'มากกว่า 250 มม.',color:'#8E24AA',label:'>250'}];
+  // First n forecast days of the latest run (tmd_rain_level): the level per province and how many provinces have a district over 35 mm.
+  function execRainDays(rows,n,keep){
+    const run=(rows||[]).reduce((m,r)=>String(r.run_at||'')>m?String(r.run_at):m,''),latest=(rows||[]).filter(r=>r.run_at===run&&(!keep||keep(r.province)));
+    const days=[...new Set(latest.map(r=>isoDay(r.forecast_date)).filter(Boolean))].sort().slice(0,n);
+    return days.map(d=>{const rs=latest.filter(r=>isoDay(r.forecast_date)===d);return {date:d,levels:new Map(rs.map(r=>[r.province,r.rain_max_amphoe_level])),heavy:rs.filter(r=>(execNum(r.amphoe_heavy_count)??0)>0).length}});
+  }
+  // Report date = the newest data date on the poster: the DDPM report day and the run dates of the other tabs (forecast dates are future, not used).
+  function execReportDay(ddpmDay,...tables){return [ddpmDay,...tables.flatMap(t=>(t||[]).map(r=>isoDay(r.run_at)))].filter(Boolean).reduce((a,b)=>b>a?b:a,'')}
+  const model={execNum,execTime,execDdpm,execVulnerable,execRegionOf,EXEC_P2R,execProvinceLevels,execProvinceList,execByRegion,EXEC_RAIN,execRainDays,execReportDay,compareNationalTableValues,nationalDistrictSummary,nationalLabelPoint,nationalDistrictNames,nationalPointInGeometry,bkkTrendDistricts,bkkDistrictTrend,bkkTrend,WATER_2P2R,water2p2rLevel,waterProvCode,waterAmpCode,waterAmphoeRows,waterProvincesFromAmphoe,waterIsDdpmLogged,waterScope,waterStatusLabel,waterProvinceRows,waterProvinceSummary,waterProvinceIndex,waterProvinceUnmatched,WATER_CONFIDENCE,waterConfidence,waterIsLogged,waterIsDashed,WATER_BASIS_DDPM_ONLY,waterIsDdpmOnly,waterDdpmOnlyCount,WATERLOGGED_SOURCES,WATER_LOG_STATUS,waterStatusRank,waterRows,waterSummary,waterDdpmDistricts,waterHasPoint,waterFilter,waterFreshness,waterDistricts,latestPerKey,disasterTime,latestTime,parseSeries,RAIN_CLASSES,rainClass,seriesDates,exposure,reasonList,RISK_SOURCES,RISK_LEVELS,riskRank,parseBool,riskRows,riskSummary,waterTrend,overbankM,riskFreshness,dataAge,vulnerableTotals,trendKind,provinceLevel,situationGroups,regionNumber,timelineDaily,termWindows,lifecycle,trendLevel,newsRising,newsTopRegions,newsTopByCount,sourceInitial,growthValue,newsArticles,newsProvinces,newsUrgencyCounts,newsWords,ageLabel,safeUrl,URGENCY,NEWS_CATEGORIES,HEALTH_NEED_CATEGORIES,healthNeedMapData,healthNeedColor,latestStationDay,SOURCES,WATER_STATUS,canonicalWaterStatus,timestamp,sum,quality,householdBorderColor,validCoordinates,districtSummary};
   if(typeof module!=='undefined')module.exports=model;else root.DashboardModel=model;
 })(typeof window!=='undefined'?window:globalThis);
