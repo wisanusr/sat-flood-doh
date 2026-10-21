@@ -488,10 +488,29 @@
     const missing=v=>/^(?:|[-–—]|ไม่มีข้อมูล|ไม่ระบุ|ไม่แยกรายอำเภอ)$/.test(String(v).trim());
     if(missing(a)||missing(b))return Number(missing(a))-Number(missing(b));
     const numeric=v=>/^-?[\d,]+(?:\.\d+)?$/.test(v)?Number(v.replace(/,/g,'')):null;
-    const an=numeric(a),bn=numeric(b);
-    const result=an!==null&&bn!==null?an-bn:String(a).localeCompare(String(b),'th',{numeric:true});
+    const thaiDate=v=>{
+      const m=/^(\d{1,2})\s+(ม\.ค\.|ก\.พ\.|มี\.ค\.|เม\.ย\.|พ\.ค\.|มิ\.ย\.|ก\.ค\.|ส\.ค\.|ก\.ย\.|ต\.ค\.|พ\.ย\.|ธ\.ค\.)\s+(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?(?:\s*น\.)?$/.exec(String(v).trim());
+      if(!m)return null;
+      const months=['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+      const year=Number(m[3])>2400?Number(m[3])-543:Number(m[3]);
+      return Date.UTC(year,months.indexOf(m[2]),Number(m[1]),Number(m[4]||0),Number(m[5]||0),Number(m[6]||0));
+    };
+    const an=numeric(a),bn=numeric(b),ad=thaiDate(a),bd=thaiDate(b);
+    const result=an!==null&&bn!==null?an-bn:ad!==null&&bd!==null?ad-bd:String(a).localeCompare(String(b),'th',{numeric:true});
     return result*(direction==='asc'?1:-1);
   }
-  const model={compareNationalTableValues,nationalDistrictSummary,nationalLabelPoint,nationalDistrictNames,nationalPointInGeometry,bkkTrendDistricts,bkkDistrictTrend,bkkTrend,WATER_2P2R,water2p2rLevel,waterProvCode,waterAmpCode,waterAmphoeRows,waterProvincesFromAmphoe,waterIsDdpmLogged,waterScope,waterStatusLabel,waterProvinceRows,waterProvinceSummary,waterProvinceIndex,waterProvinceUnmatched,WATER_CONFIDENCE,waterConfidence,waterIsLogged,waterIsDashed,WATER_BASIS_DDPM_ONLY,waterIsDdpmOnly,waterDdpmOnlyCount,WATERLOGGED_SOURCES,WATER_LOG_STATUS,waterStatusRank,waterRows,waterSummary,waterDdpmDistricts,waterHasPoint,waterFilter,waterFreshness,waterDistricts,latestPerKey,disasterTime,latestTime,parseSeries,RAIN_CLASSES,rainClass,seriesDates,exposure,reasonList,RISK_SOURCES,RISK_LEVELS,riskRank,parseBool,riskRows,riskSummary,waterTrend,overbankM,riskFreshness,dataAge,vulnerableTotals,trendKind,provinceLevel,situationGroups,regionNumber,timelineDaily,termWindows,lifecycle,trendLevel,newsRising,newsTopRegions,newsTopByCount,sourceInitial,growthValue,newsArticles,newsProvinces,newsUrgencyCounts,newsWords,ageLabel,safeUrl,URGENCY,NEWS_CATEGORIES,HEALTH_NEED_CATEGORIES,healthNeedMapData,healthNeedColor,latestStationDay,SOURCES,WATER_STATUS,canonicalWaterStatus,timestamp,sum,quality,householdBorderColor,validCoordinates,districtSummary};
+  // Scope DOH counts and pins together; districts without coordinates can still match by administrative names.
+  function operationsShelterScope(rows,{provinces=[],features=[],narrowed=false}={}){
+    const allowed=new Set(provinces),clean=v=>String(v??'').trim().replace(/^(?:อำเภอ|อ\.|เขต)\s*/u,'');
+    return (rows||[]).filter(r=>{
+      if(!allowed.has(r.province))return false;
+      if(!narrowed)return true;
+      const local=features.filter(f=>f.properties.pro_th===r.province);
+      const name=clean(r.district),hasName=!!name;
+      if(hasName)return local.some(f=>clean(f.properties.amp_th)===name);
+      return local.some(f=>nationalPointInGeometry(r.lon,r.lat,f.geometry));
+    });
+  }
+  const model={operationsShelterScope,compareNationalTableValues,nationalDistrictSummary,nationalLabelPoint,nationalDistrictNames,nationalPointInGeometry,bkkTrendDistricts,bkkDistrictTrend,bkkTrend,WATER_2P2R,water2p2rLevel,waterProvCode,waterAmpCode,waterAmphoeRows,waterProvincesFromAmphoe,waterIsDdpmLogged,waterScope,waterStatusLabel,waterProvinceRows,waterProvinceSummary,waterProvinceIndex,waterProvinceUnmatched,WATER_CONFIDENCE,waterConfidence,waterIsLogged,waterIsDashed,WATER_BASIS_DDPM_ONLY,waterIsDdpmOnly,waterDdpmOnlyCount,WATERLOGGED_SOURCES,WATER_LOG_STATUS,waterStatusRank,waterRows,waterSummary,waterDdpmDistricts,waterHasPoint,waterFilter,waterFreshness,waterDistricts,latestPerKey,disasterTime,latestTime,parseSeries,RAIN_CLASSES,rainClass,seriesDates,exposure,reasonList,RISK_SOURCES,RISK_LEVELS,riskRank,parseBool,riskRows,riskSummary,waterTrend,overbankM,riskFreshness,dataAge,vulnerableTotals,trendKind,provinceLevel,situationGroups,regionNumber,timelineDaily,termWindows,lifecycle,trendLevel,newsRising,newsTopRegions,newsTopByCount,sourceInitial,growthValue,newsArticles,newsProvinces,newsUrgencyCounts,newsWords,ageLabel,safeUrl,URGENCY,NEWS_CATEGORIES,HEALTH_NEED_CATEGORIES,healthNeedMapData,healthNeedColor,latestStationDay,SOURCES,WATER_STATUS,canonicalWaterStatus,timestamp,sum,quality,householdBorderColor,validCoordinates,districtSummary};
   if(typeof module!=='undefined')module.exports=model;else root.DashboardModel=model;
 })(typeof window!=='undefined'?window:globalThis);
