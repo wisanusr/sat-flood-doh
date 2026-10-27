@@ -673,4 +673,124 @@ details.risk-all[open]>summary::before{content:"▾"}
   .health-heatmap-panel{padding:18px 16px}
 }
 
+/* National overview filter bar; other menus retain their existing layout. */
+.national-filter-layout #dashboardFilters{display:grid;grid-template-columns:.75fr 1fr 1fr 1fr 1fr .85fr 1.2fr auto auto;align-items:end;gap:10px;padding:14px 16px}
+.national-filter-layout #dashboardFilters .field{min-width:0}
+.national-filter-layout #dashboardFilters select,.national-filter-layout #dashboardFilters input{width:100%;min-width:0;min-height:44px;font-size:13px;padding:8px}
+.national-filter-layout #dashboardFilters .national-search{grid-column:auto}
+.national-filter-layout #dashboardFilters>.lightbtn{white-space:nowrap;font-size:13px;padding:8px 10px}
+.national-filter-layout #filterNote{order:1;grid-column:1/-1;margin:0;border-top:1px solid var(--line);padding-top:10px}
+.national-filter-layout #refreshStatus{order:2;grid-column:1/-1;margin:0}
+.national-filter-layout #refreshStatus:empty{display:none}
+.national-filter-layout #refreshData{background:var(--teal);color:white;border-color:var(--teal)}
+@media(max-width:1000px){.national-filter-layout #dashboardFilters{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:767px){.national-filter-layout #dashboardFilters{grid-template-columns:repeat(2,minmax(0,1fr));padding:14px;gap:12px}.national-filter-layout #dashboardFilters:not(.expanded) .national-filter{display:flex}.national-filter-layout #dashboardFilters input,.national-filter-layout #dashboardFilters select{font-size:16px}.national-filter-layout #dashboardFilters .national-search{grid-column:1/-1}}
+@media(max-width:380px){.national-filter-layout #dashboardFilters{grid-template-columns:minmax(0,1fr)}}
+
+/* Labels are confined to the national map; province first, district at a closer zoom. */
+.national-place-name{background:none;border:0;pointer-events:none!important;transition:none}
+.national-place-name span{display:inline-block;transform:translate(-50%,-50%);white-space:nowrap;font-size:12px;line-height:1.3;color:#17333e;text-shadow:0 0 2px #fff,0 0 3px #fff,0 0 5px #fff}
+.national-place-province span{font-weight:700;font-size:13px}
+.national-place-district span{font-weight:400}
+@media(prefers-reduced-motion:reduce){.national-place-name{transition:none}}
+
+#sideBody.nat-summary.national-district-summary table{min-width:600px;table-layout:auto;width:100%}
+#sideBody.nat-summary.national-district-summary th:nth-child(n){width:auto}
+
+/* Keep national map hover cards opaque and above region outlines and map labels. */
+.national-filter-layout #map .leaflet-tooltip-pane{z-index:800}
+.national-filter-layout #map .leaflet-tooltip{background:#fff;color:#17333e;opacity:1!important;border:1px solid #cbdadd;border-radius:8px;padding:10px 13px;box-shadow:0 3px 12px #12374026;font-size:13px;line-height:1.6;white-space:normal;max-width:300px}
+.national-filter-layout #map .leaflet-tooltip b{color:#123740;font-weight:700}
+.national-filter-layout #map .leaflet-tooltip-top:before{border-top-color:#fff}
+.national-filter-layout #map .leaflet-tooltip-bottom:before{border-bottom-color:#fff}
+.national-filter-layout #map .leaflet-tooltip-left:before{border-left-color:#fff}
+.national-filter-layout #map .leaflet-tooltip-right:before{border-right-color:#fff}
+.national-filter-layout #map .leaflet-tooltip{width:260px;max-width:calc(100vw - 48px)}
+
+/* Clickable headers are added only to national overview tables. */
+.national-filter-layout .national-header-sort{display:inline-flex;align-items:center;gap:6px;width:100%;min-height:32px;padding:0;background:none;border:0;border-radius:3px;color:inherit;font:inherit;text-align:inherit;white-space:normal}
+.national-filter-layout .national-header-sort::after{content:attr(data-sort-icon);flex-shrink:0;font-size:12px;color:var(--teal)}
+.national-filter-layout th[aria-sort=descending] .national-header-sort,.national-filter-layout th[aria-sort=ascending] .national-header-sort{color:var(--teal);font-weight:700}
+.national-filter-layout .national-header-sort:hover{color:var(--teal);text-decoration:underline;text-underline-offset:3px}
+/* Executive report tab ("รายงานผู้บริหาร", executive-view.js; GitHub Pages build only): body.exec-mode hides the dashboard
+   sections and shows #execPane. The poster is laid out at 540 CSS px wide and saved at 1179x2200 (see OUT_H in executive-view.js); every class is x-prefixed
+   so the dashboard's own .card/.panel/.alert rules do not reach into the saved image. */
+#execPane{display:none}
+.exec-mode #execPane{display:block}
+.exec-mode #workspace>:not(#execPane){display:none!important}
+.exec-mode #shotBtn{display:none}
+.x-tools{display:flex;flex-wrap:wrap;gap:12px;align-items:end;justify-content:center;margin-bottom:10px}
+.x-tools .field{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+.x-save{background:var(--teal);color:#fff;border-radius:8px;padding:9px 16px;font-weight:600}
+.x-save:disabled{opacity:.5;cursor:default}
+.x-status{display:flex;flex-wrap:wrap;gap:4px 16px;justify-content:center;font-size:13px;color:var(--muted);margin-bottom:14px;text-align:center}
+.x-status .alert{flex-basis:100%;text-align:left}
+.x-stagewrap{display:flex;justify-content:center}
+.x-stage{flex:none}
+.x-scale{transform-origin:0 0;width:540px}
+.x-poster{width:540px;height:1007.63px;background:var(--bg);color:var(--ink);overflow:hidden;position:relative;box-shadow:0 6px 30px #12374022;font:16px/1.5 'Google Sans',sans-serif;text-align:left}
+.x-poster h2,.x-poster p{margin:0}
+.x-inner{transform-origin:0 0;display:flex;flex-direction:column;gap:9px;padding:0 0 6px;min-height:1007.63px}
+.x-head{background:var(--dark);color:#fff;padding:8px 16px;display:flex;align-items:center;gap:10px}
+.x-logo{height:58px;width:auto;flex:none;display:block}
+.x-head strong{font-size:20px;display:block;line-height:1.25;letter-spacing:-.2px}
+.x-head small{display:block;color:#bed0d4;font-size:11.5px;line-height:1.3}
+.x-date{margin-left:auto;border:1px solid #719293;border-radius:9px;padding:3px 10px;white-space:nowrap;font-size:15px;font-weight:700}
+.x-body{padding:2px 14px 0;display:flex;flex-direction:column;gap:9px;flex:1}
+.x-cards{display:grid;grid-template-columns:1fr 1.15fr 1.25fr;gap:8px}
+.x-card{background:#fff;border:1px solid var(--line);border-radius:11px;padding:8px 11px}
+.x-accent{background:var(--teal);color:#fff;border-color:var(--teal)}
+.x-eyebrow{font-size:12.5px;color:var(--muted);line-height:1.3}
+.x-accent .x-eyebrow,.x-accent .x-note{color:#cae7e4}
+.x-num{font-size:31px;line-height:1.25;font-weight:700;font-variant-numeric:tabular-nums}
+.x-unit{font-size:13px;font-weight:400;margin-left:3px}
+.x-note{font-size:11px;color:var(--muted);line-height:1.3}
+.x-up{color:var(--red);font-weight:700}.x-down{color:#2f8a4a;font-weight:700}
+.x-accent .x-up{color:#ffd9d6}.x-accent .x-down{color:#c9f2d6}
+.x-vul{display:grid;grid-template-columns:auto 1fr;gap:0 8px;font-size:12.5px;margin-top:2px;line-height:1.45}
+.x-vul b{text-align:right;font-variant-numeric:tabular-nums;font-size:14px}
+.x-panel{background:#fff;border:1px solid var(--line);border-radius:12px;padding:9px 11px}
+.x-panel h2{font-size:15px;line-height:1.3;letter-spacing:0}
+.x-panel h2 small{font-size:11.5px;font-weight:400;color:var(--muted)}
+.x-mid{display:grid;grid-template-columns:232px minmax(0,1fr);gap:8px}
+.x-mapbox svg{display:block;width:100%;height:auto;margin-top:4px}
+/* the 2P2R key sits in the empty sea to the right of the southern peninsula, in the map's bottom-right corner */
+.x-mapbox{position:relative}
+.x-mapbox .x-legend{position:absolute;right:11px;bottom:9px;margin:0}
+.x-mapzoom .x-legend{position:static;margin-top:3px}   /* a zoomed-in health region can fill that corner */
+.x-legend{display:flex;flex-wrap:wrap;gap:1px 9px;font-size:11px;color:var(--muted);line-height:1.45;margin-top:3px}
+.x-legend-col{flex-direction:column}
+.x-legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:3px;vertical-align:-1px}
+.x-regs{display:flex;flex-direction:column;gap:4px;margin-top:4px}
+.x-reg{display:grid;grid-template-columns:26px minmax(0,1fr);gap:8px;align-items:start;padding-bottom:4px;border-bottom:1px solid var(--line)}
+.x-reg:last-child{border-bottom:0;padding-bottom:0}
+.x-badge{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;color:#fff;font-weight:700;font-size:14px}
+.x-badge.x-light{color:var(--ink)}
+.x-pv{font-size:12.5px;line-height:1.45;color:var(--ink);display:flex;flex-wrap:wrap;gap:0 10px}
+.x-pv i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;vertical-align:1px}
+.x-alert{background:#fbeceb;border:1px solid #efc9c6;border-left:4px solid var(--red);border-radius:8px;padding:5px 10px;font-size:13.5px;font-weight:700;color:#8a2f2b;margin-top:5px}
+.x-fc{display:grid;grid-template-columns:minmax(0,1fr) 222px;gap:10px;margin-top:6px}
+.x-fc>div:last-child{display:flex;flex-direction:column}
+.x-periods{display:flex;flex-direction:column;gap:6px}
+.x-period{border-left:3px solid var(--teal);padding-left:8px}
+.x-period b{font-size:13px;line-height:1.3;display:block}
+.x-period p{font-size:12px;line-height:1.4}
+.x-cap{color:var(--red);font-weight:700}
+.x-empty{font-size:12px;color:var(--muted)}
+.x-rainmaps{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
+.x-rainmaps figure{margin:0;text-align:center}
+.x-rainmaps figcaption{font-size:12.5px;font-weight:700}
+.x-rainmaps svg{display:block;width:100%;height:auto}
+.x-stat{font-size:10.5px;color:var(--muted);line-height:1.3}
+.x-rainkey{display:grid;grid-template-columns:repeat(5,1fr);gap:0;margin-top:6px;text-align:center;font-size:10px;letter-spacing:-.2px;white-space:nowrap;color:var(--muted);line-height:1.3}
+.x-rainkey i{display:block;height:9px;margin:0 3px 2px;border:1px solid #94a3b8;border-radius:2px}
+.x-qr{margin-top:auto;display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:9px;padding:5px 9px 5px 5px;background:#fff}
+.x-qr svg{width:34px;height:34px;flex:none;display:block}
+.x-qr b{display:block;font-size:13px;line-height:1.3}
+.x-qr span{display:block;font-size:12px;color:var(--teal);font-weight:700;line-height:1.4;white-space:nowrap}
+.x-foot{margin-top:auto;padding:7px 14px 0;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:1px}
+.x-rec{font-size:12.5px;line-height:1.4}
+.x-rec b{color:#2f8a4a}
+.x-meta{font-size:11.5px;color:var(--muted)}
+
 </style>
