@@ -43,10 +43,12 @@
   function freshnessHtml(rows){
     const runAt=rows.map(r=>r.run_at).filter(Boolean).sort().at(-1);
     const f=M.riskFreshness(runAt,Date.now());
-    const age=f.hours==null?'':' · ผ่านมา '+(f.hours<1?'ไม่ถึง 1':fmt(Math.floor(f.hours)))+' ชม.';
-    const fc=rows.find(r=>r.forecast_source);
-    const src=fc?(fc.forecast_source==='TMD_NWP'?'ฝนพยากรณ์: แบบจำลองกรมอุตุนิยมวิทยา':'ฝนพยากรณ์: Open-Meteo (สำรอง)')+(fc.forecast_fetched_at?' รอบ '+when(fc.forecast_fetched_at):''):'';
-    let html='<div class="data-age age-'+(f.level==='bad'?'bad':f.level==='warn'?'warn':'ok')+'" style="display:block">ข้อมูลรอบล่าสุด '+when(runAt)+age+(src?' · '+src:'')+' · อัปเดตวันละ 2 รอบ (09:00 และ 13:00 น.)</div>';
+    const age=f.hours==null?'':'ผ่านมา '+(f.hours<1?'ไม่ถึง 1':fmt(Math.floor(f.hours)))+' ชม.';
+    const fc=rows.find(r=>r.forecast_source),tmd=fc&&fc.forecast_source==='TMD_NWP';
+    let html='<div class="data-age age-chips" role="status">'+M.ageChips([
+      {level:f.level==='bad'?'bad':f.level==='warn'?'warn':'ok',html:'อัปเดต <b>'+esc(when(runAt))+'</b>',title:age},
+      fc&&{level:tmd?'info':'warn',html:'ฝนพยากรณ์ '+(tmd?'กรมอุตุนิยมวิทยา':'Open-Meteo (สำรอง)'),title:fc.forecast_fetched_at?'รอบ '+when(fc.forecast_fetched_at):''},
+      {level:'info',html:'อัปเดตวันละ 2 รอบ (09:00, 13:00 น.)'}])+'</div>';
     if(f.level==='bad')html+='<div class="alert">ข้อมูลเก่ากว่ารอบปกติ อาจมีรอบที่รันไม่สำเร็จ อย่าใช้เป็นสถานการณ์ปัจจุบัน</div>';
     if(rows.some(r=>r.forecast_source==='OPEN_METEO'))html+='<div class="alert">ฝนพยากรณ์รอบนี้ใช้ Open-Meteo แทนข้อมูลกรมอุตุนิยมวิทยา (รอบ TMD ล่าสุดเกิน 18 ชม. หรือดึงไม่ได้) ปริมาณฝนอาจต่างจากที่ TMD พยากรณ์</div>';
     return html;

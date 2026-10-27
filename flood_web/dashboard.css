@@ -257,6 +257,7 @@ body,button,input,select,textarea,table,.leaflet-container,.leaflet-tooltip,.lea
 .ic-province{height:0;border-top:1.5px solid #64748b;margin:6px 0}
 .ic-amphoe{height:0;border-top:1px solid #475569;margin:6px 0}
 .ic-tambon{height:0;border-top:1px dashed #64748b;margin:6px 0}
+.ic-water-pts{width:16px;height:12px;background:radial-gradient(circle at 30% 40%,#0C447C 0 3px,transparent 3.5px),radial-gradient(circle at 75% 65%,#0ea5e9 0 3px,transparent 3.5px)}
 .ic-label{position:relative;height:16px}.ic-label::after{content:"กข";position:absolute;inset:0;display:grid;place-items:center;font:700 11px/1 var(--dashboard-font,inherit);color:#0f172a}
 .water-prov-name{background:none;border:0;pointer-events:none}
 .water-prov-name span{display:inline-block;transform:translate(-50%,-50%);font:600 11px/1.2 var(--dashboard-font,inherit);color:#0f172a;white-space:nowrap;text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 3px #fff,0 0 4px #fff}
@@ -300,6 +301,14 @@ body,button,input,select,textarea,table,.leaflet-container,.leaflet-tooltip,.lea
 .data-age.age-ok{border-left-color:#16a34a;background:#f0fdf4;color:#14532d}
 .data-age.age-warn{border-left-color:#f59e0b;background:#fffbeb;color:#78350f}
 .data-age.age-bad{border-left-color:#dc2626;background:#fef2f2;color:#7f1d1d}
+/* Freshness as chips (every tab): one pill per fact, coloured by how fresh it is; details in the tooltip */
+.data-age.age-chips{display:flex!important;flex-wrap:wrap;gap:8px;align-items:center;padding:0;border:0;background:none}
+.age-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:999px;font-size:13px;line-height:1.5;background:#f1f5f9;color:#334155;border:1px solid #e2e8f0}
+.age-chip b{font-weight:600}
+.age-chip .age-dot{width:8px;height:8px;border-radius:50%;background:#94a3b8;flex:none}
+.age-chip.age-ok{background:#f0fdf4;color:#14532d;border-color:#bbf7d0}.age-chip.age-ok .age-dot{background:#16a34a}
+.age-chip.age-warn{background:#fffbeb;color:#78350f;border-color:#fde68a}.age-chip.age-warn .age-dot{background:#f59e0b}
+.age-chip.age-bad{background:#fef2f2;color:#7f1d1d;border-color:#fecaca}.age-chip.age-bad .age-dot{background:#dc2626}
 
 /* Flood-prep tab ("เตรียมรับน้ำท่วม", risk-view.js): body.risk-mode hides the dashboard sections and shows #riskPane. */
 #riskPane{display:none}
@@ -486,6 +495,14 @@ details.risk-all[open]>summary::before{content:"▾"}
 .water-conf-ddpm{background:#fff3e6;border:1px dashed #d98a3b;color:#7a4a05}
 .dot.dot-dashed{outline:1px dashed #042C53;outline-offset:1px}
 .water-prov-legend{gap:6px 16px;padding-bottom:4px}
+/* Map key floating on the water map (bottom-left), stacked lists; below the map on a phone */
+.water-map-key{max-width:230px;max-height:calc(100% - 24px);overflow:auto}
+.water-map-key summary{cursor:pointer;font-weight:600;color:#0f172a;margin-bottom:4px}
+.water-map-key:not([open]) summary{margin:0}
+.water-map-key .water-key-list,.water-map-key .water-prov-legend{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:0}
+.water-map-key .water-key-list span{display:inline-flex;align-items:center;gap:6px}
+.water-map-key .water-level-key{padding:1px 6px;margin-left:-6px;min-height:0!important}
+#waterMapKeyHost .water-map-key{max-width:none;box-shadow:none;border-top:1px solid var(--line);border-radius:0;margin:0}
 .water-prov-key{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
 .water-level-key{background:none;border:1px solid transparent;border-radius:6px;padding:2px 8px;margin:0;font:inherit;color:inherit;cursor:pointer}
 .water-level-key:hover{background:#f1f6f7}
@@ -540,6 +557,30 @@ details.risk-all[open]>summary::before{content:"▾"}
 /* two equal columns, so the map / side panel edges line up with the 4 stage cards above */
 @media(min-width:1024px){#waterPane .grid.water-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .water-status-cards{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+/* Narrower screens: the 2P2R list beside (or above) the map fits its panel; names wrap at word breaks, no sideways scroll */
+@media(max-width:1279px){
+ #waterSideList th,#waterSideList td{padding:8px 6px!important;min-width:0!important}
+ #waterSideList th,#waterSideList td:nth-child(-n+2){white-space:normal!important;word-break:normal;overflow-wrap:normal}
+}
+@media(max-width:720px){#waterSideList th,#waterSideList td{padding:8px 5px!important;font-size:12.5px!important}}
+/* Phone: the water tab stays compact. Status toggles three across, the 2P2R list tighter (fewer columns scroll sideways),
+   and the map key (below the map here) puts its two lists side by side. */
+@media(max-width:720px){
+ #waterStatusCards.water-status-cards{grid-template-columns:repeat(3,minmax(0,1fr))}
+ #waterStatusCards .trend-card{padding:6px 8px}
+ #waterStatusCards .trend-card .tc-num{font-size:17px}
+ #waterCards .card{padding:12px}
+ #waterCards .water-stage-card .card-note{font-size:12px;line-height:1.5}
+ /* the wide tambon / district tables scroll sideways: keep the name column in view */
+ :is(#waterTable,#waterDistrictTable) :is(td,th):first-child{position:sticky;left:0;z-index:3;background:#fff;box-shadow:1px 0 0 var(--line)}
+ :is(#waterTable,#waterDistrictTable) th:first-child{background:#f3f7f8;z-index:4}
+ #waterMapKeyHost #waterKeyBody{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
+ #waterMapKeyHost #waterKeyBody>hr{display:none}
+ #waterMapKeyHost #waterKeyBody>strong:nth-of-type(1){grid-column:1;grid-row:1}
+ #waterMapKeyHost #waterKeyBody>strong:nth-of-type(2){grid-column:2;grid-row:1}
+ #waterMapKeyHost #waterKeyBody>div:nth-of-type(1){grid-column:1;grid-row:2}
+ #waterMapKeyHost #waterKeyBody>div:nth-of-type(2){grid-column:2;grid-row:2}
+}
 .water-status-card{background:#f8fafc;border:1px solid var(--line);color:var(--ink);text-align:left;cursor:pointer;font:inherit;font-weight:700}
 .water-status-card .tc-label{white-space:normal;font-size:13px}
 .water-status-card[aria-pressed="false"]{opacity:.45}

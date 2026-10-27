@@ -19,7 +19,7 @@
   const day=iso=>{const t=M.timestamp(iso);return Number.isFinite(t)?new Date(t).toLocaleDateString('th-TH',{...tz,day:'numeric',month:'short'}):'-'};
   const hoursText=h=>!Number.isFinite(h)?'–':h<1?'ไม่ถึง 1 ชม.':fmt(Math.floor(h))+' ชม.';
   const STATUSES=Object.keys(M.WATER_LOG_STATUS);
-  const state={statuses:new Set(STATUSES),region:'',province:'',district:null,level:'',query:'',sel:null,note:null,provSel:null,showProv:true,unit:'amp',showRegion:true,showProvLine:true,showAmp:true,showProvName:true,showTambon:true};
+  const state={statuses:new Set(STATUSES),region:'',province:'',district:null,level:'',query:'',sel:null,note:null,provSel:null,showProv:true,unit:'amp',showRegion:true,showProvLine:true,showAmp:true,showProvName:true,showTambon:true,showWater:true};
   let map=null,ro=null,markers=new Map(),markerLayer=null,isOpen=false;
 
   const data=()=>window.dashboardData;
@@ -85,9 +85,12 @@
   function freshnessHtml(rows){
     const f=M.waterFreshness(rows,Date.now());
     const cls=f.runLevel==='bad'?'bad':f.runLevel==='warn'?'warn':'ok';
-    let html='<div class="data-age age-'+(cls==='bad'?'bad':'warn')+'" role="status" style="display:block"><b>ความสดของข้อมูล</b> · ประมวลผลรอบล่าสุด '+when(f.runAt)+(f.runHours!=null?' (ผ่านมา '+hoursText(f.runHours)+')':'')
-      +' · ภาพดาวเทียมที่พบน้ำล่าสุดมีอายุ '+hoursText(f.imageHours)+' ณ รอบประมวลผลนั้น'
-      +'<br><span class="age-basis">ภาพดาวเทียมครอบคลุมเป็นบางส่วนของประเทศ และมาถึงล่าช้าประมาณ 1–2 วัน จังหวัดที่ไม่มีภาพจึงยังไม่ถูกประเมิน</span></div>';
+    // Satellite images normally arrive 1–2 days late: up to 48 h is expected (yellow from 24 h), older is red.
+    const img=f.imageHours==null?'info':f.imageHours<=24?'ok':f.imageHours<=48?'warn':'bad';
+    let html='<div class="data-age age-chips" role="status">'+M.ageChips([
+      {level:cls==='unknown'?'info':cls,html:'อัปเดต <b>'+esc(when(f.runAt))+'</b>',title:f.runHours!=null?'ประมวลผลรอบล่าสุด ผ่านมา '+hoursText(f.runHours):''},
+      {level:img,html:'ภาพดาวเทียม '+esc(hoursText(f.imageHours)),title:'อายุภาพดาวเทียมที่พบน้ำล่าสุด ณ รอบประมวลผล'},
+      {level:'info',html:'ครอบคลุมบางส่วน · ล่าช้า 1–2 วัน',title:'ภาพดาวเทียมครอบคลุมเป็นบางส่วนของประเทศ และมาถึงล่าช้าประมาณ 1–2 วัน จังหวัดที่ไม่มีภาพจึงยังไม่ถูกประเมิน'}])+'</div>';
     if(f.runLevel==='bad')html+='<div class="alert">ข้อมูลเก่ากว่า 12 ชั่วโมง อาจมีรอบประมวลผลที่ไม่สำเร็จ อย่าใช้เป็นสถานการณ์ปัจจุบัน</div>';
     else if(f.runLevel==='warn')html+='<div class="alert">ข้อมูลเก่ากว่า 6 ชั่วโมง รอบประมวลผลล่าสุดอาจล่าช้า</div>';
     return html;
@@ -182,23 +185,35 @@
     // Stage name only (ตอบโต้ทันที / ตรวจเชิงรุก / ...); colour, 2P2R phase and counts (within the filters) are in the tooltip.
     // A stage is also a button: it sets / clears the level filter like the "ระยะ 2P2R" dropdown.
     const item=k=>{const l=M.WATER_2P2R[k];return '<button type="button" class="water-prov-key water-level-key" data-water-level="'+k+'" aria-pressed="'+(state.level===k)+'" title="'+esc(l.label+' · '+l.phase)+' · '+fmt(n[k])+' '+unitName+' · กดเพื่อกรองระยะนี้"><i class="swatch" style="background:'+l.color+'"></i>'+esc(l.stage)+'</button>'};
-    return '<div class="map-legend water-prov-legend" aria-label="สี 2P2R">'+['red','orange','yellow','green'].map(item).join('')
-      +'<span class="water-prov-key"><i class="swatch swatch-none"></i>'+esc(M.WATER_2P2R.normal.stage)+'</span></div>';
+    return '<div class="map-legend water-prov-legend" aria-label="สี 2P2R">'+['red','orange','yellow','green'].map(item).join('')+'</div>';
   }
+  // The key lists only the GISTDA points and the 2P2R colours that are switched on in the layers menu (refreshKey runs on
+  // every toggle); the boundary lines need no key.
+  const KEY_HIDDEN=new Set(['ข้อมูลไม่พอ','เคยพบน้ำ']);   // statuses left out of the map key (kept short)
+  function keyBodyHtml(){
+    const parts=[];
+    if(state.showWater)parts.push('<strong>น้ำ (ตำบล)</strong><div class="water-key-list">'
+      +STATUSES.filter(st=>!KEY_HIDDEN.has(label(st))).map(st=>'<span><i class="dot" style="'+dotCss(st)+'"></i>'+esc(label(st))+'</span>').join('')+'</div>');
+    if(state.showProv&&provRows().length)parts.push('<strong>สี 2P2R</strong><div id="waterProvLegend">'+provLegendHtml()+'</div>');
+    return parts.join('<hr>')||'<span class="muted">ไม่มีชั้นข้อมูลที่เปิดอยู่</span>';
+  }
+  function refreshKey(){const b=$('waterKeyBody');if(b)b.innerHTML=keyBodyHtml()}
   function mapPanel(rows){
-    const legend=STATUSES.map(st=>'<span><i class="dot" style="'+dotCss(st)+'"></i>'+esc(label(st))+'</span>').join('')
-      +'<span><i class="dot dot-dashed" style="background:'+meta('น้ำขัง').color+'"></i>ขอบประ = ตาม ปภ.</span>';
+    // Map key: floats on the map (bottom-left) like the national map; below the map on a phone (see placeKey).
+    const key='<details class="national-map-key water-map-key" id="waterMapKey" open><summary>คำอธิบายแผนที่</summary>'
+      +'<div id="waterKeyBody">'+keyBodyHtml()+'</div></details>';
     return '<section class="panel" id="waterMapPanel"><div class="panel-head"><div><h2>แผนที่น้ำขัง</h2></div><span class="badge" id="waterMapCount">'+fmt(rows.length)+' ตำบล</span></div>'
       +'<div class="trend-cards water-status-cards" id="waterStatusCards" role="group" aria-label="กรองตามสถานะ">'+statusCardsHtml(rows)+'</div>'
       +'<div id="waterMap" class="map water-map" role="img" aria-label="แผนที่ตำบลที่พบน้ำ สีตามสถานะ และสีอำเภอตามระดับ 2P2R"></div>'
-      +'<div class="map-legend">'+legend+'</div><div id="waterProvLegend">'+provLegendHtml()+'</div>'
+      +'<div id="waterMapKeyHost">'+key+'</div>'
       +'<div class="map-source">ที่มา : GISTDA (ภาพดาวเทียม), กรมป้องกันและบรรเทาสาธารณภัย (ปภ.) · ขอบเขตอำเภอ: OpenGISData-Thailand (ย่อขนาด)</div></section>';
   }
   // Layer toggle goes into the shared map footer (expand button + layers popover) like the other maps.
   function layerTools(){
     const chip=(id,on,icon,text)=>'<label class="layer-chip"><input type="checkbox" id="'+id+'"'+(on?' checked':'')+'><span class="chip-icon '+icon+'" aria-hidden="true"></span><span class="chip-text">'+text+'</span><span class="chip-check" aria-hidden="true">✓</span></label>';
     // One 2P2R fill: districts or provinces by the "ระดับข้อมูล" filter, never both at once.
-    const html=(provRows().length?chip('waterProvLayer',state.showProv,'ic-p2r','สี 2P2R'):'')
+    const html=chip('waterPointLayer',state.showWater,'ic-water-pts','น้ำจากดาวเทียม (ตำบล)')
+      +(provRows().length?chip('waterProvLayer',state.showProv,'ic-p2r','สี 2P2R'):'')
       +(window.HEALTH_REGIONS_GEOJSON?chip('waterRegionLayer',state.showRegion,'ic-region-thick','เส้นเขตสุขภาพ'):'')
       +(window.PROVINCES_GEOJSON?chip('waterProvLineLayer',state.showProvLine,'ic-province','เส้นจังหวัด'):'')
       +(window.PROVINCES_GEOJSON?chip('waterProvNameLayer',state.showProvName,'ic-label','ชื่อจังหวัด'):'')
@@ -226,10 +241,22 @@
     // One canvas renderer for everything: a second canvas on top would swallow the clicks meant for the province polygons below.
     canvas=L.canvas({padding:0.5});
     drawLayers(true);
+    placeKey();
     const fit=()=>{if(map!==m)return;m.invalidateSize();const s=m.getSize();if(s.x<50||s.y<50)return;fitToPoints()};
     fit();
     if(typeof ResizeObserver!=='undefined'){ro=new ResizeObserver(fit);ro.observe(el)}else{requestAnimationFrame(fit);setTimeout(fit,250)}
   }
+  // Desktop: the key goes into Leaflet's bottom-left corner (drags / scrolls on it do not move the map; clicks still reach
+  // the pane's handlers, so its 2P2R stages stay filter buttons). Phone: it sits below the map so the map stays clear.
+  function placeKey(){
+    const k=$('waterMapKey'),host=$('waterMapKeyHost'),corner=map&&map.getContainer().querySelector('.leaflet-bottom.leaflet-left');
+    if(!k||!host)return;
+    const target=matchMedia('(max-width:767px)').matches||!corner?host:corner;
+    if(k.parentElement===target)return;
+    k.classList.toggle('leaflet-control',target===corner);target.append(k);
+    if(!k._stop){k._stop=true;for(const ev of ['mousedown','touchstart','pointerdown','dblclick','wheel'])k.addEventListener(ev,e=>e.stopPropagation())}
+  }
+  window.addEventListener('resize',()=>{if(isOpen)placeKey()});
   let mapTries=0,fitBounds=null,canvas=null,provLayer=null,ampLayer=null,ampFillLayer=null,regionLayer=null,nameLayer=null,provByCode=new Map();
   function fitToPoints(){
     if(!map)return;
@@ -364,7 +391,7 @@
   const zoomedIn=()=>!!map&&map.getZoom()>=TAMBON_MIN_ZOOM;
   function tambonStyle(f,byId){
     const r=byId.get(String(f.properties.tam_code)),m=r&&meta(r.status);
-    const shade=!!r&&state.showTambon&&zoomedIn(),sel=!!r&&key(r)===state.sel;
+    const shade=!!r&&state.showWater&&state.showTambon&&zoomedIn(),sel=!!r&&key(r)===state.sel;
     const line=sel||shade||(state.showTambon&&(zoomedIn()||ampSelected(f.properties.amp_code)));
     return {renderer:canvas,fill:shade,fillColor:shade?hatch(m.color,m.hollow):'#ffffff',fillOpacity:0.9,
       stroke:line,color:sel?'#0f172a':shade?m.color:'#94a3b8',weight:sel?2.5:shade?1:0.4,opacity:sel||shade?0.9:0.6};
@@ -407,7 +434,7 @@
     // instead (the fit below still counts its point).
     for(const r of withPoint.slice().reverse()){
       pts.push([r.latitude,r.longitude]);
-      if(pointHidden(r))continue;
+      if(!state.showWater||pointHidden(r))continue;
       const mk=L.circleMarker([r.latitude,r.longitude],{...pointStyle(r,key(r)===state.sel),renderer:canvas}).addTo(markerLayer);
       mk.bindTooltip(tambonTip(r),{sticky:true});
       mk.on('click',()=>choose(key(r),false));
@@ -429,7 +456,7 @@
     if(state.provSel)return boundsOf(feats(window.PROVINCES_GEOJSON,f=>featCode(f)===state.provSel));
     return null;
   }
-  function destroyMap(){if(ro){ro.disconnect();ro=null}if(map){map.remove();map=null}markers=new Map();markerLayer=null;fitBounds=null;provLayer=null;ampLayer=null;ampFillLayer=null;regionLayer=null;nameLayer=null;tambonLayers=new Map();canvas=null;provByCode=new Map()}
+  function destroyMap(){if(ro){ro.disconnect();ro=null}if(map){const k=$('waterMapKey'),h=$('waterMapKeyHost');if(k&&h&&k.parentElement!==h){k.classList.remove('leaflet-control');h.append(k)}map.remove();map=null}markers=new Map();markerLayer=null;fitBounds=null;provLayer=null;ampLayer=null;ampFillLayer=null;regionLayer=null;nameLayer=null;tambonLayers=new Map();canvas=null;provByCode=new Map()}
 
   // ---------- 5. detail ----------
   // Detail panel = selected province (2P2R level, plan, counts, reasons) above the selected tambon.
@@ -684,7 +711,7 @@
     const lv=$('waterLevel');if(lv&&lv.value!==state.level)lv.value=state.level;
     const cards=$('waterCards');if(cards)cards.outerHTML=cardsHtml(sc.tambons,districts);
     const stc=$('waterStatusCards');if(stc)stc.innerHTML=statusCardsHtml(sc.tambons);
-    const lg=$('waterProvLegend');if(lg)lg.innerHTML=provLegendHtml();
+    refreshKey();
     const si=$('waterSituation');if(si)si.outerHTML=situationHtml(sc.tambons,districts);
     renderTable();restyleAmphoes();drawPoints(refit);syncTambons();restyleTambons();renderDistrictTable();
     const detail=setDetail();
@@ -796,6 +823,7 @@
   }
   // One delegated listener: pane.innerHTML is rebuilt on every full render, but the pane element itself stays.
   function onClick(e){
+    if(/^water\w+Layer$/.test(e.target.id||''))requestAnimationFrame(refreshKey);
     const retryBtn=e.target.closest('[data-water-retry]');if(retryBtn){retry(retryBtn);return}
     const pb=e.target.closest('[data-water-prov]');if(pb){chooseProvince(pb.dataset.waterProv);return}
     const rf=e.target.closest('#waterRefresh');if(rf){refresh(rf);return}
@@ -806,6 +834,8 @@
     if(e.target.id==='waterRegionLayer'){state.showRegion=e.target.checked;if(regionLayer)regionLayer.setStyle(regionStyle);return}
     if(e.target.id==='waterProvLineLayer'){state.showProvLine=e.target.checked;if(provLayer)provLayer.setStyle(provStyle);return}
     if(e.target.id==='waterProvNameLayer'){state.showProvName=e.target.checked;showNames();return}
+    // GISTDA water: the tambon points (zoomed out) and the hatched tambons (zoomed in)
+    if(e.target.id==='waterPointLayer'){state.showWater=e.target.checked;restyleTambons();drawPoints(false);return}
     if(e.target.id==='waterTambonLayer'){state.showTambon=e.target.checked;syncTambons();restyleTambons();drawPoints(false);return}
     if(e.target.closest('[data-water-clear-district]')){setDistrict('');applyFilters();return}
     const lk=e.target.closest('[data-water-level]');if(lk){setLevel(state.level===lk.dataset.waterLevel?'':lk.dataset.waterLevel);applyFilters();return}
