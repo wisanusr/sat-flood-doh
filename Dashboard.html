@@ -946,20 +946,22 @@ function renderBkkVulChart() {
 
 // How old is what the page shows? The GitHub Pages build serves a snapshot (data.json) rebuilt by GitHub Actions on a schedule
 // that GitHub does not guarantee, so say so instead of letting it pass as live data. Uses the oldest sheet read time.
+// Short Thai date-time for the freshness chips (same as the risk and water tabs): "21 ต.ค. 15:30 น.".
+function chipTime(v){const t=DashboardModel.timestamp(typeof v==='number'?new Date(v).toISOString():v);return Number.isFinite(t)?new Date(t).toLocaleString('th-TH',{timeZone:'Asia/Bangkok',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+' น.':'ไม่ทราบเวลา'}
 function renderDataAge(){
  const el=$('dataAge');if(!el)return;
  const times=Object.values(DATA.sourceStatus||{}).filter(s=>s.status==='ok'&&s.loadedAt).map(s=>s.loadedAt).sort(),loaded=times[0]||DATA.loadedAt;
  const a=DashboardModel.dataAge(loaded,Date.now());
  if(!a){el.style.display='none';return}
- const snapshot=window.DATA_IS_SNAPSHOT===true,when=time(loaded);
- el.style.display='';el.className='data-age age-'+a.level;
- el.innerHTML=snapshot
-  ?(a.level==='ok'?'ข้อมูลอายุ <b>'+esc(a.text)+'</b> · ไฟล์สร้างเมื่อ '+esc(when)+' (หน้านี้แสดงไฟล์ที่สร้างตามรอบ ไม่ได้อ่านข้อมูลสด)'
-   :'<b>ข้อมูลอายุ '+esc(a.text)+'</b> (ไฟล์สร้างเมื่อ '+esc(when)+') — หน้านี้แสดงไฟล์ที่สร้างตามรอบ ไม่ได้อ่านข้อมูลสด จึงอาจต่างจากข้อมูลตอนนี้')
-  :'ข้อมูลอ่านเมื่อ '+esc(when)+' (อายุ '+esc(a.text)+')';
- if(window.DATA_LIVE_PENDING===true)el.innerHTML+=' · <b>กำลังอ่านข้อมูลสด…</b>';
- else if(window.DATA_LIVE_ERROR===true&&snapshot)el.innerHTML+=' · อ่านข้อมูลสดไม่สำเร็จ จึงใช้ไฟล์ที่เผยแพร่';
- const basis=timeBasis();if(basis)el.innerHTML+='<div class="age-basis">'+basis+'</div>';
+ const snapshot=window.DATA_IS_SNAPSHOT===true;
+ el.style.display='';el.className='data-age age-chips';
+ // Chips: when the data was read (colour = how old; the age itself is in the tooltip), then each source's own time.
+ el.innerHTML=DashboardModel.ageChips([
+  {level:a.level,html:'อัปเดต <b>'+esc(chipTime(loaded))+'</b>',title:'ข้อมูลอายุ '+a.text+(snapshot?' · หน้านี้แสดงไฟล์ที่สร้างตามรอบ ไม่ได้อ่านข้อมูลสด':'')},
+  window.DATA_LIVE_PENDING===true?{level:'info',html:'กำลังอ่านข้อมูลสด…'}
+   :window.DATA_LIVE_ERROR===true&&snapshot?{level:'warn',html:'อ่านข้อมูลสดไม่สำเร็จ ใช้ไฟล์ที่เผยแพร่'}
+   :snapshot&&a.level!=='ok'?{level:a.level,html:'ไฟล์ตามรอบ อาจต่างจากข้อมูลตอนนี้'}:null,
+  ...timeBasis()]);
 }
 // The data on one page comes from sources with different clocks: the report day is a ปภ. day, the stations are read 'now' and
 // the sheet keeps only the newest reading per station. Show each block's own time so they can be compared at a glance.
@@ -968,15 +970,15 @@ function timeBasis(){
  if(!bkk){
   const rows=DATA.disasters.filter(r=>r.Report_Date.slice(0,10)===state.date),w=rows.map(DashboardModel.disasterTime).filter(Number.isFinite),written=w.length?Math.max(...w):NaN;
   const at=rows.map(r=>/เวลา\s*(\d{1,2})[.:](\d{2})\s*น/.exec(r.Remarks||'')).filter(Boolean).map(x=>x[1].padStart(2,'0')+':'+x[2]).sort().pop();
-  parts.push('รายงาน ปภ. <b>'+esc(state.date?date(state.date+'T00:00:00+07:00'):'-')+'</b>'+(at?' เวลา '+esc(at)+' น.':'')+(Number.isFinite(written)?' (นำเข้า '+esc(stamp(written))+')':''));
+  parts.push({level:'info',html:'รายงาน ปภ. <b>'+esc(!state.date?'-':at?chipTime(state.date+'T'+at+':00+07:00'):new Date(state.date+'T00:00:00+07:00').toLocaleDateString('th-TH',{timeZone:'Asia/Bangkok',day:'numeric',month:'short'}))+'</b>',title:Number.isFinite(written)?'นำเข้า '+stamp(written):''});
  }
  const stationRows=bkk?DATA.bkkStations.filter(r=>r.province==='กรุงเทพมหานคร'):nationalStations(),src=bkk?'BKK_water_DB':'thai_water_DB';
  const cutoff=DashboardModel.timestamp(DATA.sourceStatus[src]?.loadedAt||DATA.loadedAt);
- parts.push('สถานีน้ำ'+(bkk?' กทม.':'')+' ตรวจวัดล่าสุด <b>'+esc(stamp(DashboardModel.latestTime(stationRows,'observed_at_th',cutoff)))+'</b>');
- if(bkk)parts.push('ศูนย์พักพิง ปรับปรุง <b>'+esc(stamp(DashboardModel.latestTime(DATA.shelters,'fetched_at_th')))+'</b>');
+ parts.push({level:'info',html:'สถานีน้ำ'+(bkk?' กทม.':'')+' <b>'+esc(chipTime(DashboardModel.latestTime(stationRows,'observed_at_th',cutoff)))+'</b>',title:'เวลาตรวจวัดล่าสุดของสถานีน้ำ'});
+ if(bkk)parts.push({level:'info',html:'ศูนย์พักพิง <b>'+esc(chipTime(DashboardModel.latestTime(DATA.shelters,'fetched_at_th')))+'</b>',title:'เวลาปรับปรุงข้อมูลศูนย์พักพิงล่าสุด'});
  const dates=uniq(DATA.disasters.map(r=>r.Report_Date.slice(0,10))).sort();
- if(!bkk&&state.date&&state.date!==dates.at(-1))parts.push('<b>วันรายงานที่เลือกไม่ใช่วันล่าสุด</b> — สถานีน้ำยังเป็นค่าล่าสุดตอนนี้ ไม่ย้อนตามวัน');
- return 'เวลาของข้อมูล: '+parts.join(' · ');
+ if(!bkk&&state.date&&state.date!==dates.at(-1))parts.push({level:'warn',html:'วันรายงานที่เลือกไม่ใช่วันล่าสุด',title:'สถานีน้ำยังเป็นค่าล่าสุดตอนนี้ ไม่ย้อนตามวัน'});
+ return parts;
 }
 setInterval(()=>{try{renderDataAge()}catch(e){}},60000);
 

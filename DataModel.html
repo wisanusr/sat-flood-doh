@@ -424,6 +424,12 @@
   // The pipeline processes once a day; its own run time is "fresh" within 6 h, "late" up to 12 h, then "stale".
   // Image age is the age of the newest satellite picture that showed water, taken from the rows that are not already marked
   // "found earlier, no new picture" (their picture is older than 120 h by definition); with only such rows it falls back to them.
+  // Freshness bar shared by every tab: a row of chips, coloured by level (ok / warn / bad; 'info' = plain note).
+  // Each item {level, html, title}; html is already escaped by the caller. Falsy items are skipped.
+  function ageChips(items){
+    const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    return items.filter(Boolean).map(i=>'<span class="age-chip age-'+(i.level||'info')+'"'+(i.title?' title="'+esc(i.title)+'"':'')+'><i class="age-dot" aria-hidden="true"></i>'+i.html+'</span>').join('');
+  }
   function waterFreshness(rows,now){
     const list=(rows||[]).filter(r=>r&&r.status);
     const times=list.map(r=>timestamp(r.run_at)).filter(Number.isFinite);
@@ -451,7 +457,7 @@
   }
   const waterDdpmOnlyCount=rows=>new Set((rows||[]).filter(r=>waterIsDdpmLogged(r)).map(r=>r.district_code||(r.province+'|'+r.district))).size;
   const reasonList=s=>String(s??'').split(';').map(x=>x.trim()).filter(Boolean);
-  const model={bkkTrendDistricts,bkkDistrictTrend,bkkTrend,WATER_2P2R,water2p2rLevel,waterProvCode,waterAmpCode,waterAmphoeRows,waterProvincesFromAmphoe,waterIsDdpmLogged,waterScope,waterStatusLabel,waterProvinceRows,waterProvinceSummary,waterProvinceIndex,waterProvinceUnmatched,WATER_CONFIDENCE,waterConfidence,waterIsLogged,waterIsDashed,WATER_BASIS_DDPM_ONLY,waterIsDdpmOnly,waterDdpmOnlyCount,WATERLOGGED_SOURCES,WATER_LOG_STATUS,waterStatusRank,waterRows,waterSummary,waterDdpmDistricts,waterHasPoint,waterFilter,waterFreshness,waterDistricts,latestPerKey,disasterTime,latestTime,parseSeries,RAIN_CLASSES,rainClass,seriesDates,exposure,reasonList,RISK_SOURCES,RISK_LEVELS,riskRank,parseBool,riskRows,riskSummary,waterTrend,overbankM,riskFreshness,dataAge,vulnerableTotals,trendKind,provinceLevel,situationGroups,regionNumber,timelineDaily,termWindows,lifecycle,trendLevel,newsRising,newsTopRegions,newsTopByCount,sourceInitial,growthValue,newsArticles,newsProvinces,newsUrgencyCounts,newsWords,ageLabel,safeUrl,URGENCY,NEWS_CATEGORIES,HEALTH_NEED_CATEGORIES,healthNeedMapData,healthNeedColor,latestStationDay,SOURCES,WATER_STATUS,canonicalWaterStatus,timestamp,sum,quality,householdBorderColor,validCoordinates,districtSummary};
+  const model={ageChips,bkkTrendDistricts,bkkDistrictTrend,bkkTrend,WATER_2P2R,water2p2rLevel,waterProvCode,waterAmpCode,waterAmphoeRows,waterProvincesFromAmphoe,waterIsDdpmLogged,waterScope,waterStatusLabel,waterProvinceRows,waterProvinceSummary,waterProvinceIndex,waterProvinceUnmatched,WATER_CONFIDENCE,waterConfidence,waterIsLogged,waterIsDashed,WATER_BASIS_DDPM_ONLY,waterIsDdpmOnly,waterDdpmOnlyCount,WATERLOGGED_SOURCES,WATER_LOG_STATUS,waterStatusRank,waterRows,waterSummary,waterDdpmDistricts,waterHasPoint,waterFilter,waterFreshness,waterDistricts,latestPerKey,disasterTime,latestTime,parseSeries,RAIN_CLASSES,rainClass,seriesDates,exposure,reasonList,RISK_SOURCES,RISK_LEVELS,riskRank,parseBool,riskRows,riskSummary,waterTrend,overbankM,riskFreshness,dataAge,vulnerableTotals,trendKind,provinceLevel,situationGroups,regionNumber,timelineDaily,termWindows,lifecycle,trendLevel,newsRising,newsTopRegions,newsTopByCount,sourceInitial,growthValue,newsArticles,newsProvinces,newsUrgencyCounts,newsWords,ageLabel,safeUrl,URGENCY,NEWS_CATEGORIES,HEALTH_NEED_CATEGORIES,healthNeedMapData,healthNeedColor,latestStationDay,SOURCES,WATER_STATUS,canonicalWaterStatus,timestamp,sum,quality,householdBorderColor,validCoordinates,districtSummary};
   if(typeof module!=='undefined')module.exports=model;else root.DashboardModel=model;
 })(typeof window!=='undefined'?window:globalThis);
 
