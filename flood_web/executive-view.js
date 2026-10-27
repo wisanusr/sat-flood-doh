@@ -40,11 +40,13 @@
     if(st.loading)return st.loading;
     if(!qrReady)qrReady=loadScript(QR_LIB).catch(e=>{qrReady=null;console.warn('[executive] QR library',e)});
     const geo=window.PROVINCES_GEOJSON?Promise.resolve(window.PROVINCES_GEOJSON):fetch('/thai_provinces.json').then(r=>r.ok?r.json():null).catch(()=>null);
+    // Health-region outlines are optional: without them the map just has no region lines.
+    const regions=window.HEALTH_REGIONS_GEOJSON?Promise.resolve(window.HEALTH_REGIONS_GEOJSON):fetch('/regions.geojson').then(r=>r.ok?r.json():null).catch(()=>null);
     const names=[...REQUIRED,...OPTIONAL];
-    st.loading=Promise.all([Promise.allSettled(names.map(readTab)),geo,qrReady]).then(([res,g])=>{
+    st.loading=Promise.all([Promise.allSettled(names.map(readTab)),geo,regions,qrReady]).then(([res,g,hr])=>{
       st.tables={};st.errors={};
       res.forEach((r,i)=>{if(r.status==='fulfilled')st.tables[names[i]]=r.value;else{st.tables[names[i]]=[];st.errors[names[i]]=r.reason&&r.reason.message||'อ่านไม่ได้'}});
-      st.geo=g&&g.features?g:null;
+      st.geo=g&&g.features?g:null;st.regions=hr&&hr.features?hr:null;
     }).finally(()=>{st.loading=null});
     return st.loading;
   }
@@ -64,20 +66,53 @@
     }
     const k=Math.cos((lat0+lat1)/2*Math.PI/180),sc=Math.min(width/((lon1-lon0)*k),maxH/(lat1-lat0));
     const P=([x,y])=>[(x-lon0)*k*sc,(lat1-y)*sc],paths=new Map();
-    for(const f of st.geo.features){
-      let d='';
+    const pathOf=f=>{let d='';
       for(const poly of f.geometry.type==='Polygon'?[f.geometry.coordinates]:f.geometry.coordinates)for(const ring of poly){let last=null,seg='',n=0;
         for(const c of ring){const p=P(c);if(last&&Math.abs(p[0]-last[0])<0.5&&Math.abs(p[1]-last[1])<0.5)continue;seg+=(n?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1);last=p;n++}
         if(n>=3)d+=seg+'Z'}
-      paths.set(f.properties.pro_th,d);
-    }
-    const out={paths,width:Math.round((lon1-lon0)*k*sc),height:Math.round((lat1-lat0)*sc)};
+      return d};
+    for(const f of st.geo.features)paths.set(f.properties.pro_th,pathOf(f));
+    // health-region outlines (regions.geojson), drawn over the province fill in the same projection
+    const regions=st.regions?st.regions.features.map(pathOf).join(''):'';
+    const out={paths,regions,tmd:tmdOutline(P),width:Math.round((lon1-lon0)*k*sc),height:Math.round((lat1-lat0)*sc)};
     mapCache.set(key,out);return out;
   }
-  // styleOf(province) -> {fill, stroke, width}
-  function svgMap(m,styleOf){
+  // Outlines of TMD's forecast regions (M.execTmdRegionOf) traced from the province rings: a border segment is drawn when
+  // only one province has it (coast, national border) or when the two provinces sharing it are in different regions.
+  // Neighbouring provinces share their border vertices in thai_provinces.json, so shared segments match exactly.
+  let tmdSegs=null;
+  function tmdOutline(P){
+    const key=([x,y])=>x.toFixed(6)+','+y.toFixed(6),edge=(a,b)=>{const p=key(a),q=key(b);return p<q?p+'|'+q:q+'|'+p};
+    const rings=f=>(f.geometry.type==='Polygon'?[f.geometry.coordinates]:f.geometry.coordinates).flat();
+    if(!tmdSegs){
+      const owners=new Map();
+      for(const f of st.geo.features){const r=M.execTmdRegionOf.get(f.properties.pro_th)||f.properties.pro_th;
+        for(const ring of rings(f))for(let i=1;i<ring.length;i++){const e=edge(ring[i-1],ring[i]);(owners.get(e)||owners.set(e,[]).get(e)).push(r)}}
+      tmdSegs=new Set([...owners].filter(([,rs])=>rs.length===1||rs.some(r=>r!==rs[0])).map(([e])=>e));
+    }
+    // walk each ring and join consecutive boundary segments into polylines; each shared border is drawn once. Polylines
+    // shorter than 3 px are dropped: they are the few places where neighbouring provinces' vertices do not quite match.
+    const done=new Set();let d='',line='',len=0,last=null;
+    const flush=()=>{if(line&&len>=3)d+=line;line='';len=0};
+    for(const f of st.geo.features)for(const ring of rings(f)){
+      for(let i=1;i<ring.length;i++){const e=edge(ring[i-1],ring[i]);
+        if(!tmdSegs.has(e)||done.has(e)){flush();continue}
+        done.add(e);const a=P(ring[i-1]),b=P(ring[i]);
+        if(!line){line='M'+a[0].toFixed(1)+' '+a[1].toFixed(1);last=a}
+        const step=Math.hypot(b[0]-last[0],b[1]-last[1]);
+        if(step>=0.5||i===ring.length-1){line+='L'+b[0].toFixed(1)+' '+b[1].toFixed(1);len+=step;last=b}
+      }
+      flush();
+    }
+    return d;
+  }
+  // styleOf(province) -> {fill, stroke, width}; regionWidth > 0 draws the health-region outlines on top, tmdWidth > 0 the
+  // TMD forecast-region outlines.
+  function svgMap(m,styleOf,regionWidth,tmdWidth){
     let s='<svg viewBox="0 0 '+m.width+' '+m.height+'" xmlns="http://www.w3.org/2000/svg" style="overflow:hidden">';
     for(const [p,d] of m.paths){const x=styleOf(p);s+='<path d="'+d+'" fill="'+x.fill+'" stroke="'+x.stroke+'" stroke-width="'+x.width+'"><title>'+esc(p)+'</title></path>'}
+    if(regionWidth&&m.regions)s+='<path d="'+m.regions+'" fill="none" stroke="#17333e" stroke-width="'+regionWidth+'" stroke-linejoin="round"/>';
+    if(tmdWidth&&m.tmd)s+='<path d="'+m.tmd+'" fill="none" stroke="#17333e" stroke-width="'+tmdWidth+'" stroke-linejoin="round" stroke-linecap="round"/>';
     return s+'</svg>';
   }
   function qrBox(){
@@ -112,9 +147,9 @@
     +'<div class="x-cards">'
     +'<div class="x-card"><div class="x-eyebrow">ประสบภัย (ปภ.)</div><div class="x-num">'+fmt(S.provinces)+'<span class="x-unit">จังหวัด</span></div><div class="x-note">'+delta(S.dProv)+'</div></div>'
     +'<div class="x-card x-accent"><div class="x-eyebrow">ผลกระทบ (ครัวเรือน)</div><div class="x-num">'+fmt(S.hh)+'</div><div class="x-note">'+delta(S.dHh)+'</div></div>'
-    +'<div class="x-card"><div class="x-eyebrow">กลุ่มเปราะบาง</div><div class="x-vul"><span>เด็ก</span><b>'+fmt(ex.children)+'</b><span>หญิงตั้งครรภ์</span><b>'+fmt(ex.pregnant)+'</b><span>ผู้สูงอายุ</span><b>'+fmtM(ex.elderly)+'</b></div></div>'
+    +'<div class="x-card"><div class="x-eyebrow">กลุ่มเปราะบาง (คน)</div><div class="x-vul"><span>เด็ก</span><b>'+fmt(ex.children)+'</b><span>หญิงตั้งครรภ์</span><b>'+fmt(ex.pregnant)+'</b><span>ผู้สูงอายุ</span><b>'+fmtM(ex.elderly)+'</b></div></div>'
     +'</div>'
-    +'<div class="x-mid"><div class="x-panel x-mapbox'+(region?' x-mapzoom':'')+'">'+svgMap(big,p2rStyle)
+    +'<div class="x-mid"><div class="x-panel x-mapbox'+(region?' x-mapzoom':'')+'">'+svgMap(big,p2rStyle,1.1)
     +'<div class="x-legend x-legend-col">'+(shown.length?shown.map(k=>'<span><i style="background:'+M.EXEC_P2R[k].color+'"></i>'+M.EXEC_P2R[k].label+'</span>').join(''):'<span>ไม่มีข้อมูลระดับ 2P2R</span>')+'</div></div>'
     +'<div class="x-panel"><h2>ระดับความเสี่ยง 2P2R</h2><div class="x-regs">'
     +(groups.length?groups.map(g=>{const top=g.items.map(x=>lv(x.province)).filter(Boolean).sort((a,b)=>b.rank-a.rank)[0]||{color:NONE,light:true};
@@ -124,12 +159,12 @@
     +'<div class="x-panel"><h2>เฝ้าระวังและพยากรณ์ล่วงหน้า <small>กรมอุตุนิยมวิทยา</small></h2>'
     +(p0?'<div class="x-alert">⚠ ระวัง '+esc(p0.rain_wording||'ฝนตกหนัก')+' '+thDay(p0.period_start)+(alertTo&&alertTo!==p0.period_start?' – '+thDay(alertTo):'')+'</div>':'')
     +'<div class="x-fc"><div class="x-periods">'+(periods.length?periods.map(p=>{const c=cardBy.get(p.period_start);return '<div class="x-period"><b>'+esc(c?.period_label||thDay(p.period_start)+' – '+thDay(p.period_end))+(c?.cap_level?' <span class="x-cap">· ประกาศเตือน'+esc(c.cap_level)+'</span>':'')+'</b><p>'+esc(p.headline_th)+'</p></div>'}).join(''):'<p class="x-empty">ไม่มีข้อมูลพยากรณ์</p>')+'</div>'
-    +'<div>'+(rain.length?'<div class="x-rainmaps">'+rain.map(d=>'<figure><figcaption>'+thDay(d.date)+'</figcaption>'+svgMap(small,rainStyle(d))+'<div class="x-stat">>35 มม. '+d.heavy+' จ.</div></figure>').join('')+'</div>'
+    +'<div>'+(rain.length?'<div class="x-rainmaps">'+rain.map(d=>'<figure><figcaption>'+thDay(d.date)+'</figcaption>'+svgMap(small,rainStyle(d),0,0.7)+'<div class="x-stat">>35 มม. '+d.heavy+' จ.</div></figure>').join('')+'</div>'
       +'<div class="x-rainkey">'+M.EXEC_RAIN.map(b=>'<span><i style="background:'+b.color+'"></i>'+b.label+'</span>').join('')+'</div>':'<p class="x-empty">ไม่มีข้อมูลฝนพยากรณ์</p>')
     +qrBox()+'</div></div></div>'
     +'</div>'
     +'<div class="x-foot">'+(S.recovered.length?'<div class="x-rec"><b>✓ คลี่คลายแล้ว:</b> '+esc(S.recovered.join(' '))+'</div>':'')
-    +'<div class="x-meta">ที่มา : กรมป้องกันและบรรเทาสาธารณภัย, กรมอุตุนิยมวิทยา, HDC (สรุปจาก AI อาจมีข้อผิดพลาด)</div></div>'
+    +'<div class="x-meta">ที่มา : กรมป้องกันและบรรเทาสาธารณภัย, กรมอุตุนิยมวิทยา, HDC (สรุปข้อความด้วย AI อาจมีข้อผิดพลาด)</div></div>'
     +'</div>';
   }
   // Scale the content to fill the poster: up to 1.3x on a quiet day, down on a busy one. The content is laid out w px wide
@@ -165,11 +200,10 @@
     $('execSave').addEventListener('click',save);
     st.built=true;
   }
+  // Only a notice when a tab could not be read; nothing is shown above the poster otherwise.
   function status(){
-    const T=st.tables,failed=Object.keys(st.errors),run=n=>{const d=M.execReportDay('',T[n]);return d?thDay(d):'-'};
-    const S=M.execDdpm(T.Disaster_DB);
-    let s='<span>ข้อมูล: ปภ. '+thDay(S.day)+' · 2P2R '+run('flood_waterlogged_amphoe')+' · กรมอุตุฯ '+run('tmd_rain_level')+'</span><span>ภาพ 1179×2200 (พอดีจอ iPhone 15 ไม่ทับกล้อง)</span>';
-    if(failed.length)s='<div class="alert">อ่านแท็บนี้ไม่ได้: '+failed.map(n=>esc(n)+' ('+esc(st.errors[n])+')').join(', ')+' ส่วนที่ใช้ข้อมูลนี้ในภาพจะขึ้นว่าไม่มีข้อมูล</div>'+s;
+    const failed=Object.keys(st.errors);let s='';
+    if(failed.length)s='<div class="alert">อ่านแท็บนี้ไม่ได้: '+failed.map(n=>esc(n)+' ('+esc(st.errors[n])+')').join(', ')+' ส่วนที่ใช้ข้อมูลนี้ในภาพจะขึ้นว่าไม่มีข้อมูล</div>';
     $('execStatus').innerHTML=s;
   }
   function draw(){
