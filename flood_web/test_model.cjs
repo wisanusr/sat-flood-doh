@@ -397,4 +397,11 @@ console.log('PASS: operations DOH geographic scope and chronological Thai date s
   assert.equal(m.execReportDay('2026-10-19',[{run_at:'2026-10-20 14:55'}],[{run_at:''}]),'2026-10-20');
   assert.equal(m.execReportDay('',[]),'');
 }
+{
+  // every province of the boundary file has exactly one TMD forecast region
+  const names=JSON.parse(require('fs').readFileSync(require('path').join(__dirname,'thai_provinces.json'),'utf8')).features.map(f=>f.properties.pro_th);
+  const listed=Object.values(m.EXEC_TMD_REGIONS).flatMap(s=>s.split(' '));
+  assert.equal(listed.length,new Set(listed).size);assert.deepEqual([...new Set(listed)].sort(),[...names].sort());
+  assert.equal(Object.keys(m.EXEC_TMD_REGIONS).length,7);assert.equal(m.execTmdRegionOf.get('เพชรบุรี'),'ภาคใต้ฝั่งตะวันออก');
+}
 console.log('PASS: executive report');

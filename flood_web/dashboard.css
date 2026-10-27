@@ -683,6 +683,7 @@ details.risk-all[open]>summary::before{content:"▾"}
 .x-save:disabled{opacity:.5;cursor:default}
 .x-status{display:flex;flex-wrap:wrap;gap:4px 16px;justify-content:center;font-size:13px;color:var(--muted);margin-bottom:14px;text-align:center}
 .x-status .alert{flex-basis:100%;text-align:left}
+.x-status:empty{display:none}
 .x-stagewrap{display:flex;justify-content:center}
 .x-stage{flex:none}
 .x-scale{transform-origin:0 0;width:540px}
